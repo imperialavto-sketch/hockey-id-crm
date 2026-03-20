@@ -1,11 +1,11 @@
 import type { Player, PlayerStats, Recommendation, PlayerAIAnalysis, ScheduleItem, PlayerVideoAnalysis } from "@/types";
 import type { PlayerProgressSnapshot, AchievementsResponse } from "@/types";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, ApiRequestError } from "@/lib/api";
 import { mapApiPlayerToPlayer, type ApiPlayer } from "@/mappers/playerMapper";
 import { mapApiStatsToPlayerStats, type ApiStats } from "@/mappers/statsMapper";
 import { mapApiRecommendation, type ApiRecommendation } from "@/mappers/recommendationMapper";
 import { mapApiScheduleItem, type ApiScheduleItem } from "@/mappers/scheduleMapper";
-import { isDev } from "@/config/api";
+import { isDemoMode } from "@/config/api";
 import { logApiError } from "@/lib/apiErrors";
 import { mockPlayers } from "@/mocks/players";
 import { mockPlayerStats } from "@/mocks/stats";
@@ -13,44 +13,120 @@ import { mockRecommendations } from "@/mocks/recommendations";
 import { mockPlayerSchedule } from "@/mocks/schedule";
 import { PLAYER_MARK_GOLYSH } from "@/constants/mockPlayerMarkGolysh";
 import { getPlayerSchedule } from "@/services/scheduleService";
+import { demoPlayers, getDemoPlayerById } from "@/demo/demoPlayers";
 
 const PARENT_ID_HEADER = "x-parent-id";
 
 /** Backend (hockey-server) player response shape */
 interface BackendPlayer {
-  id: number;
-  firstName: string;
-  lastName: string;
-  birthYear: number;
+  id: number | string;
+  firstName?: string | null;
+  lastName?: string | null;
+  name?: string | null;
+  birthYear?: number | null;
+  age?: number | null;
   position?: string | null;
-  parentId: number;
+  parentId?: number | null;
   teamId?: number | null;
-  team?: { name: string } | null;
+  team?: { name: string } | string | null;
+  games?: number | null;
+  goals?: number | null;
+  assists?: number | null;
+  points?: number | null;
+  pim?: number | null;
+  stats?: {
+    games?: number | null;
+    goals?: number | null;
+    assists?: number | null;
+    points?: number | null;
+    pim?: number | null;
+  } | null;
 }
 
-function mapBackendPlayerToApiPlayer(b: BackendPlayer): ApiPlayer {
+/** Backend playerStat row shape from GET /api/players/:id/stats */
+interface BackendPlayerStat {
+  games?: number | null;
+  goals?: number | null;
+  assists?: number | null;
+  points?: number | null;
+  pim?: number | null;
+}
+
+function getStatsFallbackFromBackendPlayer(player: BackendPlayer): PlayerStats | null {
+  const source = player.stats ?? player;
+  const games = Number(source.games ?? 0);
+  const goals = Number(source.goals ?? 0);
+  const assists = Number(source.assists ?? 0);
+  const points = Number(source.points ?? goals + assists);
+  const pim = Number(source.pim ?? 0);
+
+  if ([games, goals, assists, points, pim].every((value) => value === 0)) {
+    return null;
+  }
+
+  return mapApiStatsToPlayerStats({
+    games,
+    goals,
+    assists,
+    points,
+    pim,
+  });
+}
+
+async function getBasePlayerProfile(
+  id: string
+): Promise<{ player: Player | null; statsFallback: PlayerStats | null }> {
+  let data: BackendPlayer | null;
+  try {
+    data = await apiFetch<BackendPlayer>(`/api/me/players/${encodeURIComponent(id)}`, {
+      timeoutMs: 6000,
+    });
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 404) {
+      return {
+        player: null,
+        statsFallback: null,
+      };
+    }
+    throw error;
+  }
+
+  if (data && typeof data === "object" && data.id != null) {
+    return {
+      player: mapApiPlayerToPlayer(mapBackendPlayerToApiPlayer(data)),
+      statsFallback: getStatsFallbackFromBackendPlayer(data),
+    };
+  }
+
   return {
-    id: String(b.id),
-    firstName: b.firstName,
-    lastName: b.lastName,
-    birthYear: b.birthYear,
-    position: b.position ?? undefined,
-    team: b.team?.name ?? "",
+    player: null,
+    statsFallback: null,
   };
 }
 
-/** Mock fallback only in DEV. PROD: throw so UI shows error state. */
-function useMockFallback<T>(fallback: () => T, err: unknown): T {
-  logApiError("playerService", err);
-  if (isDev) {
-    try {
-      return fallback();
-    } catch (fallbackErr) {
-      logApiError("playerService.useMockFallback", fallbackErr);
-      throw fallbackErr;
-    }
-  }
-  throw err;
+function mapBackendPlayerToApiPlayer(b: BackendPlayer): ApiPlayer {
+  const currentYear = new Date().getFullYear();
+  const fallbackBirthYear = currentYear - 10;
+  const fullName = String(b.name ?? "").trim();
+  const [derivedFirstName = "", ...restName] = fullName ? fullName.split(/\s+/) : [];
+  const derivedLastName = restName.join(" ");
+  const firstName = b.firstName ?? derivedFirstName;
+  const lastName = b.lastName ?? derivedLastName;
+  const birthYear = b.birthYear ?? (b.age ? currentYear - Number(b.age) : fallbackBirthYear);
+  const teamName =
+    typeof b.team === "string"
+      ? b.team
+      : b.team?.name ?? "";
+
+  return {
+    id: String(b.id),
+    firstName,
+    lastName,
+    birthYear,
+    age: b.age ?? undefined,
+    position: b.position ?? undefined,
+    team: teamName,
+  };
 }
 
 export interface FullPlayerProfile {
@@ -73,37 +149,57 @@ const MOCK_FULL_PROFILE: FullPlayerProfile = {
   videoAnalyses: [],
 };
 
-/** Fetch full player profile from backend: getPlayer + getPlayerSchedule. */
+async function getDemoFullProfile(playerId: string): Promise<FullPlayerProfile | null> {
+  const player = getDemoPlayerById(playerId) ?? demoPlayers[0] ?? null;
+  if (!player) return null;
+  const schedule = mockPlayerSchedule[player.id] ?? [];
+  return {
+    player,
+    stats: MOCK_FULL_PROFILE.stats,
+    schedule,
+    recommendations: MOCK_FULL_PROFILE.recommendations,
+    progressHistory: MOCK_FULL_PROFILE.progressHistory,
+    achievements: MOCK_FULL_PROFILE.achievements,
+    videoAnalyses: MOCK_FULL_PROFILE.videoAnalyses,
+  };
+}
+
+/** Fetch full player profile from backend: getPlayer + getPlayerSchedule, with demo fallback. */
 export async function getFullPlayerProfile(
   playerId: string,
   parentId: string,
   _options?: { includeVideoAnalyses?: boolean }
 ): Promise<FullPlayerProfile | null> {
-  try {
-    const [player, schedule] = await Promise.all([
-      getPlayerById(playerId, parentId),
-      getPlayerSchedule(playerId, parentId),
-    ]);
-    if (!player) return null;
-    return {
-      player,
-      stats: null,
-      schedule,
-      recommendations: [],
-      progressHistory: [],
-      achievements: { unlocked: [], locked: [] },
-      videoAnalyses: [],
-    };
-  } catch (err) {
-    logApiError("playerService.getFullPlayerProfile", err);
-    if (isDev) return MOCK_FULL_PROFILE;
-    throw err;
+  if (isDemoMode) {
+    return getDemoFullProfile(playerId);
   }
-}
 
-/** TEMPORARY: Fallback when API fails (e.g. backend not running, no network). */
-function useFallbackPlayer(): Player[] {
-  return [...mockPlayers];
+  const [playerResult, scheduleResult, statsResult, recommendationsResult] = await Promise.allSettled([
+    getBasePlayerProfile(playerId),
+    getPlayerSchedule(playerId, parentId),
+    getPlayerStats(playerId, parentId),
+    getCoachRecommendations(playerId, parentId),
+  ]);
+
+  if (playerResult.status === "rejected") {
+    throw playerResult.reason;
+  }
+
+  const { player, statsFallback } = playerResult.value;
+  if (!player) return null;
+
+  return {
+    player,
+    stats:
+      statsResult.status === "fulfilled" && statsResult.value
+        ? statsResult.value
+        : statsFallback,
+    schedule: scheduleResult.status === "fulfilled" ? scheduleResult.value : [],
+    recommendations: recommendationsResult.status === "fulfilled" ? recommendationsResult.value : [],
+    progressHistory: [],
+    achievements: { unlocked: [], locked: [] },
+    videoAnalyses: [],
+  };
 }
 
 function useFallbackPlayerById(id: string): Player | null {
@@ -118,34 +214,72 @@ function useFallbackRecommendations(playerId: string): Recommendation[] {
   return mockRecommendations[playerId] ?? [];
 }
 
-/** Fetch players from backend (GET /api/players), filtered by parent. */
-export async function getPlayers(parentId: string): Promise<Player[]> {
-  try {
-    const data = await apiFetch<BackendPlayer[]>("/api/players", {
-      timeoutMs: 6000,
-    });
-    if (!Array.isArray(data)) return useMockFallback(useFallbackPlayer, new Error("Invalid response"));
-    const parentIdNum = parseInt(String(parentId), 10);
-    const forParent = Number.isNaN(parentIdNum)
-      ? data
-      : data.filter((p) => p.parentId === parentIdNum);
-    return forParent.map((p) => mapApiPlayerToPlayer(mapBackendPlayerToApiPlayer(p)));
-  } catch (err) {
-    return useMockFallback(useFallbackPlayer, err);
+function normalizeAIAnalysisResponse(data: unknown): PlayerAIAnalysis | null {
+  if (!data || typeof data !== "object") {
+    return null;
   }
+
+  const raw = Array.isArray(data) && data.length > 0 ? data[0] : data;
+  const record = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+
+  const summary = String(record.summary ?? record.report ?? "");
+  const strengths = Array.isArray(record.strengths) ? record.strengths.map(String) : [];
+  const growthAreas = Array.isArray(record.growthAreas)
+    ? record.growthAreas.map(String)
+    : Array.isArray(record.weaknesses)
+      ? record.weaknesses.map(String)
+      : [];
+  const recommendations = Array.isArray(record.recommendations)
+    ? record.recommendations.map(String)
+    : [];
+  const coachFocus = Array.isArray(record.coachFocus) ? record.coachFocus.map(String) : [];
+  const motivation = String(record.motivation ?? "");
+
+  if (!summary && strengths.length === 0 && growthAreas.length === 0 && recommendations.length === 0) {
+    return null;
+  }
+
+  return {
+    summary,
+    strengths,
+    growthAreas,
+    recommendations,
+    coachFocus,
+    motivation,
+  };
 }
 
-/** Fetch single player from backend (GET /api/players/:id). */
-export async function getPlayerById(id: string, _parentId?: string): Promise<Player | null> {
-  try {
-    const data = await apiFetch<BackendPlayer>(`/api/players/${id}`, { timeoutMs: 6000 });
-    if (data && typeof data === "object" && data.id != null) {
-      return mapApiPlayerToPlayer(mapBackendPlayerToApiPlayer(data));
-    }
-    return null;
-  } catch (err) {
-    return useMockFallback(() => useFallbackPlayerById(id), err);
+/** Fetch players from backend (GET /api/me/players). */
+export async function getPlayers(_parentId: string): Promise<Player[]> {
+  if (isDemoMode) {
+    return [...demoPlayers];
   }
+
+  const data = await apiFetch<BackendPlayer[]>("/api/me/players", {
+    timeoutMs: 6000,
+  });
+  if (__DEV__) {
+    console.log("PLAYERS API RESULT", data);
+  }
+  if (!Array.isArray(data)) {
+    throw new Error("Invalid players response");
+  }
+  return data.map((p) => mapApiPlayerToPlayer(mapBackendPlayerToApiPlayer(p)));
+}
+
+/** Fetch single player from backend (GET /api/me/players/:id). */
+export async function getPlayerById(id: string, _parentId?: string): Promise<Player | null> {
+  if (isDemoMode) {
+    return useFallbackPlayerById(id);
+  }
+
+  const data = await apiFetch<BackendPlayer>(`/api/me/players/${encodeURIComponent(id)}`, {
+    timeoutMs: 6000,
+  });
+  if (data && typeof data === "object" && data.id != null) {
+    return mapApiPlayerToPlayer(mapBackendPlayerToApiPlayer(data));
+  }
+  return null;
 }
 
 /** Create a player on the backend (POST /api/players). */
@@ -168,56 +302,141 @@ export async function createPlayer(data: {
 /** Fetch player stats. Requires parentId for auth. */
 export async function getPlayerStats(
   playerId: string,
-  parentId: string
+  _parentId: string
 ): Promise<PlayerStats | null> {
+  if (isDemoMode) {
+    return useFallbackStats(playerId);
+  }
+
   try {
-    const data = await apiFetch<ApiStats | null>(
-      `/api/parent/mobile/player/${playerId}/stats`,
-      { headers: { [PARENT_ID_HEADER]: parentId } }
+    const raw = await apiFetch<BackendPlayerStat[] | BackendPlayerStat | unknown>(
+      `/api/players/${playerId}/stats`
     );
-    if (data && typeof data === "object") {
-      return mapApiStatsToPlayerStats(data);
+    const rows = Array.isArray(raw)
+      ? raw
+      : raw && typeof raw === "object"
+        ? [raw as BackendPlayerStat]
+        : [];
+    if (rows.length === 0) {
+      return null;
     }
-    return null;
+    const agg: ApiStats = rows.reduce(
+      (acc, row) => ({
+        games: (acc.games ?? 0) + Number(row.games ?? 0),
+        goals: (acc.goals ?? 0) + Number(row.goals ?? 0),
+        assists: (acc.assists ?? 0) + Number(row.assists ?? 0),
+        points: (acc.points ?? 0) + Number(row.points ?? 0),
+        pim: (acc.pim ?? 0) + Number(row.pim ?? 0),
+      }),
+      { games: 0, goals: 0, assists: 0, points: 0, pim: 0 }
+    );
+    return mapApiStatsToPlayerStats(agg);
   } catch (err) {
-    return useMockFallback(() => useFallbackStats(playerId), err);
+    logApiError("playerService.getPlayerStats", err);
+    throw err;
   }
 }
 
 /** Fetch coach recommendations. Requires parentId for auth. */
 export async function getCoachRecommendations(
   playerId: string,
-  parentId: string
+  _parentId: string
 ): Promise<Recommendation[]> {
+  if (isDemoMode) {
+    return useFallbackRecommendations(playerId);
+  }
+
   try {
     const data = await apiFetch<ApiRecommendation[]>(
-      `/api/parent/mobile/player/${playerId}/recommendations`,
-      { headers: { [PARENT_ID_HEADER]: parentId } }
+      `/api/parent/mobile/player/${playerId}/recommendations`
     );
     if (Array.isArray(data)) {
       return data.map(mapApiRecommendation).filter((r) => r.text);
     }
+    return [];
   } catch (err) {
-    return useMockFallback(() => useFallbackRecommendations(playerId), err);
+    logApiError("playerService.getCoachRecommendations", err);
+    throw err;
+  }
+}
+
+/** Lightweight player context for Coach Mark. Fetches player, stats, AI analysis. */
+export async function getPlayerContextForCoachMark(
+  playerId: string,
+  parentId: string
+): Promise<{
+  id: string;
+  name?: string;
+  age?: number;
+  birthYear?: number;
+  position?: string;
+  team?: string;
+  stats?: { games?: number; goals?: number; assists?: number; points?: number };
+  aiAnalysis?: {
+    summary?: string;
+    strengths?: string[];
+    growthAreas?: string[];
+  };
+} | null> {
+  try {
+    const [playerResult, statsResult, aiResult] = await Promise.allSettled([
+      getPlayerById(playerId, parentId),
+      getPlayerStats(playerId, parentId),
+      getAIAnalysis(playerId, parentId),
+    ]);
+
+    const player = playerResult.status === "fulfilled" ? playerResult.value : null;
+    if (!player) return null;
+
+    const stats = statsResult.status === "fulfilled" ? statsResult.value : null;
+    const aiAnalysis = aiResult.status === "fulfilled" ? aiResult.value : null;
+
+    return {
+      id: player.id,
+      name: player.name?.trim() || undefined,
+      age: player.age ?? undefined,
+      birthYear: player.birthYear ?? undefined,
+      position: player.position || undefined,
+      team: player.team || undefined,
+      stats: stats
+        ? {
+            games: stats.games,
+            goals: stats.goals,
+            assists: stats.assists,
+            points: stats.points,
+          }
+        : undefined,
+      aiAnalysis: aiAnalysis
+        ? {
+            summary: aiAnalysis.summary || undefined,
+            strengths:
+              aiAnalysis.strengths?.length ? aiAnalysis.strengths : undefined,
+            growthAreas:
+              aiAnalysis.growthAreas?.length
+                ? aiAnalysis.growthAreas
+                : undefined,
+          }
+        : undefined,
+    };
+  } catch {
+    return null;
   }
 }
 
 /** Fetch AI analysis for a player. Requires parentId for auth. */
 export async function getAIAnalysis(
   playerId: string,
-  parentId: string
+  _parentId: string
 ): Promise<PlayerAIAnalysis | null> {
+  if (isDemoMode) {
+    return null;
+  }
+
   try {
-    const data = await apiFetch<PlayerAIAnalysis>(
-      `/api/player/${playerId}/ai-analysis`,
-      { headers: { [PARENT_ID_HEADER]: parentId } }
-    );
-    if (data && typeof data === "object" && typeof data.summary === "string") {
-      return data;
-    }
+    const data = await apiFetch<unknown>(`/api/ai-analysis/${playerId}`);
+    return normalizeAIAnalysisResponse(data);
   } catch (err) {
     logApiError("playerService.getAIAnalysis", err);
-    if (isDev) return null;
     throw err;
   }
 }

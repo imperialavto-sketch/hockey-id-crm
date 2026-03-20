@@ -1,18 +1,20 @@
 /**
  * Parent Mobile Auth — verify code and return user.
  * If pending ParentInvite exists for this phone, links parent to players via ParentPlayer.
- * TODO: Connect to real verification store / DB.
- * For now: code 1234 accepted in development.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {
+  normalizePhone,
+  verifyAndConsumeCode,
+} from "@/lib/phoneCodeStore";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
-const DEV_CODE = "1234";
+const VERIFY_LIMIT = 5;
+const VERIFY_WINDOW_MS = 10 * 60 * 1000; // 10 минут
 
-function normalizePhone(phone: string): string {
-  return String(phone ?? "").replace(/\D/g, "").trim();
-}
+const NO_STORE_HEADERS = { "Cache-Control": "no-store" } as const;
 
 async function processPendingInvites(phone: string) {
   const invites = await prisma.parentInvite.findMany({
@@ -21,8 +23,8 @@ async function processPendingInvites(phone: string) {
   });
   if (invites.length === 0) return null;
 
-  // Create or find Parent by phone
-  let parent = await prisma.parent.findFirst({
+  // Find or create Parent by phone (unique)
+  let parent = await prisma.parent.findUnique({
     where: { phone },
   });
 
@@ -69,54 +71,86 @@ export async function POST(req: NextRequest) {
     const codeStr = String(code ?? "").trim();
 
     if (!normalized) {
+      console.warn("[auth][verify] missing phone");
       return NextResponse.json(
         { error: "Введите номер телефона" },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
     if (!codeStr) {
+      console.warn("[auth][verify] missing code");
       return NextResponse.json(
         { error: "Введите код подтверждения" },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
-    const isDev = process.env.NODE_ENV === "development";
-    const codeValid = isDev && codeStr === DEV_CODE;
-    // TODO: real verification: codeValid = await verifyStoredCode(normalized, codeStr);
+    const ip = getClientIp(req);
+    const key = `verify:${ip}:${normalized}`;
+    const rl = checkRateLimit(key, VERIFY_LIMIT, VERIFY_WINDOW_MS);
 
-    if (!codeValid) {
-      return NextResponse.json({ error: "Неверный код" }, { status: 401 });
+    if (!rl.allowed) {
+      console.warn("[auth][verify] rate limited", {
+        phone: normalized,
+        ip,
+        retryAfterSec: rl.retryAfterSec,
+      });
+
+      return NextResponse.json(
+        { error: "Слишком много попыток. Попробуйте позже" },
+        {
+          status: 429,
+          headers: {
+            ...NO_STORE_HEADERS,
+            "Retry-After": String(rl.retryAfterSec),
+          },
+        }
+      );
     }
 
-    // Process pending invites — link parent to players
+    const result = verifyAndConsumeCode(normalized, codeStr);
+    if (result === "EXPIRED") {
+      console.warn("[auth][verify] code expired", {
+        phone: normalized,
+        ip,
+      });
+      return NextResponse.json(
+        { error: "Срок действия кода истёк" },
+        { status: 410, headers: NO_STORE_HEADERS }
+      );
+    }
+    if (result === "INVALID") {
+      console.warn("[auth][verify] invalid code", {
+        phone: normalized,
+        ip,
+      });
+      return NextResponse.json(
+        { error: "Неверный код" },
+        { status: 401, headers: NO_STORE_HEADERS }
+      );
+    }
+
     let parent = await processPendingInvites(normalized);
 
-    // No invites: find or create parent by phone
     if (!parent) {
-      parent = await prisma.parent.findFirst({
+      parent = await prisma.parent.upsert({
         where: { phone: normalized },
-      });
-    }
-
-    if (!parent) {
-      // Create minimal parent (invited parents get linked above; this handles first-time login)
-      parent = await prisma.parent.create({
-        data: {
+        create: {
           firstName: "Родитель",
           lastName: normalized.slice(-4),
           phone: normalized,
         },
+        update: {},
       });
     }
 
-    // Dev fallback: link to Голыш Марк for testing if no players linked
+    const isDev = process.env.NODE_ENV === "development";
     if (isDev && parent) {
       const hasPlayers = await prisma.parentPlayer.count({
-        where: { parentId: parent!.id },
+        where: { parentId: parent.id },
       });
       const hasLegacy = await prisma.player.count({
-        where: { parentId: parent!.id },
+        where: { parentId: parent.id },
       });
       if (hasPlayers === 0 && hasLegacy === 0) {
         const firstPlayer = await prisma.player.findFirst({
@@ -126,12 +160,12 @@ export async function POST(req: NextRequest) {
           await prisma.parentPlayer.upsert({
             where: {
               parentId_playerId: {
-                parentId: parent!.id,
+                parentId: parent.id,
                 playerId: firstPlayer.id,
               },
             },
             create: {
-              parentId: parent!.id,
+              parentId: parent.id,
               playerId: firstPlayer.id,
               relation: "parent",
             },
@@ -142,19 +176,25 @@ export async function POST(req: NextRequest) {
     }
 
     const user = {
-      id: parent!.id,
+      id: parent.id,
       phone: normalized,
-      name: `${parent!.firstName} ${parent!.lastName}`.trim(),
+      name: `${parent.firstName} ${parent.lastName}`.trim(),
       role: "PARENT" as const,
-      parentId: parent!.id,
+      parentId: parent.id,
     };
 
-    return NextResponse.json({ user });
+    console.info("[auth][verify] success", {
+      parentId: user.id,
+      phone: user.phone,
+      ip,
+    });
+
+    return NextResponse.json({ user }, { headers: NO_STORE_HEADERS });
   } catch (error) {
-    console.error("POST /api/parent/mobile/auth/verify failed:", error);
+    console.error("[auth][verify] unexpected error", error);
     return NextResponse.json(
       { error: "Не удалось выполнить вход" },
-      { status: 500 }
+      { status: 500, headers: NO_STORE_HEADERS }
     );
   }
 }

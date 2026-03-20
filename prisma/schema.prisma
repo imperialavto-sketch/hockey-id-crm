@@ -247,7 +247,7 @@ model Parent {
   id               String             @id @default(cuid())
   firstName        String
   lastName         String
-  phone            String?
+  phone            String?            @unique
   email            String?
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
@@ -451,6 +451,7 @@ model PlayerVideoAnalysis {
   growthAreas    Json     @default("[]") // string[]
   recommendations Json   @default("[]") // string[]
   createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }
@@ -650,3 +651,34 @@ model CoachBookingRequest {
 
   coach CoachProfile @relation(fields: [coachId], references: [id], onDelete: Cascade)
 }
+
+model Subscription {
+  id                 String   @id @default(cuid())
+  parentId           String   @unique
+  planCode           String
+  status             String
+  billingInterval    String
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  billingRecords SubscriptionBillingRecord[]
+}
+
+model SubscriptionBillingRecord {
+  id             String   @id @default(cuid())
+  parentId       String
+  subscriptionId String?
+  date           DateTime
+  productName    String
+  amount         Int
+  currency       String
+  status         String
+  type           String
+  createdAt      DateTime @default(now())
+
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+}
+

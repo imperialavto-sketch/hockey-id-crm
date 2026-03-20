@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -28,6 +28,7 @@ import { colors, shadows, spacing } from "@/constants/theme";
 import type { Player, PlayerStats } from "@/types";
 
 const PRESSED_OPACITY = 0.88;
+type ProfileErrorStateKind = "not_found" | "network";
 
 function PassportSkeleton() {
   return (
@@ -39,6 +40,45 @@ function PassportSkeleton() {
     </View>
   );
 }
+
+function PassportHeader({
+  insetTop,
+  onBack,
+  onShare,
+  showShareButton = false,
+}: {
+  insetTop: number;
+  onBack: () => void;
+  onShare?: () => void;
+  showShareButton?: boolean;
+}) {
+  return (
+    <View style={[styles.customHeader, { paddingTop: insetTop + spacing.lg }]}>
+      <Pressable
+        style={({ pressed }) => [styles.backBtn, pressed && { opacity: PRESSED_OPACITY }]}
+        onPress={onBack}
+        accessibilityRole="button"
+        accessibilityLabel="Назад"
+      >
+        <Ionicons name="arrow-back" size={24} color="#ffffff" />
+      </Pressable>
+      <Text style={styles.headerTitle}>Паспорт игрока</Text>
+      {showShareButton ? (
+        <Pressable
+          style={({ pressed }) => [styles.headerBtn, pressed && { opacity: PRESSED_OPACITY }]}
+          onPress={onShare}
+          accessibilityRole="button"
+          accessibilityLabel="Share"
+        >
+          <Ionicons name="share-outline" size={24} color="#ffffff" />
+        </Pressable>
+      ) : (
+        <View style={styles.headerBtn} />
+      )}
+    </View>
+  );
+}
+
 const POSITION_MAP: Record<string, string> = {
   Forward: "Нападающий",
   Defenseman: "Защитник",
@@ -55,30 +95,76 @@ export default function PlayerPassportScreen() {
   const [stats, setStats] = useState<PlayerStats | null>(null);
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [profileError, setProfileError] = useState<"not_found" | "network" | null>(null);
+  const [profileError, setProfileError] = useState<ProfileErrorStateKind | null>(null);
+  const mountedRef = useRef(true);
+  const profileRequestRef = useRef(0);
+
+  useEffect(() => () => {
+    mountedRef.current = false;
+  }, []);
+
+  const goBack = useCallback(() => {
+    triggerHaptic();
+    router.back();
+  }, [router]);
+
+  const openShareSheet = useCallback(() => {
+    triggerHaptic();
+    setShareSheetVisible(true);
+  }, []);
 
   const loadProfile = useCallback(async () => {
-    if (!id || typeof id !== "string" || !user?.id) {
-      setLoading(false);
+    const requestId = ++profileRequestRef.current;
+    const canCommit = () => mountedRef.current && requestId === profileRequestRef.current;
+
+    if (!id || typeof id !== "string") {
+      if (canCommit()) {
+        setPlayer(null);
+        setStats(null);
+        setProfileError("not_found");
+        setLoading(false);
+      }
       return;
     }
-    setLoading(true);
-    setProfileError(null);
+
+    if (!user?.id) {
+      if (canCommit()) {
+        setPlayer(null);
+        setStats(null);
+        setProfileError("network");
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (canCommit()) {
+      setLoading(true);
+      setProfileError(null);
+    }
+
     try {
       const profile = await getFullPlayerProfile(id, user.id, { includeVideoAnalyses: false });
+      if (!canCommit()) return;
+
       if (profile) {
         setPlayer(profile.player);
         setStats(profile.stats);
         setProfileError(null);
       } else {
         setPlayer(null);
+        setStats(null);
         setProfileError("not_found");
       }
     } catch {
-      setPlayer(null);
-      setProfileError("network");
+      if (canCommit()) {
+        setPlayer(null);
+        setStats(null);
+        setProfileError("network");
+      }
     } finally {
-      setLoading(false);
+      if (canCommit()) {
+        setLoading(false);
+      }
     }
   }, [id, user?.id]);
 
@@ -90,27 +176,12 @@ export default function PlayerPassportScreen() {
   const p = isDemo ? PLAYER_MARK_GOLYSH.profile : null;
   const ai = isDemo ? PLAYER_MARK_GOLYSH.aiCoachReport : null;
 
-  const passportHeader = (
-    <View style={[styles.customHeader, { paddingTop: insets.top + spacing.lg }]}>
-      <Pressable
-        style={({ pressed }) => [styles.backBtn, pressed && { opacity: PRESSED_OPACITY }]}
-        onPress={() => {
-          triggerHaptic();
-          router.back();
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Назад"
-      >
-        <Ionicons name="arrow-back" size={24} color="#ffffff" />
-      </Pressable>
-      <Text style={styles.headerTitle}>Паспорт игрока</Text>
-      <View style={styles.headerBtn} />
-    </View>
-  );
-
   if (loading) {
     return (
-      <FlagshipScreen background={<PassportBackground />} header={passportHeader}>
+      <FlagshipScreen
+        background={<PassportBackground />}
+        header={<PassportHeader insetTop={insets.top} onBack={goBack} />}
+      >
         <PassportSkeleton />
       </FlagshipScreen>
     );
@@ -121,7 +192,7 @@ export default function PlayerPassportScreen() {
     return (
       <FlagshipScreen
         background={<PassportBackground />}
-        header={passportHeader}
+        header={<PassportHeader insetTop={insets.top} onBack={goBack} />}
         scroll={false}
       >
         <ErrorStateView
@@ -144,38 +215,17 @@ export default function PlayerPassportScreen() {
   const lastName = parts[0] ?? "";
   const firstName = parts[1] ?? fullName;
 
-  const passportHeaderWithShare = (
-    <View style={[styles.customHeader, { paddingTop: insets.top + spacing.lg }]}>
-      <Pressable
-        style={({ pressed }) => [styles.backBtn, pressed && { opacity: PRESSED_OPACITY }]}
-        onPress={() => {
-          triggerHaptic();
-          router.back();
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Назад"
-      >
-        <Ionicons name="arrow-back" size={24} color="#ffffff" />
-      </Pressable>
-      <Text style={styles.headerTitle}>Паспорт игрока</Text>
-      <Pressable
-        style={({ pressed }) => [styles.headerBtn, pressed && { opacity: PRESSED_OPACITY }]}
-        onPress={() => {
-          triggerHaptic();
-          setShareSheetVisible(true);
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Share"
-      >
-        <Ionicons name="share-outline" size={24} color="#ffffff" />
-      </Pressable>
-    </View>
-  );
-
   return (
     <FlagshipScreen
       background={<PassportBackground />}
-      header={passportHeaderWithShare}
+      header={
+        <PassportHeader
+          insetTop={insets.top}
+          onBack={goBack}
+          onShare={openShareSheet}
+          showShareButton
+        />
+      }
       footer={
         <SharePlayerSheet
           visible={shareSheetVisible}
@@ -222,7 +272,7 @@ export default function PlayerPassportScreen() {
           <Animated.View
             entering={screenReveal(STAGGER)}
           >
-            <PassportInfoCard title="Identity" style={styles.sectionCard}>
+            <PassportInfoCard title="Личные данные" style={styles.sectionCard}>
               <PassportFieldRow label="Имя" value={firstName} />
               <PassportFieldRow label="Фамилия" value={lastName} />
               <PassportFieldRow label="Дата рождения" value={p?.birthDate} />
@@ -236,7 +286,7 @@ export default function PlayerPassportScreen() {
           <Animated.View
             entering={screenReveal(STAGGER * 2)}
           >
-            <PassportInfoCard title="Hockey Profile" style={styles.sectionCard}>
+            <PassportInfoCard title="Хоккейный профиль" style={styles.sectionCard}>
               <PassportFieldRow label="Позиция" value={p?.position ? (POSITION_MAP[p.position] ?? p.position) : player.position} />
               <PassportFieldRow label="Хват" value={p?.shoots === "Left" ? "Левый" : p?.shoots === "Right" ? "Правый" : p?.shoots} />
               <PassportFieldRow label="Номер" value={player.number ?? p?.number} />
@@ -250,7 +300,7 @@ export default function PlayerPassportScreen() {
             <Animated.View
               entering={screenReveal(STAGGER * 3)}
             >
-              <PassportInfoCard title="Physical" style={styles.sectionCard}>
+              <PassportInfoCard title="Физические данные" style={styles.sectionCard}>
                 <PassportFieldRow label="Рост" value={p?.height ? `${p.height} см` : undefined} />
                 <PassportFieldRow label="Вес" value={p?.weight ? `${p.weight} кг` : undefined} last />
               </PassportInfoCard>
@@ -261,15 +311,15 @@ export default function PlayerPassportScreen() {
           <Animated.View
             entering={screenReveal(STAGGER * 4)}
           >
-            <PassportInfoCard title="Passport" style={styles.sectionCard}>
-              <PassportFieldRow label="Player ID" value={player.id} />
-              <PassportFieldRow label="Статус" value="Active" last />
+            <PassportInfoCard title="Паспорт" style={styles.sectionCard}>
+              <PassportFieldRow label="ID игрока" value={player.id} />
+              <PassportFieldRow label="Статус" value="Активен" last />
               <View style={styles.digitalIdZone}>
                 <View style={styles.qrFrame}>
                   <Ionicons name="qr-code" size={40} color="rgba(255,255,255,0.12)" />
                 </View>
-                <Text style={styles.digitalIdLabel}>Digital ID</Text>
-                <Text style={styles.digitalIdHint}>QR-ready</Text>
+                <Text style={styles.digitalIdLabel}>Цифровой ID</Text>
+                <Text style={styles.digitalIdHint}>Готов к QR-проверке</Text>
               </View>
             </PassportInfoCard>
           </Animated.View>
@@ -279,7 +329,7 @@ export default function PlayerPassportScreen() {
             <Animated.View
               entering={screenReveal(STAGGER * 5)}
             >
-              <PassportInfoCard title="Development" style={styles.sectionCard}>
+              <PassportInfoCard title="Развитие" style={styles.sectionCard}>
                 {ai.strengths?.length ? (
                   <View style={styles.devBlock}>
                     <Text style={styles.devLabel}>Сильные стороны</Text>
@@ -305,7 +355,7 @@ export default function PlayerPassportScreen() {
             <Animated.View
               entering={screenReveal(STAGGER * 6)}
             >
-              <PassportInfoCard title="Achievements" style={styles.sectionCard}>
+              <PassportInfoCard title="Достижения" style={styles.sectionCard}>
                 <PassportBadgeRow
                   badges={PLAYER_MARK_GOLYSH.achievements.map((a) => a.title)}
                 />

@@ -8,10 +8,17 @@ import { API_BASE_URL } from "@/config/api";
 const BASE = API_BASE_URL.replace(/\/$/, "");
 
 let authToken: string | null = null;
+let unauthorizedHandler: (() => void | Promise<void>) | null = null;
+let unauthorizedHandlerPromise: Promise<void> | null = null;
 
 /** Set the JWT for authenticated API requests. Call from AuthContext on login/logout/load. */
 export function setAuthToken(token: string | null): void {
   authToken = token;
+}
+
+/** Register a global 401 handler. AuthContext should call this once. */
+export function setUnauthorizedHandler(handler: (() => void | Promise<void>) | null): void {
+  unauthorizedHandler = handler;
 }
 
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -21,6 +28,16 @@ export interface ApiError {
   error: string;
   details?: string;
   code?: string;
+}
+
+export class ApiRequestError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
 }
 
 export function getApiBase(): string {
@@ -34,13 +51,37 @@ export interface ApiFetchOptions extends RequestInit {
   timeoutMs?: number;
 }
 
+async function handleUnauthorized(): Promise<void> {
+  if (!unauthorizedHandler) return;
+  if (!unauthorizedHandlerPromise) {
+    unauthorizedHandlerPromise = Promise.resolve(unauthorizedHandler())
+      .catch(() => {
+        // Ignore logout cleanup failures - original 401 should still propagate.
+      })
+      .finally(() => {
+        unauthorizedHandlerPromise = null;
+      });
+  }
+
+  await unauthorizedHandlerPromise;
+}
+
 async function doFetch<T>(url: string, init: RequestInit, timeoutMs: number): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const start = Date.now();
+  const method = init.method ?? "GET";
+  const requestBody =
+    typeof init.body === "string"
+      ? init.body
+      : init.body
+        ? "[non-string body]"
+        : undefined;
 
   if (__DEV__) {
-    console.log("[API] CALL", url);
+    console.log("API REQUEST URL:", url);
+    console.log("API REQUEST METHOD:", method);
+    console.log("API REQUEST BODY:", requestBody ?? null);
   }
 
   const headers: Record<string, string> = {
@@ -51,12 +92,21 @@ async function doFetch<T>(url: string, init: RequestInit, timeoutMs: number): Pr
     headers.Authorization = `Bearer ${authToken}`;
   }
 
-  const res = await fetch(url, {
-    ...init,
-    signal: controller.signal,
-    headers,
-    credentials: "include",
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+      headers,
+      credentials: "include",
+    });
+  } catch (err) {
+    clearTimeout(timeout);
+    if (__DEV__) {
+      console.warn("API ERROR:", err instanceof Error ? err.message : String(err));
+    }
+    throw err;
+  }
 
   clearTimeout(timeout);
 
@@ -70,14 +120,27 @@ async function doFetch<T>(url: string, init: RequestInit, timeoutMs: number): Pr
     data = text ? JSON.parse(text) : null;
   } catch {
     if (__DEV__) {
-      console.warn("[api] Invalid JSON response from", url, "(server may have returned HTML or plain text)");
+      console.warn("[api] Invalid JSON response from", url, "status:", res.status);
+      console.warn("[api] Raw response (first 500 chars):", text?.slice(0, 500) ?? "(empty)");
     }
     throw new Error("Неверный ответ сервера");
   }
 
   if (!res.ok) {
+    const shouldLogoutOn401 =
+      res.status === 401 &&
+      authToken &&
+      !url.includes("/api/chat/ai/");
+    if (shouldLogoutOn401) {
+      if (__DEV__) {
+        console.log("[api] 401 → triggering handleUnauthorized (logout)", url);
+      }
+      await handleUnauthorized();
+    } else if (res.status === 401 && authToken && __DEV__) {
+      console.log("[api] 401 on Coach Mark/chat — NOT logging out", url);
+    }
     const err = data as ApiError;
-    throw new Error(err?.error ?? `Ошибка ${res.status}`);
+    throw new ApiRequestError(err?.error ?? `Ошибка ${res.status}`, res.status);
   }
 
   return data as T;

@@ -19,8 +19,8 @@ import {
   getBillingHistory,
   cancelSubscription as cancelSubscriptionApi,
 } from "@/services/subscriptionService";
-import { MOCK_BILLING_HISTORY } from "@/constants/mockBillingHistory";
-import { isDev } from "@/config/api";
+import { isDemoMode } from "@/config/api";
+import { useAuth } from "@/context/AuthContext";
 
 const STORAGE_KEY = "@hockey_subscription_state";
 
@@ -43,7 +43,7 @@ interface SubscriptionContextValue {
   activateSubscription: (planCode: UserSubscription["planCode"]) => Promise<void>;
   cancelSubscription: () => Promise<void>;
   addPackage: (packageCode: string, coachId?: string) => Promise<void>;
-  refreshSubscription: () => Promise<void>;
+  refreshSubscription: () => Promise<UserSubscription | null>;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextValue | null>(null);
@@ -94,6 +94,7 @@ function initialState(mode: MockSubscriptionMode) {
 }
 
 export function SubscriptionProvider({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated } = useAuth();
   const [mockMode, setMockModeState] = useState<MockSubscriptionMode>("none");
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
   const [packages, setPackages] = useState<UserPackage[]>([]);
@@ -111,10 +112,8 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     try {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const { mode, subscription: sub, packages: pkgs } = JSON.parse(raw);
+        const { mode } = JSON.parse(raw);
         if (mode) setMockModeState(mode);
-        if (sub) setSubscription(sub);
-        if (pkgs?.length) setPackages(pkgs);
       }
     } catch {
       // use defaults
@@ -123,18 +122,28 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
   const fetchFromApi = useCallback(async () => {
     const [status, history] = await Promise.all([
-      getSubscriptionStatus(),
-      getBillingHistory(),
+      getSubscriptionStatus({ allowDemo: false }),
+      getBillingHistory({ allowDemo: false }),
     ]);
-    if (status) setSubscription(status);
-    else if (!isDev) setSubscription(null);
+    setSubscription(status);
     setBillingHistory(history);
+    return status;
   }, []);
 
   const loadState = useCallback(async () => {
     await loadFromStorage();
-    await fetchFromApi();
-  }, [loadFromStorage, fetchFromApi]);
+    setSubscription(null);
+    setPackages([]);
+    setBillingHistory([]);
+    if (!isAuthenticated) return;
+    try {
+      await fetchFromApi();
+    } catch (e) {
+      if (__DEV__) {
+        console.warn("[subscription] failed to fetch from API", e);
+      }
+    }
+  }, [loadFromStorage, fetchFromApi, isAuthenticated]);
 
   useEffect(() => {
     loadState();
@@ -142,6 +151,10 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
   const activateSubscription = useCallback(
     async (planCode: UserSubscription["planCode"]) => {
+      if (!isDemoMode) {
+        throw new Error("activateSubscription is demo-only");
+      }
+
       const sub = createSubscription(planCode);
       setSubscription(sub);
       const mode: MockSubscriptionMode =
@@ -167,25 +180,17 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
   const cancelSubscription = useCallback(async () => {
     const result = await cancelSubscriptionApi();
-    if (result) {
-      setSubscription(result);
-      await AsyncStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ mode: mockMode, subscription: result, packages })
-      );
-    } else if (isDev && subscription) {
-      const updated = {
-        ...subscription,
-        cancelAtPeriodEnd: true,
-        status: "cancelled" as const,
-      };
-      setSubscription(updated);
-      await AsyncStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ mode: mockMode, subscription: updated, packages })
-      );
+    if (!result) {
+      throw new Error("Subscription cancel returned empty result");
     }
-  }, [subscription, packages, mockMode]);
+
+    setSubscription(result);
+    const refreshed = await fetchFromApi();
+    await AsyncStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ mode: mockMode, subscription: refreshed ?? result, packages })
+    );
+  }, [packages, mockMode, fetchFromApi]);
 
   const addPackage = useCallback(
     async (packageCode: string, coachId?: string) => {
@@ -211,7 +216,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   );
 
   const refreshSubscription = useCallback(async () => {
-    await fetchFromApi();
+    return fetchFromApi();
   }, [fetchFromApi]);
 
   const isActiveOrGrace =

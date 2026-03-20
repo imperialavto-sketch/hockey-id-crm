@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { View, Text, Pressable, StyleSheet, Alert } from "react-native";
 import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { getSubscriptionPlans, createSubscription } from "@/services/subscriptionService";
-import { useSubscription } from "@/context/SubscriptionContext";
-import { isDev } from "@/config/api";
 import { SubscriptionHero } from "@/components/subscription/SubscriptionHero";
 import { PricingToggle } from "@/components/subscription/PricingToggle";
 import { PlanCard } from "@/components/subscription/PlanCard";
@@ -16,6 +14,7 @@ import { SkeletonBlock, ErrorStateView } from "@/components/ui";
 import { triggerHaptic } from "@/lib/haptics";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { colors, spacing } from "@/constants/theme";
+import { isDemoMode } from "@/config/api";
 import type { SubscriptionPlan } from "@/types/subscription";
 
 const PRESSED_OPACITY = 0.88;
@@ -33,7 +32,6 @@ function PlansSkeleton() {
 export default function SubscriptionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { activateSubscription } = useSubscription();
   const mountedRef = useRef(true);
   const [interval, setInterval] = useState<"monthly" | "yearly">("monthly");
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
@@ -69,20 +67,32 @@ export default function SubscriptionScreen() {
   const handleSelectPlan = async (plan: SubscriptionPlan) => {
     if (selectingPlanId) return;
     triggerHaptic();
+
+    if (isDemoMode) {
+      Alert.alert(
+        "Подтверждение недоступно",
+        "В демо-режиме оформление подписки не подтверждается. Откройте live backend flow для реальной проверки."
+      );
+      return;
+    }
+
     setSelectingPlanId(plan.id);
-    const sub = await createSubscription(plan.id);
-    setSelectingPlanId(null);
-    if (sub) {
-      router.push({
-        pathname: "/subscription/success",
-        params: { plan: plan.code },
-      });
-    } else if (isDev) {
-      activateSubscription(plan.code as "basic" | "pro" | "elite");
-      router.push({
-        pathname: "/subscription/success",
-        params: { plan: plan.code },
-      });
+
+    try {
+      const sub = await createSubscription(plan.id);
+      if (sub) {
+        router.push({
+          pathname: "/subscription/success",
+          params: { plan: plan.code },
+        });
+        return;
+      }
+
+      Alert.alert("Ошибка", "Не удалось оформить подписку. Попробуйте позже.");
+    } catch {
+      Alert.alert("Ошибка", "Не удалось оформить подписку. Проверьте соединение и попробуйте снова.");
+    } finally {
+      setSelectingPlanId(null);
     }
   };
 

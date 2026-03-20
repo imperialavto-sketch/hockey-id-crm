@@ -7,7 +7,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
 import { COACH_FILTERS } from "@/constants/mockCoaches";
 import { getCoaches } from "@/services/marketplaceService";
-import { matchCoachesToPlayer, getDefaultPlayerContext } from "@/lib/coach-matching";
+import { getPlayers } from "@/services/playerService";
+import { matchCoachesToPlayer, getNeutralPlayerContext, buildPlayerContext } from "@/lib/coach-matching";
 import { CoachHero } from "@/components/marketplace/CoachHero";
 import { CoachFilters } from "@/components/marketplace/CoachFilters";
 import { CoachCard } from "@/components/marketplace/CoachCard";
@@ -40,6 +41,7 @@ export default function MarketplaceTabScreen() {
   const insets = useSafeAreaInsets();
   const [activeFilter, setActiveFilter] = useState("");
   const [coaches, setCoaches] = useState<Awaited<ReturnType<typeof getCoaches>>>([]);
+  const [players, setPlayers] = useState<{ name: string; age: number; position?: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -60,16 +62,20 @@ export default function MarketplaceTabScreen() {
   useFocusEffect(
     useCallback(() => {
       loadCoaches();
-    }, [loadCoaches])
+      if (user?.id) {
+        getPlayers(user.id).then((list) => setPlayers(list)).catch(() => setPlayers([]));
+      } else {
+        setPlayers([]);
+      }
+    }, [loadCoaches, user?.id])
   );
 
-  const allMatches = useMemo(
-    () =>
-      matchCoachesToPlayer(coaches, getDefaultPlayerContext(), {
-        returnAll: true,
-      }),
-    [coaches]
-  );
+  const allMatches = useMemo(() => {
+    const ctx = players[0]
+      ? buildPlayerContext({ age: players[0].age, position: players[0].position })
+      : getNeutralPlayerContext();
+    return matchCoachesToPlayer(coaches, ctx, { returnAll: true });
+  }, [coaches, players]);
 
   const recommended = useMemo(
     () => allMatches.filter((m) => m.matchScore >= 60).slice(0, TOP_RECOMMENDED),
@@ -139,10 +145,12 @@ export default function MarketplaceTabScreen() {
     );
   }
 
+  const firstPlayerName = players[0]?.name ?? null;
+
   const ListHeader = () => (
     <>
       <Animated.View entering={screenReveal(0)}>
-        <CoachHero />
+        <CoachHero playerName={firstPlayerName} />
       </Animated.View>
       <Animated.View entering={screenReveal(STAGGER)}>
         <CoachFilters
@@ -155,7 +163,11 @@ export default function MarketplaceTabScreen() {
         <Animated.View entering={screenReveal(STAGGER * 2)}>
           <View style={styles.aiSection}>
             <View style={styles.aiSectionGlass}>
-              <Text style={styles.aiSectionTitle}>⭐ AI рекомендует для Марка</Text>
+              <Text style={styles.aiSectionTitle}>
+                {firstPlayerName
+                  ? `⭐ AI рекомендует для ${firstPlayerName}`
+                  : "⭐ AI рекомендует тренеров"}
+              </Text>
               <Text style={styles.aiSectionSub}>
                 Подобрано по AI-анализу развития игрока
               </Text>

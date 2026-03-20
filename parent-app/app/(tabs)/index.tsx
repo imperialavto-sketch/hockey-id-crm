@@ -4,34 +4,44 @@ import Animated from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
+import { COACH_MARK_ID } from "@/services/chatService";
 import { getPlayers } from "@/services/playerService";
-import { PLAYER_CARD } from "@/constants/mockPlayer";
-import { DEMO_PLAYER } from "@/constants/demoPlayer";
+import { getCoachMarkCheckins } from "@/services/coachMarkCheckins";
+import {
+  getCoachMarkNotes,
+  getCoachMarkWeeklyPlans,
+  getCoachMarkCalendarItems,
+} from "@/services/coachMarkStorage";
+import { getCoachMarkMessages } from "@/services/chatService";
+import { computeCoachMarkNudges } from "@/services/coachMarkNudges";
 import { ActionLinkCard } from "@/components/player/ActionLinkCard";
 import { SectionCard } from "@/components/player-passport";
 import { PremiumStatGrid, SkeletonBlock, ErrorStateView } from "@/components/ui";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
-import { colors, spacing, shadows, radius } from "@/constants/theme";
+import { colors, spacing, shadows, radius, typography } from "@/constants/theme";
 import { Ionicons } from "@expo/vector-icons";
+import type { Player } from "@/types";
 
 const PRESSED_OPACITY = 0.88;
 
-const PLAYER = {
-  number: DEMO_PLAYER.number,
-  name: DEMO_PLAYER.name,
-  position: DEMO_PLAYER.positionRu,
-  team: DEMO_PLAYER.team,
-  age: DEMO_PLAYER.age,
-  photo: DEMO_PLAYER.image,
-};
+function buildPlayerDisplay(p: Player) {
+  return {
+    number: p.number ? `#${p.number}` : "—",
+    name: p.name,
+    position: p.position || "—",
+    team: p.team || "—",
+    age: p.age != null ? String(p.age) : "—",
+    photo: "https://via.placeholder.com/80",
+  };
+}
 
-const QUICK_STATS = [
-  { label: "Игры", value: String(DEMO_PLAYER.stats.games) },
-  { label: "Голы", value: String(DEMO_PLAYER.stats.goals) },
-  { label: "Передачи", value: String(DEMO_PLAYER.stats.assists) },
-  { label: "Очки", value: String(DEMO_PLAYER.stats.points), accent: true },
+const QUICK_STATS_PLACEHOLDER = [
+  { label: "Игры", value: "—" },
+  { label: "Голы", value: "—" },
+  { label: "Передачи", value: "—" },
+  { label: "Очки", value: "—", accent: true },
 ];
 
 const IMPROVEMENTS = [
@@ -60,26 +70,66 @@ export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const mountedRef = useRef(true);
-  const [playerId, setPlayerId] = useState<string | null>(null);
+  const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
   const [homeError, setHomeError] = useState<"network" | null>(null);
+  const [coachMarkSummary, setCoachMarkSummary] = useState<{
+    text: string;
+    playerId?: string;
+  } | null>(null);
 
   useEffect(() => () => { mountedRef.current = false; }, []);
 
   const loadData = useCallback(async () => {
     if (!user?.id) {
       setLoading(false);
-      setPlayerId(PLAYER_CARD.id);
+      setPlayers([]);
       return;
     }
     setLoading(true);
     setHomeError(null);
     try {
       const list = await getPlayers(user.id);
-      if (mountedRef.current) setPlayerId(list[0]?.id ?? PLAYER_CARD.id);
+      if (mountedRef.current) setPlayers(list);
+      const playerId = list[0]?.id ?? null;
+      const checkins = await getCoachMarkCheckins(user.id, playerId);
+      const lastCheckin = checkins[0];
+      let summaryText: string;
+      let summaryPlayerId: string | undefined = playerId ?? undefined;
+      if (lastCheckin && (lastCheckin.summary || lastCheckin.nextStep)) {
+        summaryText = (lastCheckin.summary || lastCheckin.nextStep).slice(0, 100);
+        summaryPlayerId = lastCheckin.playerId ?? summaryPlayerId;
+      } else {
+        const [notes, plans, calendar, chat] = await Promise.all([
+          getCoachMarkNotes(user.id, playerId),
+          getCoachMarkWeeklyPlans(user.id, playerId),
+          getCoachMarkCalendarItems(user.id, playerId),
+          getCoachMarkMessages(user.id),
+        ]);
+        const hasRecentAI = chat.some(
+          (m) => m.isAI || m.senderId === COACH_MARK_ID
+        );
+        const nudges = computeCoachMarkNudges({
+          notesCount: notes.length,
+          plansCount: plans.length,
+          calendarItemsCount: calendar.length,
+          playerId,
+          hasRecentAIMessages: hasRecentAI,
+        });
+        const firstNudge = nudges[0];
+        if (firstNudge) {
+          summaryText = firstNudge.description;
+          summaryPlayerId = firstNudge.playerId ?? summaryPlayerId;
+        } else {
+          summaryText = "Откройте Coach Mark для персональных советов";
+        }
+      }
+      if (mountedRef.current) {
+        setCoachMarkSummary({ text: summaryText, playerId: summaryPlayerId });
+      }
     } catch {
       if (mountedRef.current) {
-        setPlayerId(PLAYER_CARD.id);
+        setPlayers([]);
         setHomeError("network");
       }
     } finally {
@@ -98,8 +148,12 @@ export default function HomeScreen() {
 
   const openPassport = () => {
     triggerHaptic();
-    const id = playerId ?? PLAYER_CARD.id;
-    router.push(`/player/${id}/passport` as never);
+    const playerId = players[0]?.id;
+    if (!playerId) {
+      router.push("/player" as never);
+      return;
+    }
+    router.push(`/player/${playerId}/passport` as never);
   };
 
   if (loading) {
@@ -126,22 +180,70 @@ export default function HomeScreen() {
 
   return (
     <FlagshipScreen>
-      {/* Hero */}
-      <Animated.View entering={screenReveal(0)} style={styles.heroSection}>
+      {players.length === 0 ? (
+        /* Empty state when no players */
+        <Animated.View entering={screenReveal(0)}>
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconWrap}>
+              <Ionicons name="people-outline" size={48} color={colors.textMuted} />
+            </View>
+            <Text style={styles.emptyTitle}>Нет игроков</Text>
+            <Text style={styles.emptySub}>
+              Добавьте игрока через тренера или организацию, чтобы видеть профиль и статистику
+            </Text>
+            <View style={styles.emptyCoachMarkWrap}>
+              <ActionLinkCard
+                icon="sparkles"
+                title="Coach Mark"
+                description={
+                  coachMarkSummary?.text ||
+                  "Персональный помощник для развития игрока"
+                }
+                onPress={() => {
+                  triggerHaptic();
+                  const q = coachMarkSummary?.playerId
+                    ? `?playerId=${encodeURIComponent(coachMarkSummary.playerId)}`
+                    : "";
+                  router.push(`/chat/${COACH_MARK_ID}${q}` as never);
+                }}
+                variant="accent"
+              />
+            </View>
+            <Pressable
+              style={({ pressed }) => [
+                styles.ctaBtn,
+                pressed && { opacity: PRESSED_OPACITY },
+              ]}
+              onPress={() => {
+                triggerHaptic();
+                router.push("/player" as never);
+              }}
+            >
+              <Text style={styles.ctaBtnText}>Перейти к профилю</Text>
+            </Pressable>
+          </View>
+        </Animated.View>
+      ) : (
+        <>
+          {/* Hero */}
+          <Animated.View entering={screenReveal(0)} style={styles.heroSection}>
             <View style={styles.hero}>
               <LinearGradient
                 colors={[colors.accentSoft, "transparent"]}
                 style={styles.heroGlow}
               />
               <View style={styles.heroContent}>
-                <Text style={styles.heroNumber}>{PLAYER.number}</Text>
-                <Text style={styles.heroName}>{PLAYER.name}</Text>
+                <Text style={styles.heroNumber}>{buildPlayerDisplay(players[0]).number}</Text>
+                <Text style={styles.heroName}>{buildPlayerDisplay(players[0]).name}</Text>
                 <Text style={styles.heroMeta}>
-                  {PLAYER.position} • {PLAYER.team} • {PLAYER.age} лет
+                  {buildPlayerDisplay(players[0]).position} • {buildPlayerDisplay(players[0]).team} • {buildPlayerDisplay(players[0]).age} лет
                 </Text>
               </View>
               <View style={styles.photoWrap}>
-                <Image source={{ uri: PLAYER.photo }} style={styles.photo} />
+                <Image
+                  source={{ uri: buildPlayerDisplay(players[0]).photo || "https://via.placeholder.com/80" }}
+                  style={styles.photo}
+                />
               </View>
             </View>
           </Animated.View>
@@ -151,7 +253,7 @@ export default function HomeScreen() {
             <Text style={[styles.sectionTitle, styles.sectionTitleFirst]}>Статистика</Text>
             <Text style={styles.sectionSub}>Быстрая статистика сезона</Text>
             <View style={styles.quickStatsWrap}>
-              <PremiumStatGrid stats={QUICK_STATS} />
+              <PremiumStatGrid stats={QUICK_STATS_PLACEHOLDER} />
             </View>
           </Animated.View>
 
@@ -162,6 +264,27 @@ export default function HomeScreen() {
               title="Команда"
               description="Лента, чат, объявления"
               onPress={() => goTo("/team/feed")}
+            />
+          </Animated.View>
+
+          {/* Coach Mark */}
+          <Animated.View entering={screenReveal(STAGGER * 2.5)}>
+            <ActionLinkCard
+              icon="sparkles"
+              title="Coach Mark"
+              description={
+                coachMarkSummary?.text ||
+                "План, подсказки и поддержка для семьи хоккеиста"
+              }
+              onPress={() => {
+                if (__DEV__) console.log("[CoachMark] BEFORE tap — home Coach Mark card");
+                triggerHaptic();
+                const pid =
+                  coachMarkSummary?.playerId ?? players[0]?.id;
+                const q = pid ? `?playerId=${encodeURIComponent(pid)}` : "";
+                router.push(`/chat/${COACH_MARK_ID}${q}` as never);
+              }}
+              variant="accent"
             />
           </Animated.View>
 
@@ -190,6 +313,8 @@ export default function HomeScreen() {
               variant="accent"
             />
           </Animated.View>
+        </>
+      )}
     </FlagshipScreen>
   );
 }
@@ -219,6 +344,49 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   errorWrap: { flex: 1 },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: spacing.xxxl,
+    paddingHorizontal: spacing.xl,
+  },
+  emptyIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: colors.surfaceLevel2,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.xl,
+  },
+  emptyTitle: {
+    ...typography.h2,
+    color: colors.text,
+    textAlign: "center",
+    marginBottom: spacing.sm,
+  },
+  emptySub: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    textAlign: "center",
+    marginBottom: spacing.xl,
+  },
+  emptyCoachMarkWrap: {
+    width: "100%",
+    marginBottom: spacing.lg,
+  },
+  ctaBtn: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    backgroundColor: colors.accent,
+    borderRadius: radius.lg,
+  },
+  ctaBtnText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.onAccent,
+  },
   heroSection: { marginBottom: spacing.xl },
   hero: {
     position: "relative" as const,

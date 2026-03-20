@@ -12,7 +12,6 @@ import { getAuthFromRequest } from "@/lib/api-auth";
 import { canParentAccessPlayer } from "@/lib/parent-access";
 import { analyzeVideo } from "@/lib/ai/video-analysis";
 
-const PARENT_ID_HEADER = "x-parent-id";
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
 export async function GET(
@@ -44,12 +43,22 @@ export async function GET(
 
   const items = analyses.map((a) => ({
     id: a.id,
-    videoUrl: a.videoUrl,
-    analysisText: a.analysisText,
-    strengths: (a.strengths as string[]) ?? [],
-    growthAreas: (a.growthAreas as string[]) ?? [],
-    recommendations: (a.recommendations as string[]) ?? [],
+    playerId,
+    uploadedByUserId: user.parentId,
+    title: undefined,
+    description: undefined,
+    videoUrl: a.videoUrl ?? undefined,
+    storageKey: undefined,
+    durationSeconds: 0,
+    fileSizeBytes: 0,
+    mimeType: "video/mp4",
+    thumbnailUrl: undefined,
+    uploadStatus: "success",
+    analysisStatus: "completed",
+    errorMessage: undefined,
     createdAt: a.createdAt.toISOString(),
+    updatedAt: a.updatedAt.toISOString(),
+    completedAt: a.createdAt.toISOString(),
   }));
 
   return NextResponse.json(items);

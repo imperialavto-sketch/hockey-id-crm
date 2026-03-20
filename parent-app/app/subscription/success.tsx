@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -20,16 +20,36 @@ const PLAN_NAMES: Record<string, string> = {
   development_plus: "Development Plus",
   package: "Пакет тренировок",
 };
+type ConfirmationState = "checking" | "confirmed" | "unconfirmed";
 
 export default function SubscriptionSuccessScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { plan } = useLocalSearchParams<{ plan?: string }>();
   const { refreshSubscription } = useSubscription();
+  const [confirmationState, setConfirmationState] = useState<ConfirmationState>("checking");
+
+  const verifySubscription = useCallback(async () => {
+    setConfirmationState("checking");
+    try {
+      const subscription = await refreshSubscription();
+      const isActive =
+        subscription != null &&
+        (subscription.status === "active" || Boolean(subscription.cancelAtPeriodEnd));
+      const matchesPlan = plan ? subscription?.planCode === plan : true;
+
+      setConfirmationState(isActive && matchesPlan ? "confirmed" : "unconfirmed");
+    } catch (err) {
+      if (__DEV__) {
+        console.warn("[subscription] failed to refresh after success", err);
+      }
+      setConfirmationState("unconfirmed");
+    }
+  }, [plan, refreshSubscription]);
 
   useEffect(() => {
-    refreshSubscription();
-  }, [refreshSubscription]);
+    verifySubscription();
+  }, [verifySubscription]);
 
   const planName = plan ? PLAN_NAMES[plan] ?? plan : "Покупка";
 
@@ -46,21 +66,53 @@ export default function SubscriptionSuccessScreen() {
       <View style={styles.content}>
         <Animated.View entering={screenReveal(0)} style={styles.heroSection}>
           <View style={styles.iconWrap}>
-            <Ionicons name="checkmark-circle" size={72} color={colors.success} />
+            <Ionicons
+              name={
+                confirmationState === "confirmed"
+                  ? "checkmark-circle"
+                  : confirmationState === "checking"
+                    ? "time-outline"
+                    : "alert-circle-outline"
+              }
+              size={72}
+              color={
+                confirmationState === "confirmed"
+                  ? colors.success
+                  : confirmationState === "checking"
+                    ? colors.accent
+                    : colors.textMuted
+              }
+            />
           </View>
-          <Text style={styles.title}>Подписка активирована</Text>
+          <Text style={styles.title}>
+            {confirmationState === "confirmed"
+              ? "Подписка активирована"
+              : confirmationState === "checking"
+                ? "Проверяем активацию"
+                : "Подписка пока не подтверждена"}
+          </Text>
           <Text style={styles.subtitle}>
-            {planName} успешно подключена. Полный доступ к функциям активен.
+            {confirmationState === "confirmed"
+              ? `${planName} успешно подключена. Полный доступ к функциям активен.`
+              : confirmationState === "checking"
+                ? `Подтягиваем актуальный статус ${planName}. Это займёт всего несколько секунд.`
+                : `Мы пока не смогли подтвердить ${planName}. Проверьте статус подписки или попробуйте ещё раз позже.`}
           </Text>
         </Animated.View>
 
         <Animated.View entering={screenReveal(STAGGER)} style={styles.actions}>
           <View style={styles.primaryBtnWrap}>
             <PrimaryButton
-              label="В профиль"
+              label={
+                confirmationState === "confirmed" ? "В профиль" : "Проверить ещё раз"
+              }
               onPress={() => {
                 triggerHaptic();
-                router.replace("/(tabs)/profile");
+                if (confirmationState === "confirmed") {
+                  router.replace("/(tabs)/profile");
+                  return;
+                }
+                verifySubscription();
               }}
             />
           </View>
@@ -74,7 +126,9 @@ export default function SubscriptionSuccessScreen() {
               router.replace("/profile/billing");
             }}
           >
-            <Text style={styles.secondaryBtnText}>Подписка и оплаты</Text>
+            <Text style={styles.secondaryBtnText}>
+              {confirmationState === "confirmed" ? "Подписка и оплаты" : "Проверить статус подписки"}
+            </Text>
           </Pressable>
         </Animated.View>
       </View>

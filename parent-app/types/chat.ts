@@ -17,4 +17,6 @@ export interface ChatMessage {
   text: string;
   createdAt: string;
   readAt?: string | null;
+  /** true для сообщений от Coach Mark (AI) */
+  isAI?: boolean;
 }

@@ -29,6 +29,13 @@ function translatePosition(pos: string): string {
   return POSITION_MAP[pos] ?? pos;
 }
 
+function translateStatus(status?: string): string {
+  if (!status) return "";
+  if (status.toLowerCase() === "active") return "Активен";
+  if (status.toLowerCase() === "verified") return "Подтвержден";
+  return status;
+}
+
 function getMonogram(firstName?: string, lastName?: string, fullName?: string): string {
   if (firstName && lastName) return `${lastName[0]}${firstName[0]}`;
   const parts = (fullName ?? "").trim().split(/\s+/);
@@ -56,6 +63,7 @@ export function PlayerPassportHeader({
   const photoSource = photo && typeof photo === "object" && "uri" in photo ? photo : null;
   const monogram = getMonogram(firstName, lastName, fullName);
   const displayNumber = number != null ? (typeof number === "number" ? `#${number}` : number) : null;
+  const displayStatus = translateStatus(status);
 
   return (
     <Animated.View entering={FadeIn.duration(400)} style={styles.wrap}>
@@ -63,7 +71,7 @@ export function PlayerPassportHeader({
         <View style={styles.topBar}>
           <View style={styles.topLabelRow}>
             <View style={styles.labelAccent} />
-            <Text style={styles.passportLabel}>PLAYER PASSPORT</Text>
+            <Text style={styles.passportLabel}>ПАСПОРТ ИГРОКА</Text>
           </View>
           {playerId ? (
             <Text style={styles.idLabel}>ID {playerId}</Text>
@@ -100,12 +108,12 @@ export function PlayerPassportHeader({
             <View style={styles.badgesRow}>
               {verified && (
                 <View style={styles.verifiedBadge}>
-                  <Text style={styles.verifiedText}>Verified</Text>
+                  <Text style={styles.verifiedText}>Подтвержден</Text>
                 </View>
               )}
-              {status && status !== "active" && (
+              {displayStatus && displayStatus !== "Активен" && (
                 <View style={styles.statusBadge}>
-                  <Text style={styles.statusText}>{status}</Text>
+                  <Text style={styles.statusText}>{displayStatus}</Text>
                 </View>
               )}
             </View>

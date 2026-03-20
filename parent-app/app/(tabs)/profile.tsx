@@ -52,6 +52,7 @@ export default function ProfileScreen() {
 
   const loadProfile = useCallback(async () => {
     if (!user?.id) {
+      setPlayer(null);
       setLoading(false);
       return;
     }

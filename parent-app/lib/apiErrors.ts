@@ -36,7 +36,16 @@ export function classifyApiError(err: unknown): ApiErrorKind {
 export function logApiError(context: string, err: unknown, url?: string): void {
   const kind = classifyApiError(err);
   const msg = err instanceof Error ? err.message : String(err);
-  if (__DEV__) {
-    console.error(`[${context}] API error (${kind}):`, msg, url ?? "");
+  if (!__DEV__) {
+    // In production we can later add selective logging if needed.
+    return;
+  }
+  const prefix = `[${context}] API error (${kind}):`;
+  if (kind === "api" || kind === "validation" || kind === "not_found") {
+    // Recoverable API-level errors: log as warning to avoid noisy red overlays in dev.
+    console.warn(prefix, msg, url ?? "");
+  } else {
+    // Network, timeout, unknown: keep as error for easier debugging.
+    console.error(prefix, msg, url ?? "");
   }
 }

@@ -15,6 +15,7 @@ import { MOCK_AI_REPORT } from "@/constants/mockAiReport";
 import { DEMO_PLAYER } from "@/constants/demoPlayer";
 import { useSubscription } from "@/context/SubscriptionContext";
 import { growthZoneToSpecialization } from "@/constants/mockCoaches";
+import { COACH_MARK_ID } from "@/services/chatService";
 import { StrengthWeaknessCard } from "@/components/player/StrengthWeaknessCard";
 import { RecommendationCard } from "@/components/player/RecommendationCard";
 import { SkillRadarPreview } from "@/components/player/SkillRadarPreview";
@@ -368,6 +369,23 @@ export default function AICoachReportScreen() {
             <Text style={styles.ctaSecondaryText}>Открыть план развития</Text>
           </Pressable>
 
+          <Pressable
+            style={({ pressed }) => [styles.coachMarkCta, pressed && { opacity: PRESSED_OPACITY }]}
+            onPress={() => {
+              triggerHaptic();
+              const params = new URLSearchParams();
+              if (id) params.set("playerId", id);
+              params.set(
+                "initialMessage",
+                "Давай обсудим анализ прогресса моего ребёнка"
+              );
+              router.push(`/chat/${COACH_MARK_ID}?${params.toString()}`);
+            }}
+          >
+            <Ionicons name="sparkles-outline" size={18} color={colors.accent} />
+            <Text style={styles.coachMarkCtaText}>Обсудить анализ с Coach Mark</Text>
+          </Pressable>
+
         <ActionLinkCard
           icon="videocam-outline"
           title="Загрузить видео для точного анализа"
@@ -475,6 +493,24 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "700",
     color: colors.text,
+  },
+  coachMarkCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    backgroundColor: colors.accentSoft,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: "rgba(59,130,246,0.25)",
+  },
+  coachMarkCtaText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.accent,
   },
   teaser: {
     padding: spacing.xl,

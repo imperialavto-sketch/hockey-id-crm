@@ -17,6 +17,20 @@ npx expo start --web
 
 Далее откройте в симуляторе (i для iOS, a для Android) или отсканируйте QR-код в приложении Expo Go.
 
+## Production build (EAS)
+
+Для сборки через EAS Build:
+
+1. Установите EAS CLI: `npm i -g eas-cli`
+2. Войдите: `eas login`
+3. Создайте проект: `eas build:configure` (если ещё не создан)
+4. **Обязательно** задайте `EXPO_PUBLIC_API_URL` в EAS Secrets или в профиле build env — URL вашего production backend (например `https://api.hockey-id.ru`)
+5. Соберите:
+   - `eas build --profile preview` — для внутреннего теста (APK / internal)
+   - `eas build --profile production` — для релиза (store)
+
+Без `EXPO_PUBLIC_API_URL` приложение использует fallback: `https://hockey-server-api.onrender.com`.
+
 ## Структура
 
 - **Login** — вход по email/паролю

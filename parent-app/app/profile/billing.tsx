@@ -97,9 +97,16 @@ export default function BillingScreen() {
                     styles.cancelBtn,
                     pressed && { opacity: PRESSED_OPACITY },
                   ]}
-                  onPress={() => {
+                  onPress={async () => {
                     triggerHaptic();
-                    cancelSubscription();
+                    try {
+                      await cancelSubscription();
+                    } catch {
+                      Alert.alert(
+                        "Ошибка",
+                        "Не удалось отменить подписку. Проверьте соединение и попробуйте снова."
+                      );
+                    }
                   }}
                 >
                   <Ionicons name="close-circle-outline" size={20} color={colors.error} />

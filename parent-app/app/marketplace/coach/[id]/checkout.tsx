@@ -10,9 +10,7 @@ import Animated from "react-native-reanimated";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { isDev } from "@/config/api";
 import { getCoachForUI } from "@/services/marketplaceService";
-import { MOCK_COACHES } from "@/constants/mockCoaches";
 import { BookingSummaryCard } from "@/components/marketplace/BookingSummaryCard";
 import { PriceBreakdownCard } from "@/components/marketplace/PriceBreakdownCard";
 import { CheckoutButton } from "@/components/marketplace/CheckoutButton";
@@ -33,12 +31,12 @@ import {
 import type { TrainingFormat } from "@/types/booking";
 import { FORMAT_LABELS } from "@/constants/mockTimeSlots";
 import { useAuth } from "@/context/AuthContext";
+import { getPlayers } from "@/services/playerService";
+import { isDev } from "@/config/api";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
 import { colors, spacing, typography } from "@/constants/theme";
-import { DEMO_PLAYER } from "@/constants/demoPlayer";
 
-const PLAYER_ID = DEMO_PLAYER.id;
 const PRESSED_OPACITY = 0.88;
 
 function CheckoutSkeleton() {
@@ -56,6 +54,7 @@ export default function CheckoutScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const [players, setPlayers] = useState<{ id: string; name: string }[]>([]);
   const { id, date, time, duration, format, note } = useLocalSearchParams<{
     id: string;
     date: string;
@@ -65,7 +64,7 @@ export default function CheckoutScreen() {
     note?: string;
   }>();
 
-  const [coach, setCoach] = useState<ReturnType<typeof MOCK_COACHES.find> | null>(null);
+  const [coach, setCoach] = useState<Awaited<ReturnType<typeof getCoachForUI>> | null>(null);
   const [coachLoading, setCoachLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -78,10 +77,10 @@ export default function CheckoutScreen() {
     setError(false);
     try {
       const c = await getCoachForUI(id);
-      setCoach(c ?? (isDev ? MOCK_COACHES.find((x) => x.id === id) ?? null : null));
+      setCoach(c ?? null);
     } catch {
-      setCoach(isDev ? MOCK_COACHES.find((x) => x.id === id) ?? null : null);
-      if (!isDev) setError(true);
+      setCoach(null);
+      setError(true);
     } finally {
       setCoachLoading(false);
     }
@@ -90,6 +89,17 @@ export default function CheckoutScreen() {
   useEffect(() => {
     loadCoach();
   }, [loadCoach]);
+
+  useEffect(() => {
+    if (user?.id) {
+      getPlayers(user.id).then((list) => setPlayers(list)).catch(() => setPlayers([]));
+    } else {
+      setPlayers([]);
+    }
+  }, [user?.id]);
+
+  const firstPlayer = players[0];
+  const playerDisplayName = firstPlayer?.name ?? "Игрок не выбран";
 
   const dur = parseInt(duration || "60", 10);
   const fmt = (format || "ice") as TrainingFormat;
@@ -112,13 +122,18 @@ export default function CheckoutScreen() {
   }, [coach, dur]);
 
   const handlePay = async () => {
-    if (!coach || !priceBreakdown || !date || !time) return;
+    if (!coach || !priceBreakdown || !date || !time || !firstPlayer) {
+      if (!firstPlayer) {
+        Alert.alert("Игрок не выбран", "Добавьте игрока в профиль для бронирования тренировки.");
+      }
+      return;
+    }
 
     setLoading(true);
     try {
       const payload = {
         coachId: coach.id,
-        playerId: PLAYER_ID,
+        playerId: firstPlayer.id,
         date,
         time,
         duration: dur,
@@ -180,7 +195,7 @@ export default function CheckoutScreen() {
             time,
             duration: String(dur),
             format: fmt,
-            playerName: DEMO_PLAYER.name,
+            playerName: firstPlayer.name,
             total: String(priceBreakdown.totalAmount),
           },
         });
@@ -272,7 +287,7 @@ export default function CheckoutScreen() {
             time={time}
             duration={dur}
             format={FORMAT_LABELS[fmt] ?? fmt}
-            playerName={DEMO_PLAYER.name}
+            playerName={playerDisplayName}
             price={priceBreakdown.coachAmount}
           />
         </SectionCard>
@@ -299,7 +314,7 @@ export default function CheckoutScreen() {
         <SectionCard title="Игрок" style={styles.sectionCard}>
           <View style={styles.infoRow}>
             <Ionicons name="person-outline" size={18} color={colors.accent} />
-            <Text style={styles.infoText}>{DEMO_PLAYER.name}</Text>
+            <Text style={styles.infoText}>{playerDisplayName}</Text>
           </View>
         </SectionCard>
       </Animated.View>
@@ -314,6 +329,7 @@ export default function CheckoutScreen() {
         <CheckoutButton
           amount={priceBreakdown.totalAmount}
           loading={loading}
+          disabled={!firstPlayer}
           onPress={handlePay}
         />
       </Animated.View>

@@ -2,7 +2,7 @@ import type { MockCoach } from "@/constants/mockCoaches";
 
 import { DEMO_PLAYER } from "@/constants/demoPlayer";
 
-/** Default player context for Голыш Марк (from AI report) */
+/** Default player context for Голыш Марк (from AI report). Use only in demo mode. */
 export const MOCK_PLAYER_CONTEXT = {
   weakSkills: ["Бросок", "Силовая борьба", "Игра у борта"],
   strongSkills: ["Катание", "Скорость", "Игровое мышление"],
@@ -11,7 +11,7 @@ export const MOCK_PLAYER_CONTEXT = {
   targetGoal: "Развитие зон роста из AI отчёта",
 } as const;
 
-/** Mutable copy for matchCoachesToPlayer */
+/** Mutable copy for matchCoachesToPlayer. Use only in demo mode. */
 export function getDefaultPlayerContext(): PlayerContext {
   return {
     weakSkills: [...MOCK_PLAYER_CONTEXT.weakSkills],
@@ -19,6 +19,32 @@ export function getDefaultPlayerContext(): PlayerContext {
     age: MOCK_PLAYER_CONTEXT.age,
     position: MOCK_PLAYER_CONTEXT.position,
     targetGoal: MOCK_PLAYER_CONTEXT.targetGoal,
+  };
+}
+
+/**
+ * Neutral context when parent has no players.
+ * No weak-skill personalization, age 99 to avoid typical youth age-group matches.
+ * Scores/reasons come only from verified, rating, sessions, repeat rate.
+ */
+export function getNeutralPlayerContext(): PlayerContext {
+  return {
+    weakSkills: [],
+    strongSkills: undefined,
+    age: 99,
+    position: undefined,
+    targetGoal: undefined,
+  };
+}
+
+/** Build context from real player (age, position). weakSkills not available from API. */
+export function buildPlayerContext(player: { age: number; position?: string }): PlayerContext {
+  return {
+    weakSkills: [],
+    strongSkills: undefined,
+    age: player.age ?? 0,
+    position: player.position || undefined,
+    targetGoal: undefined,
   };
 }
 
@@ -131,10 +157,15 @@ export function matchCoachesToPlayer(
       recommendedFor.push("Быстрый прогресс");
     }
 
+    const finalReasons = [...new Set(reasons)];
+    if (finalReasons.length === 0) {
+      finalReasons.push("Подходит для индивидуальной подготовки");
+    }
+
     results.push({
       coach,
       matchScore: Math.min(100, Math.round(score)),
-      matchReasons: [...new Set(reasons)],
+      matchReasons: finalReasons,
       recommendedFor: [...new Set(recommendedFor)],
     });
   }

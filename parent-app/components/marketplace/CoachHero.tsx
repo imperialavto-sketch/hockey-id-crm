@@ -7,7 +7,12 @@ import { useSubscription } from "@/context/SubscriptionContext";
 import { triggerHaptic } from "@/lib/haptics";
 import { colors, glow, spacing, typography } from "@/constants/theme";
 
-export function CoachHero() {
+interface CoachHeroProps {
+  /** First player name for personalized copy; when absent, use neutral text */
+  playerName?: string | null;
+}
+
+export function CoachHero({ playerName }: CoachHeroProps) {
   const router = useRouter();
   const { hasMarketplaceDiscount } = useSubscription();
 
@@ -42,7 +47,9 @@ export function CoachHero() {
         <View style={styles.aiBlockHeader}>
           <Ionicons name="sparkles" size={18} color={colors.accent} />
           <Text style={styles.aiText}>
-            AI подобрал лучших тренеров для Марка Голыша
+            {playerName
+              ? `AI подобрал лучших тренеров для ${playerName}`
+              : "AI подобрал лучших тренеров для вашего игрока"}
           </Text>
         </View>
       </View>

@@ -1,8 +1,9 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Pressable } from "react-native";
 import Animated from "react-native-reanimated";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
+import { COACH_MARK_ID } from "@/services/chatService";
 import { getPlayers } from "@/services/playerService";
 import { getPlayerSchedule } from "@/services/scheduleService";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
@@ -26,10 +27,14 @@ function ScheduleSkeleton() {
   );
 }
 
+const PRESSED_OPACITY = 0.88;
+
 export default function ScheduleScreen() {
+  const router = useRouter();
   const { user } = useAuth();
   const mountedRef = useRef(true);
   const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
+  const [playerId, setPlayerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -37,6 +42,7 @@ export default function ScheduleScreen() {
 
   const load = useCallback(async () => {
     if (!user?.id) {
+      setSchedule([]);
       setLoading(false);
       return;
     }
@@ -44,13 +50,14 @@ export default function ScheduleScreen() {
     setError(false);
     try {
       const players = await getPlayers(user.id);
-      const playerId = players[0]?.id;
+      const pid = players[0]?.id ?? null;
       if (!mountedRef.current) return;
-      if (!playerId) {
+      if (mountedRef.current) setPlayerId(pid);
+      if (!pid) {
         setSchedule([]);
         return;
       }
-      const data = await getPlayerSchedule(playerId, user.id);
+      const data = await getPlayerSchedule(pid, user.id);
       if (mountedRef.current) setSchedule(data);
     } catch {
       if (mountedRef.current) {
@@ -115,6 +122,25 @@ export default function ScheduleScreen() {
             <Text style={styles.emptySub}>
               Когда тренер добавит тренировки и игры, они появятся здесь.
             </Text>
+            <Pressable
+              style={({ pressed }) => [
+                styles.coachMarkCta,
+                styles.coachMarkCtaInline,
+                pressed && { opacity: PRESSED_OPACITY },
+              ]}
+              onPress={() => {
+                triggerHaptic();
+                const q = playerId
+                  ? `?playerId=${encodeURIComponent(playerId)}&initialMessage=${encodeURIComponent("Помоги составить план тренировок на неделю")}`
+                  : "";
+                router.push(`/chat/${COACH_MARK_ID}${q}`);
+              }}
+            >
+              <Ionicons name="sparkles-outline" size={18} color={colors.accent} />
+              <Text style={styles.coachMarkCtaText}>
+                Спросить Coach Mark о плане тренировок
+              </Text>
+            </Pressable>
           </View>
         </Animated.View>
       </FlagshipScreen>
@@ -136,8 +162,29 @@ export default function ScheduleScreen() {
         </View>
       </Animated.View>
 
+      <Animated.View entering={screenReveal(STAGGER)}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.coachMarkCta,
+            pressed && { opacity: PRESSED_OPACITY },
+          ]}
+          onPress={() => {
+            triggerHaptic();
+            const q = playerId
+              ? `?playerId=${encodeURIComponent(playerId)}&initialMessage=${encodeURIComponent("Помоги составить план тренировок на неделю")}`
+              : "";
+            router.push(`/chat/${COACH_MARK_ID}${q}`);
+          }}
+        >
+          <Ionicons name="sparkles-outline" size={18} color={colors.accent} />
+          <Text style={styles.coachMarkCtaText}>
+            Спросить Coach Mark о плане тренировок
+          </Text>
+        </Pressable>
+      </Animated.View>
+
       {today.length > 0 && (
-        <Animated.View entering={screenReveal(STAGGER)}>
+        <Animated.View entering={screenReveal(STAGGER * 2)}>
           <SectionCard title="Ближайшие" style={styles.sectionCard}>
             {today.map((item, index) => (
               <ScheduleItemRow
@@ -153,7 +200,7 @@ export default function ScheduleScreen() {
       )}
 
       {rest.length > 0 && (
-        <Animated.View entering={screenReveal(STAGGER * 2)}>
+        <Animated.View entering={screenReveal(STAGGER * 3)}>
           <SectionCard title="На неделе" style={styles.sectionCard}>
             {rest.map((item, index) => (
               <ScheduleItemRow
@@ -204,6 +251,29 @@ const styles = StyleSheet.create({
   heroSub: {
     ...typography.caption,
     color: colors.textSecondary,
+  },
+
+  coachMarkCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+    backgroundColor: colors.accentSoft,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: "rgba(59,130,246,0.25)",
+  },
+  coachMarkCtaText: {
+    ...typography.bodySmall,
+    fontWeight: "600",
+    color: colors.accent,
+  },
+  coachMarkCtaInline: {
+    marginTop: spacing.lg,
+    marginBottom: 0,
   },
 
   emptyCard: {

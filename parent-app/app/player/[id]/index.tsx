@@ -16,7 +16,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useAuth } from "@/context/AuthContext";
 import { getFullPlayerProfile, getAIAnalysis } from "@/services/playerService";
 import { getVideoAnalyses } from "@/services/videoAnalysisService";
-import { getOrCreateConversation } from "@/services/chatService";
+import { getOrCreateConversation, COACH_MARK_ID } from "@/services/chatService";
 import { Ionicons } from "@expo/vector-icons";
 import { HeroPlayerCard } from "@/components/player/HeroPlayerCard";
 import { PlayerScreenBackground } from "@/components/player/PlayerScreenBackground";
@@ -49,6 +49,23 @@ import type {
 } from "@/types";
 
 const PRESSED_OPACITY = 0.88;
+type ProfileErrorStateKind = "not_found" | "network";
+
+const PROFILE_ERROR_CONTENT: Record<
+  ProfileErrorStateKind,
+  { icon: keyof typeof Ionicons.glyphMap; title: string; subtitle: string }
+> = {
+  not_found: {
+    icon: "person-outline",
+    title: "Игрок не найден",
+    subtitle: "Проверьте ссылку или выберите другого игрока",
+  },
+  network: {
+    icon: "cloud-offline-outline",
+    title: "Ошибка загрузки",
+    subtitle: "Не удалось получить данные игрока. Проверьте соединение и попробуйте снова",
+  },
+};
 
 function ProfileSkeleton() {
   return (
@@ -62,6 +79,72 @@ function ProfileSkeleton() {
       <SkeletonBlock height={100} style={styles.skeletonCard} />
       <SkeletonBlock height={100} style={styles.skeletonCard} />
       <SkeletonBlock height={140} style={styles.skeletonCard} />
+    </View>
+  );
+}
+
+function ProfileHeader({
+  insetTop,
+  onBack,
+  onShare,
+  showShareButton = false,
+}: {
+  insetTop: number;
+  onBack: () => void;
+  onShare?: () => void;
+  showShareButton?: boolean;
+}) {
+  return (
+    <View style={[styles.customHeader, { paddingTop: insetTop + spacing.lg }]}>
+      <Pressable
+        style={({ pressed }) => [styles.backBtn, pressed && { opacity: PRESSED_OPACITY }]}
+        onPress={onBack}
+        accessibilityRole="button"
+        accessibilityLabel="Назад"
+      >
+        <Ionicons name="arrow-back" size={24} color="#ffffff" />
+      </Pressable>
+      <Text style={styles.headerTitle}>Профиль игрока</Text>
+      {showShareButton ? (
+        <Pressable
+          style={({ pressed }) => [styles.headerBtn, pressed && { opacity: PRESSED_OPACITY }]}
+          onPress={onShare}
+          accessibilityRole="button"
+          accessibilityLabel="Поделиться"
+        >
+          <Ionicons name="share-outline" size={24} color="#ffffff" />
+        </Pressable>
+      ) : (
+        <View style={styles.headerBtn} />
+      )}
+    </View>
+  );
+}
+
+function ProfileErrorState({
+  type,
+  onRetry,
+}: {
+  type: ProfileErrorStateKind;
+  onRetry: () => void;
+}) {
+  const content = PROFILE_ERROR_CONTENT[type];
+
+  return (
+    <View style={styles.errorContainer}>
+      <View style={styles.errorIconWrap}>
+        <Ionicons name={content.icon} size={40} color={colors.textMuted} />
+      </View>
+      <Text style={styles.errorTitle}>{content.title}</Text>
+      <Text style={styles.errorSub}>{content.subtitle}</Text>
+      <Pressable
+        style={({ pressed }) => [styles.retryBtn, pressed && { opacity: PRESSED_OPACITY }]}
+        onPress={onRetry}
+        accessibilityRole="button"
+        accessibilityLabel="Повторить"
+      >
+        <Text style={styles.retryBtnText}>Повторить</Text>
+      </Pressable>
     </View>
   );
 }
@@ -90,28 +173,60 @@ export default function PlayerProfileScreen() {
   const [chatLoading, setChatLoading] = useState(false);
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [profileError, setProfileError] = useState<"not_found" | "network" | null>(null);
+  const [profileError, setProfileError] = useState<ProfileErrorStateKind | null>(null);
   const [videoAnalyses, setVideoAnalyses] = useState<VideoAnalysisRequest[]>([]);
   const [videoLoading, setVideoLoading] = useState(false);
   const [aiRequested, setAiRequested] = useState(false);
   const mountedRef = useRef(true);
+  const profileRequestRef = useRef(0);
+  const aiRequestRef = useRef(0);
 
   useEffect(() => () => { mountedRef.current = false; }, []);
 
+  const goBack = useCallback(() => {
+    triggerHaptic();
+    router.back();
+  }, [router]);
+
+  const openShareSheet = useCallback(() => {
+    triggerHaptic();
+    setShareSheetVisible(true);
+  }, []);
+
   const loadProfile = useCallback(async () => {
-    if (!id || typeof id !== "string" || !user?.id) {
-      if (mountedRef.current) setLoading(false);
+    const requestId = ++profileRequestRef.current;
+    const canCommit = () => mountedRef.current && requestId === profileRequestRef.current;
+
+    if (!id || typeof id !== "string") {
+      if (canCommit()) {
+        setPlayer(null);
+        setProfileError("not_found");
+        setLoading(false);
+      }
       return;
     }
-    if (mountedRef.current) {
+
+    if (!user?.id) {
+      if (canCommit()) {
+        setPlayer(null);
+        setProfileError("network");
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (canCommit()) {
       setLoading(true);
       setProfileError(null);
     }
+
     try {
       const profile = await getFullPlayerProfile(id, user.id, {
         includeVideoAnalyses: false,
       });
-      if (!mountedRef.current) return;
+
+      if (!canCommit()) return;
+
       if (profile) {
         setPlayer(profile.player);
         setStats(profile.stats);
@@ -122,15 +237,25 @@ export default function PlayerProfileScreen() {
         setProfileError(null);
       } else {
         setPlayer(null);
+        setStats(null);
+        setSchedule([]);
+        setRecommendations([]);
+        setProgressHistory([]);
+        setAchievements(null);
         setProfileError("not_found");
       }
     } catch {
-      if (mountedRef.current) {
+      if (canCommit()) {
         setPlayer(null);
+        setStats(null);
+        setSchedule([]);
+        setRecommendations([]);
+        setProgressHistory([]);
+        setAchievements(null);
         setProfileError("network");
       }
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (canCommit()) setLoading(false);
     }
   }, [id, user?.id]);
 
@@ -161,20 +286,23 @@ export default function PlayerProfileScreen() {
 
   const fetchAIAnalysis = useCallback(() => {
     if (!id || typeof id !== "string" || !user?.id) return;
+    const requestId = ++aiRequestRef.current;
+    const canCommit = () => mountedRef.current && requestId === aiRequestRef.current;
+
     setAiRequested(true);
     setAiLoading(true);
     setAiError(null);
     getAIAnalysis(id, user.id)
       .then((data) => {
-        if (!mountedRef.current) return;
+        if (!canCommit()) return;
         setAiAnalysis(data ?? null);
         if (!data) setAiError("Не удалось загрузить анализ");
       })
       .catch(() => {
-        if (mountedRef.current) setAiError("Ошибка загрузки");
+        if (canCommit()) setAiError("Ошибка загрузки");
       })
       .finally(() => {
-        if (mountedRef.current) setAiLoading(false);
+        if (canCommit()) setAiLoading(false);
       });
   }, [id, user?.id]);
 
@@ -209,21 +337,7 @@ export default function PlayerProfileScreen() {
       <View style={styles.screenWrap}>
         <PlayerScreenBackground />
         <SafeAreaView style={styles.container} edges={["bottom"]}>
-          <View style={[styles.customHeader, { paddingTop: insets.top + spacing.lg }]}>
-            <Pressable
-              style={({ pressed }) => [styles.backBtn, pressed && { opacity: PRESSED_OPACITY }]}
-              onPress={() => {
-                triggerHaptic();
-                router.back();
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Назад"
-            >
-              <Ionicons name="arrow-back" size={24} color="#ffffff" />
-            </Pressable>
-            <Text style={styles.headerTitle}>Профиль игрока</Text>
-            <View style={styles.headerBtn} />
-          </View>
+          <ProfileHeader insetTop={insets.top} onBack={goBack} />
           <ScrollView
             style={styles.scroll}
             contentContainerStyle={styles.content}
@@ -238,57 +352,20 @@ export default function PlayerProfileScreen() {
   }
 
   if (!player) {
-    const isNotFound = profileError === "not_found";
-    const errorHeader = (
-      <View style={[styles.customHeader, { paddingTop: insets.top + spacing.lg }]}>
-        <Pressable
-          style={({ pressed }) => [styles.backBtn, pressed && { opacity: PRESSED_OPACITY }]}
-          onPress={() => {
-            triggerHaptic();
-            router.back();
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Назад"
-        >
-          <Ionicons name="arrow-back" size={24} color="#ffffff" />
-        </Pressable>
-        <Text style={styles.headerTitle}>Профиль игрока</Text>
-        <View style={styles.headerBtn} />
-      </View>
-    );
+    const errorType = profileError ?? "network";
+
     return (
       <View style={styles.screenWrap}>
         <PlayerScreenBackground />
         <SafeAreaView style={styles.container} edges={["bottom"]}>
-          {errorHeader}
-          <View style={styles.errorContainer}>
-            <View style={styles.errorIconWrap}>
-              <Ionicons
-                name={isNotFound ? "person-outline" : "cloud-offline-outline"}
-                size={40}
-                color={colors.textMuted}
-              />
-            </View>
-            <Text style={styles.errorTitle}>
-              {isNotFound ? "Игрок не найден" : "Ошибка загрузки"}
-            </Text>
-            <Text style={styles.errorSub}>
-              {isNotFound
-                ? "Проверьте ссылку или выберите другого игрока"
-                : "Проверьте соединение и попробуйте снова"}
-            </Text>
-            <Pressable
-              style={({ pressed }) => [styles.retryBtn, pressed && { opacity: PRESSED_OPACITY }]}
-              onPress={() => {
-                triggerHaptic();
-                loadProfile();
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Повторить"
-            >
-              <Text style={styles.retryBtnText}>Повторить</Text>
-            </Pressable>
-          </View>
+          <ProfileHeader insetTop={insets.top} onBack={goBack} />
+          <ProfileErrorState
+            type={errorType}
+            onRetry={() => {
+              triggerHaptic();
+              loadProfile();
+            }}
+          />
         </SafeAreaView>
       </View>
     );
@@ -301,32 +378,12 @@ export default function PlayerProfileScreen() {
     <View style={styles.screenWrap}>
       <PlayerScreenBackground />
       <SafeAreaView style={styles.container} edges={["bottom"]}>
-        {/* Custom header */}
-        <View style={[styles.customHeader, { paddingTop: insets.top + spacing.lg }]}>
-          <Pressable
-            style={({ pressed }) => [styles.backBtn, pressed && { opacity: PRESSED_OPACITY }]}
-            onPress={() => {
-              triggerHaptic();
-              router.back();
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Назад"
-          >
-            <Ionicons name="arrow-back" size={24} color="#ffffff" />
-          </Pressable>
-          <Text style={styles.headerTitle}>Профиль игрока</Text>
-          <Pressable
-            style={({ pressed }) => [styles.headerBtn, pressed && { opacity: PRESSED_OPACITY }]}
-            onPress={() => {
-              triggerHaptic();
-              setShareSheetVisible(true);
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Share"
-          >
-            <Ionicons name="share-outline" size={24} color="#ffffff" />
-          </Pressable>
-        </View>
+        <ProfileHeader
+          insetTop={insets.top}
+          onBack={goBack}
+          onShare={openShareSheet}
+          showShareButton
+        />
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.content}
@@ -404,6 +461,41 @@ export default function PlayerProfileScreen() {
             onPress={() => {
               triggerHaptic();
               id && router.push(`/player/${id}/passport`);
+            }}
+            variant="default"
+          />
+
+          <ActionLinkCard
+            icon="sparkles"
+            title="AI анализ игрока"
+            description="Узнайте сильные стороны, зоны роста и персональные рекомендации"
+            onPress={() => {
+              triggerHaptic();
+              id && router.push(`/player/${id}/ai-analysis`);
+            }}
+            variant="accent"
+          />
+
+          <ActionLinkCard
+            icon="chatbubbles"
+            title="Спросить Coach Mark"
+            description="Персональный AI-тренер для родителей"
+            onPress={() => {
+              if (__DEV__) console.log("[CoachMark] BEFORE tap — Спросить Coach Mark");
+              triggerHaptic();
+              id && router.push(`/chat/${COACH_MARK_ID}?playerId=${encodeURIComponent(id)}`);
+            }}
+            variant="default"
+          />
+
+          <ActionLinkCard
+            icon="folder-open-outline"
+            title="Coach Mark Hub"
+            description="Заметки, планы и календарь"
+            onPress={() => {
+              if (__DEV__) console.log("[CoachMark] BEFORE tap — Coach Mark Hub");
+              triggerHaptic();
+              id && router.push(`/coach-mark?playerId=${encodeURIComponent(id)}`);
             }}
             variant="default"
           />
@@ -514,10 +606,10 @@ export default function PlayerProfileScreen() {
                   ))}
                 </View>
               )}
-              {aiAnalysis.coachFocus ? (
+              {(aiAnalysis.coachFocus ?? []).length > 0 ? (
                 <View style={styles.aiBlock}>
                   <Text style={styles.aiLabel}>Фокус тренера</Text>
-                  <Text style={styles.aiValue}>{aiAnalysis.coachFocus}</Text>
+                  <Text style={styles.aiValue}>{aiAnalysis.coachFocus.join(", ")}</Text>
                 </View>
               ) : null}
               {aiAnalysis.motivation ? (

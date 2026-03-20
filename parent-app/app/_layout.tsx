@@ -31,6 +31,7 @@ function RootLayoutNav() {
         <Stack.Screen name="profile" options={{ headerShown: false }} />
         <Stack.Screen name="notifications" options={{ headerShown: false }} />
         <Stack.Screen name="team" options={{ headerShown: false }} />
+        <Stack.Screen name="coach-mark" options={{ headerShown: false }} />
       </Stack>
     </AppBackground>
   );

@@ -9,11 +9,14 @@ import Animated from "react-native-reanimated";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "@/context/AuthContext";
+import { getPlayers } from "@/services/playerService";
 import { isDev } from "@/config/api";
 import { getCoachForUI } from "@/services/marketplaceService";
+import { COACH_MARK_ID } from "@/services/chatService";
 import { MOCK_COACHES } from "@/constants/mockCoaches";
 import { MOCK_COACH_REVIEWS } from "@/constants/mockCoachReviews";
-import { matchCoachesToPlayer, getDefaultPlayerContext } from "@/lib/coach-matching";
+import { matchCoachesToPlayer, getNeutralPlayerContext, buildPlayerContext } from "@/lib/coach-matching";
 import { VerifiedCoachHero } from "@/components/marketplace/VerifiedCoachHero";
 import { CoachTrustSection } from "@/components/marketplace/CoachTrustBadge";
 import { CoachStatsRow } from "@/components/marketplace/CoachStatsRow";
@@ -26,7 +29,6 @@ import { SkeletonBlock } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
 import { colors, spacing, typography } from "@/constants/theme";
-import { DEMO_PLAYER } from "@/constants/demoPlayer";
 
 const PRESSED_OPACITY = 0.88;
 
@@ -46,10 +48,30 @@ function CoachDetailSkeleton() {
 export default function CoachDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [coach, setCoach] = useState<Awaited<ReturnType<typeof getCoachForUI>>>(null);
+  const [players, setPlayers] = useState<{ name: string; age: number; position?: string }[]>([]);
+  const [playerId, setPlayerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (user?.id) {
+      getPlayers(user.id)
+        .then((list) => {
+          setPlayers(list);
+          setPlayerId(list[0]?.id ?? null);
+        })
+        .catch(() => {
+          setPlayers([]);
+          setPlayerId(null);
+        });
+    } else {
+      setPlayers([]);
+      setPlayerId(null);
+    }
+  }, [user?.id]);
 
   const loadCoach = useCallback(async () => {
     if (!id) {
@@ -80,9 +102,12 @@ export default function CoachDetailScreen() {
 
   const matchResult = useMemo(() => {
     if (!coach) return null;
-    const results = matchCoachesToPlayer([coach], getDefaultPlayerContext());
+    const ctx = players[0]
+      ? buildPlayerContext({ age: players[0].age, position: players[0].position })
+      : getNeutralPlayerContext();
+    const results = matchCoachesToPlayer([coach], ctx);
     return results[0] ?? null;
-  }, [coach]);
+  }, [coach, players]);
 
   const header = (
     <View style={[styles.customHeader, { paddingTop: insets.top + spacing.lg }]}>
@@ -165,7 +190,7 @@ export default function CoachDetailScreen() {
 
       {matchResult && matchResult.matchScore >= 60 && (
         <Animated.View entering={screenReveal(STAGGER * 5)}>
-          <SmartMatchCard match={matchResult} playerName={DEMO_PLAYER.name} />
+          <SmartMatchCard match={matchResult} playerName={players[0]?.name ?? null} />
         </Animated.View>
       )}
 
@@ -175,6 +200,30 @@ export default function CoachDetailScreen() {
           rating={coach.rating}
           reviewsCount={coach.reviewsCount}
         />
+      </Animated.View>
+
+      <Animated.View entering={screenReveal(matchResult && matchResult.matchScore >= 60 ? STAGGER * 6.5 : STAGGER * 5.5)}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.coachMarkCta,
+            pressed && { opacity: PRESSED_OPACITY },
+          ]}
+          onPress={() => {
+            triggerHaptic();
+            const params = new URLSearchParams();
+            if (playerId) params.set("playerId", playerId);
+            params.set(
+              "initialMessage",
+              `Подходит ли тренер ${coach.fullName} для моего ребёнка?`
+            );
+            router.push(`/chat/${COACH_MARK_ID}?${params.toString()}`);
+          }}
+        >
+          <Ionicons name="sparkles-outline" size={18} color={colors.accent} />
+          <Text style={styles.coachMarkCtaText}>
+            Спросить Coach Mark, подходит ли этот тренер
+          </Text>
+        </Pressable>
       </Animated.View>
 
       <Animated.View entering={screenReveal(matchResult && matchResult.matchScore >= 60 ? STAGGER * 7 : STAGGER * 6)}>
@@ -257,5 +306,23 @@ const styles = StyleSheet.create({
   },
   ctaText: {
     color: colors.bgDeep,
+  },
+  coachMarkCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.accentSoft,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(59,130,246,0.25)",
+  },
+  coachMarkCtaText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.accent,
   },
 });

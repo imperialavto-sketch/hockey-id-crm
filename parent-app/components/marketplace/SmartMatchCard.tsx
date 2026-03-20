@@ -6,15 +6,20 @@ import type { MatchResult } from "@/lib/coach-matching";
 
 interface SmartMatchCardProps {
   match: MatchResult;
-  playerName: string;
+  /** When null/undefined, use neutral text without player name */
+  playerName?: string | null;
 }
 
 export function SmartMatchCard({ match, playerName }: SmartMatchCardProps) {
+  const titleText = playerName
+    ? `Почему этот тренер подходит ${playerName}`
+    : "Почему этот тренер может подойти вашему игроку";
+
   return (
     <View style={styles.wrap}>
       <View style={styles.header}>
         <Ionicons name="sparkles" size={22} color={colors.accent} />
-        <Text style={styles.title}>Почему этот тренер подходит {playerName}</Text>
+        <Text style={styles.title}>{titleText}</Text>
       </View>
       <View style={styles.scoreRow}>
         <Text style={styles.scoreLabel}>Совпадение</Text>

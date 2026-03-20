@@ -52,4 +52,33 @@ async function createPlayer(req, res) {
   }
 }
 
-module.exports = { getPlayers, getPlayerById, createPlayer };
+async function getPlayerStats(req, res) {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) {
+      return res.status(400).json({ error: "Invalid player id" });
+    }
+    const stats = await prisma.playerStats.findMany({
+      where: { playerId: id },
+    });
+    const agg = stats.reduce(
+      (acc, s) => ({
+        games: acc.games + (s.games || 0),
+        goals: acc.goals + (s.goals || 0),
+        assists: acc.assists + (s.assists || 0),
+        points: acc.points + (s.points || (s.goals || 0) + (s.assists || 0)),
+      }),
+      { games: 0, goals: 0, assists: 0, points: 0 }
+    );
+    res.json({
+      games: agg.games,
+      goals: agg.goals,
+      assists: agg.assists,
+      points: agg.points,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+}
+
+module.exports = { getPlayers, getPlayerById, createPlayer, getPlayerStats };

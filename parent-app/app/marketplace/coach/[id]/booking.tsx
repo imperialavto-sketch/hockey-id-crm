@@ -10,10 +10,10 @@ import Animated from "react-native-reanimated";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { isDev } from "@/config/api";
+import { useAuth } from "@/context/AuthContext";
+import { getPlayers } from "@/services/playerService";
 import { getCoachForUI, getCoachTimeSlots } from "@/services/marketplaceService";
-import { MOCK_COACHES } from "@/constants/mockCoaches";
-import { MOCK_TIME_SLOTS, DURATION_OPTIONS, FORMAT_LABELS } from "@/constants/mockTimeSlots";
+import { DURATION_OPTIONS, FORMAT_LABELS } from "@/constants/mockTimeSlots";
 import { BookingSummaryCard } from "@/components/marketplace/BookingSummaryCard";
 import { BookingDatePicker } from "@/components/marketplace/BookingDatePicker";
 import { TimeSlotPicker } from "@/components/marketplace/TimeSlotPicker";
@@ -48,6 +48,7 @@ function BookingSkeleton() {
 export default function BookingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
@@ -55,9 +56,18 @@ export default function BookingScreen() {
   const [format, setFormat] = useState<TrainingFormat>("ice");
   const [note, setNote] = useState("");
   const [coach, setCoach] = useState<Awaited<ReturnType<typeof getCoachForUI>>>(null);
+  const [players, setPlayers] = useState<{ name: string }[]>([]);
   const [timeSlots, setTimeSlots] = useState<{ time: string; available: boolean }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (user?.id) {
+      getPlayers(user.id).then((list) => setPlayers(list)).catch(() => setPlayers([]));
+    } else {
+      setPlayers([]);
+    }
+  }, [user?.id]);
 
   const loadData = useCallback(async () => {
     if (!id) {
@@ -71,11 +81,11 @@ export default function BookingScreen() {
         getCoachForUI(id),
         getCoachTimeSlots(id, undefined),
       ]);
-      setCoach(c ?? (isDev ? MOCK_COACHES.find((x) => x.id === id) ?? null : null));
-      setTimeSlots(slots.length > 0 ? slots : (isDev ? MOCK_TIME_SLOTS : []));
+      setCoach(c ?? null);
+      setTimeSlots(slots.length > 0 ? slots : []);
     } catch {
-      setCoach(isDev ? MOCK_COACHES.find((x) => x.id === id) ?? null : null);
-      if (!isDev) setError(true);
+      setCoach(null);
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -87,10 +97,13 @@ export default function BookingScreen() {
 
   useEffect(() => {
     if (!id || !date) return;
-    getCoachTimeSlots(id, date).then((slots) => {
-      if (slots.length > 0) setTimeSlots(slots);
-      else if (isDev) setTimeSlots(MOCK_TIME_SLOTS);
-    });
+    getCoachTimeSlots(id, date)
+      .then((slots) => {
+        if (slots.length > 0) setTimeSlots(slots);
+      })
+      .catch(() => {
+        setError(true);
+      });
   }, [id, date]);
 
   const price = coach ? (duration === 90 ? Math.round(coach.price * 1.5) : coach.price) : 0;
@@ -171,7 +184,7 @@ export default function BookingScreen() {
           time={time}
           duration={duration}
           format={FORMAT_LABELS[format] ?? format}
-          playerName="Голыш Марк"
+          playerName={players[0]?.name ?? "Игрок не выбран"}
           price={price}
         />
       </Animated.View>

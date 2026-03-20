@@ -36,7 +36,7 @@ function getHeroDisplay(selected: Player | null) {
   return {
     name: selected?.name ?? DEMO_PLAYER.name,
     number: selected?.number ? `#${selected.number}` : DEMO_PLAYER.number,
-    position: selected?.position || DEMO_PLAYER.position,
+    position: selected?.position || DEMO_PLAYER.positionRu,
     team: selected?.team || DEMO_PLAYER.team,
     age: selected?.age ?? DEMO_PLAYER.age,
     city: DEMO_PLAYER.city,
@@ -163,7 +163,7 @@ export default function PlayerScreen() {
     if (!user?.id) {
       setLoading(false);
       setPlayers([]);
-      setSelectedPlayerId(PLAYER_CARD.id);
+      setSelectedPlayerId(null);
       return;
     }
     setHubError(null);
@@ -172,11 +172,11 @@ export default function PlayerScreen() {
       setPlayers(list);
       setSelectedPlayerId((prev) => {
         const stillExists = list.some((p) => p.id === prev);
-        return stillExists ? prev : list[0]?.id ?? PLAYER_CARD.id;
+        return stillExists ? prev : list[0]?.id ?? null;
       });
     } catch {
       setPlayers([]);
-      setSelectedPlayerId(PLAYER_CARD.id);
+      setSelectedPlayerId(null);
       setHubError("network");
     } finally {
       setLoading(false);
@@ -191,7 +191,7 @@ export default function PlayerScreen() {
       } else {
         setLoading(false);
         setPlayers([]);
-        setSelectedPlayerId(PLAYER_CARD.id);
+        setSelectedPlayerId(null);
       }
     }, [loadPlayers, user?.id])
   );
@@ -202,7 +202,7 @@ export default function PlayerScreen() {
   }, [loadPlayers]);
 
   const selectedPlayer = players.find((p) => p.id === selectedPlayerId) ?? null;
-  const playerId = selectedPlayerId ?? PLAYER_CARD.id;
+  const playerId = selectedPlayerId;
   const display = getHeroDisplay(selectedPlayer);
 
   const quickStats = [

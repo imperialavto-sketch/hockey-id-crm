@@ -9,11 +9,30 @@ datasource db {
 
 model Parent {
   id        Int      @id @default(autoincrement())
-  email     String   @unique
-  password  String
+  email     String?  @unique
+  password  String?
+  phone     String?  @unique
+  firstName String?
+  lastName  String?
   createdAt DateTime @default(now())
 
-  players   Player[]
+  players                Player[]
+  authCodes              ParentAuthCode[]
+  subscriptions          Subscription[]
+  billingRecords         SubscriptionBillingRecord[]
+  bookingRequests        BookingRequest[]
+  coachMarkConversation  CoachMarkConversation?
+}
+
+model ParentAuthCode {
+  id        Int      @id @default(autoincrement())
+  phone     String
+  code      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  parentId Int?
+  parent   Parent? @relation(fields: [parentId], references: [id], onDelete: SetNull)
 }
 
 model Coach {
@@ -23,6 +42,70 @@ model Coach {
   createdAt DateTime @default(now())
 
   teams     Team[]
+}
+
+model CoachProfile {
+  id               Int      @id @default(autoincrement())
+  fullName         String
+  slug             String   @unique
+  city             String
+  bio              String?
+  specialization   String?
+  specialties      Json?    // string[]
+  experienceYears  Int      @default(0)
+  priceFrom        Int      @default(0)
+  rating           Float?
+  photoUrl         String?
+  avatar           String?
+  description      String?
+  isPublished      Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  services   CoachService[]
+  slots       CoachSlot[]
+  bookings   BookingRequest[]
+}
+
+model CoachService {
+  id              Int      @id @default(autoincrement())
+  coachId         Int
+  title           String
+  category        String
+  durationMinutes Int      @default(60)
+  price           Int      @default(0)
+  format          String
+  createdAt       DateTime @default(now())
+
+  coach CoachProfile @relation(fields: [coachId], references: [id], onDelete: Cascade)
+}
+
+model CoachSlot {
+  id         Int      @id @default(autoincrement())
+  coachId    Int
+  startTime  DateTime
+  endTime    DateTime
+  available  Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  coach CoachProfile @relation(fields: [coachId], references: [id], onDelete: Cascade)
+}
+
+model BookingRequest {
+  id            Int      @id @default(autoincrement())
+  coachId       Int
+  parentId      Int?
+  parentName    String?
+  parentPhone   String?
+  playerId      Int?
+  message       String?
+  preferredDate DateTime?
+  status        String   @default("new")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  coach CoachProfile @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  parent Parent?      @relation(fields: [parentId], references: [id], onDelete: SetNull)
 }
 
 model Team {
@@ -97,4 +180,58 @@ model AIAnalysis {
 
   playerId  Int
   player    Player   @relation(fields: [playerId], references: [id])
+}
+
+model Subscription {
+  id                 Int      @id @default(autoincrement())
+  parentId           Int      @unique
+  planCode           String
+  status             String
+  billingInterval    String
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  parent  Parent   @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  records SubscriptionBillingRecord[]
+}
+
+model SubscriptionBillingRecord {
+  id             Int      @id @default(autoincrement())
+  parentId       Int
+  subscriptionId Int?
+  date           DateTime
+  productName    String
+  amount         Int
+  currency       String
+  status         String
+  type           String
+  createdAt      DateTime @default(now())
+
+  parent       Parent        @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+}
+
+model CoachMarkConversation {
+  id        Int      @id @default(autoincrement())
+  parentId  Int      @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parent   Parent              @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  messages CoachMarkMessage[]
+}
+
+model CoachMarkMessage {
+  id             Int      @id @default(autoincrement())
+  conversationId Int
+  senderType     String
+  senderId       String
+  text           String   @db.Text
+  isAI           Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  conversation CoachMarkConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 }

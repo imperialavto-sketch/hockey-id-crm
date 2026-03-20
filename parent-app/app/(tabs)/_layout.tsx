@@ -61,6 +61,7 @@ export default function TabsLayout() {
     <>
       {Platform.OS !== "web" && <DeferredPushMount parentId={user?.id} />}
       <Tabs
+        key={user?.id ?? "logged-out"}
         tabBar={(props) => <FloatingGlassTabBar {...props} />}
         screenOptions={{
           headerShown: false,

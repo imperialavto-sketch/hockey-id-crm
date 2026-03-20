@@ -11,7 +11,9 @@ export default {
     orientation: "portrait",
     userInterfaceStyle: "dark",
     scheme: "hockeyid",
+    icon: "./assets/icon.png",
     splash: {
+      image: "./assets/splash.png",
       resizeMode: "contain",
       backgroundColor: "#0a0a0f",
     },
@@ -29,6 +31,7 @@ export default {
     },
     android: {
       adaptiveIcon: {
+        foregroundImage: "./assets/icon.png",
         backgroundColor: "#0a0a0f",
       },
       package: "com.hockeyid.parent",

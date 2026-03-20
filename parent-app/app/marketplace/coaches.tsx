@@ -6,7 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
 import { COACH_FILTERS } from "@/constants/mockCoaches";
 import { getCoaches } from "@/services/marketplaceService";
-import { matchCoachesToPlayer, getDefaultPlayerContext } from "@/lib/coach-matching";
+import { matchCoachesToPlayer, getNeutralPlayerContext } from "@/lib/coach-matching";
 import { CoachHero } from "@/components/marketplace/CoachHero";
 import { CoachFilters } from "@/components/marketplace/CoachFilters";
 import { CoachCard } from "@/components/marketplace/CoachCard";
@@ -81,7 +81,7 @@ export default function CoachesMarketplaceScreen() {
   const playerContext = useMemo(() => {
     if (weakSkillsParam && playerAgeParam) {
       const age = parseInt(playerAgeParam, 10);
-      if (Number.isNaN(age)) return getDefaultPlayerContext();
+      if (Number.isNaN(age)) return getNeutralPlayerContext();
       return {
         weakSkills: weakSkillsParam
           .split(",")
@@ -92,10 +92,10 @@ export default function CoachesMarketplaceScreen() {
         targetGoal: undefined as string | undefined,
       };
     }
-    return getDefaultPlayerContext();
+    return getNeutralPlayerContext();
   }, [weakSkillsParam, playerAgeParam]);
 
-  const displayName = playerNameParam ?? "Марка";
+  const displayName = playerNameParam ?? "игрока";
 
   const allMatches = useMemo(
     () => matchCoachesToPlayer(coaches, playerContext, { returnAll: true }),
@@ -200,7 +200,7 @@ export default function CoachesMarketplaceScreen() {
   const ListHeader = () => (
     <>
       <Animated.View entering={screenReveal(0)}>
-        <CoachHero />
+        <CoachHero playerName={playerNameParam ?? undefined} />
       </Animated.View>
       <Animated.View entering={screenReveal(STAGGER)}>
         <CoachFilters

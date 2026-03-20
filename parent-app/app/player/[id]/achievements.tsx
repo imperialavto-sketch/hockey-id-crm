@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -23,6 +23,23 @@ import { colors, spacing, typography, radius } from "@/constants/theme";
 import type { AchievementsResponse } from "@/types";
 
 const PRESSED_OPACITY = 0.88;
+type ScreenErrorKind = "not_found" | "network";
+
+const ERROR_CONTENT: Record<
+  ScreenErrorKind,
+  { icon: keyof typeof Ionicons.glyphMap; title: string; subtitle: string }
+> = {
+  not_found: {
+    icon: "trophy-outline",
+    title: "Игрок не найден",
+    subtitle: "Проверьте ссылку или выберите другого игрока",
+  },
+  network: {
+    icon: "cloud-offline-outline",
+    title: "Не удалось загрузить достижения",
+    subtitle: "Проверьте подключение и попробуйте снова",
+  },
+};
 
 function AchievementsSkeleton() {
   return (
@@ -64,25 +81,66 @@ export default function PlayerAchievementsScreen() {
   const [achievements, setAchievements] = useState<AchievementsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<ScreenErrorKind | null>(null);
+  const mountedRef = useRef(true);
+  const requestRef = useRef(0);
+
+  useEffect(() => () => {
+    mountedRef.current = false;
+  }, []);
 
   const load = useCallback(async () => {
-    if (!id || typeof id !== "string" || !user?.id) {
-      setLoading(false);
+    const requestId = ++requestRef.current;
+    const canCommit = () => mountedRef.current && requestId === requestRef.current;
+
+    if (!id || typeof id !== "string") {
+      if (canCommit()) {
+        setAchievements(null);
+        setError("not_found");
+        setLoading(false);
+        setRefreshing(false);
+      }
       return;
     }
-    setError(false);
+
+    if (!user?.id) {
+      if (canCommit()) {
+        setAchievements(null);
+        setError("network");
+        setLoading(false);
+        setRefreshing(false);
+      }
+      return;
+    }
+
+    if (canCommit()) {
+      setError(null);
+    }
+
     try {
       const profile = await getFullPlayerProfile(id, user.id, {
         includeVideoAnalyses: false,
       });
-      setAchievements(profile?.achievements ?? null);
+
+      if (!canCommit()) return;
+
+      if (!profile) {
+        setAchievements(null);
+        setError("not_found");
+        return;
+      }
+
+      setAchievements(profile.achievements ?? null);
     } catch {
-      setAchievements(null);
-      setError(true);
+      if (canCommit()) {
+        setAchievements(null);
+        setError("network");
+      }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (canCommit()) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [id, user?.id]);
 
@@ -138,14 +196,14 @@ export default function PlayerAchievementsScreen() {
   }
 
   if (error) {
+    const content = ERROR_CONTENT[error];
+
     return (
       <FlagshipScreen header={header} scroll={false}>
         <View style={styles.errorContainer}>
-          <Ionicons name="cloud-offline-outline" size={48} color={colors.textMuted} />
-          <Text style={styles.errorTitle}>Не удалось загрузить достижения</Text>
-          <Text style={styles.errorSub}>
-            Проверьте подключение и попробуйте снова
-          </Text>
+          <Ionicons name={content.icon} size={48} color={colors.textMuted} />
+          <Text style={styles.errorTitle}>{content.title}</Text>
+          <Text style={styles.errorSub}>{content.subtitle}</Text>
           <Pressable
             style={({ pressed }) => [styles.retryBtn, pressed && { opacity: PRESSED_OPACITY }]}
             onPress={() => {

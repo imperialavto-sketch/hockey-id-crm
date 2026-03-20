@@ -24,6 +24,7 @@ import { videoAnalysisProcessor } from "@/services/video-analysis-processor";
 import { logApiError } from "@/lib/apiErrors";
 import { isDev } from "@/config/api";
 import { MOCK_VIDEO_ANALYSIS_REQUESTS, MOCK_VIDEO_ANALYSIS_RESULTS } from "@/data/mockVideoAnalyses";
+import { withFallback } from "@/utils/withFallback";
 
 const PARENT_ID_HEADER = "x-parent-id";
 
@@ -254,23 +255,34 @@ export async function getVideoAnalyses(
   playerId: string,
   parentId?: string | null
 ): Promise<VideoAnalysisRequest[]> {
-  try {
-    const data = await apiFetch<unknown[]>(
-      `/api/parent/mobile/player/${encodeURIComponent(playerId)}/video-analysis`,
-      { headers: headers(parentId) }
-    );
-    return Array.isArray(data) ? data.map(mapRequest) : [];
-  } catch (err) {
-    logApiError("video-analysis", err);
-    if (isDev) {
+  return withFallback(
+    async () => {
+      try {
+        const data = await apiFetch<unknown[]>(
+          `/api/parent/mobile/player/${encodeURIComponent(playerId)}/video-analysis`,
+          { headers: headers(parentId) }
+        );
+        return Array.isArray(data) ? data.map(mapRequest) : [];
+      } catch (err) {
+        logApiError("video-analysis", err);
+        if (isDev) {
+          await maybeAutoCompleteProcessing(playerId);
+          const requests = await getLocalRequests();
+          return requests
+            .filter((r) => r.playerId === playerId)
+            .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+        }
+        throw err;
+      }
+    },
+    async () => {
       await maybeAutoCompleteProcessing(playerId);
       const requests = await getLocalRequests();
       return requests
         .filter((r) => r.playerId === playerId)
         .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
     }
-    return [];
-  }
+  );
 }
 
 /**
@@ -282,26 +294,37 @@ export async function getVideoAnalysisById(
   id: string,
   parentId?: string | null
 ): Promise<{ request: VideoAnalysisRequest | null; result: VideoAnalysisResult | null }> {
-  try {
-    const data = await apiFetch<unknown>(`/api/video-analysis/${id}`, {
-      headers: headers(parentId),
-    });
-    if (!data || typeof data !== "object") return { request: null, result: null };
-    const d = data as Record<string, unknown>;
-    const request = d.request ? mapRequest(d.request) : mapRequest(data);
-    const result = d.result ? mapResult(d.result) : null;
-    return { request, result };
-  } catch (err) {
-    logApiError("video-analysis", err);
-    if (isDev) {
+  return withFallback(
+    async () => {
+      try {
+        const data = await apiFetch<unknown>(`/api/video-analysis/${id}`, {
+          headers: headers(parentId),
+        });
+        if (!data || typeof data !== "object") return { request: null, result: null };
+        const d = data as Record<string, unknown>;
+        const request = d.request ? mapRequest(d.request) : mapRequest(data);
+        const result = d.result ? mapResult(d.result) : null;
+        return { request, result };
+      } catch (err) {
+        logApiError("video-analysis", err);
+        if (isDev) {
+          const requests = await getLocalRequests();
+          const results = await getLocalResults();
+          const request = requests.find((r) => r.id === id) ?? null;
+          const result = results.find((r) => r.analysisRequestId === id) ?? null;
+          return { request, result };
+        }
+        throw err;
+      }
+    },
+    async () => {
       const requests = await getLocalRequests();
       const results = await getLocalResults();
       const request = requests.find((r) => r.id === id) ?? null;
       const result = results.find((r) => r.analysisRequestId === id) ?? null;
       return { request, result };
     }
-    return { request: null, result: null };
-  }
+  );
 }
 
 /**

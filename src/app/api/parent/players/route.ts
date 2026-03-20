@@ -14,8 +14,17 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const playerId = searchParams.get("playerId");
 
-    const where: { parentId: string; id?: string } = { parentId };
-    if (playerId) where.id = playerId;
+    const where = {
+      AND: [
+        {
+          OR: [
+            { parentId },
+            { parentPlayers: { some: { parentId } } },
+          ],
+        },
+        ...(playerId ? [{ id: playerId }] : []),
+      ],
+    };
 
     const players = await prisma.player.findMany({
       where,

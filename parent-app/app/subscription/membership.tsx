@@ -17,13 +17,21 @@ export default function MembershipScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const plan = MEMBERSHIP_PLANS[0];
+  const keyBenefits = [
+    "Персональные рекомендации по развитию игрока",
+    "Понятные зоны роста и приоритеты на ближайший цикл",
+    "Фокус тренера и практические советы для семьи",
+    "Доступ к плану развития и premium-инструментам",
+  ];
+  const useCases = [
+    "понимать, на чём сосредоточиться уже сейчас",
+    "спокойно обсуждать прогресс с тренером",
+    "видеть не только результат, но и направление роста",
+  ];
 
-  const handleSubscribe = () => {
+  const handleOpenPlans = () => {
     triggerHaptic();
-    router.push({
-      pathname: "/subscription/success",
-      params: { plan: "development_plus" },
-    });
+    router.push("/subscription");
   };
 
   const header = (
@@ -50,8 +58,11 @@ export default function MembershipScreen() {
           <View style={styles.heroBadge}>
             <Text style={styles.heroBadgeText}>Флагманский продукт</Text>
           </View>
-          <Text style={styles.heroTitle}>{plan.name}</Text>
-          <Text style={styles.heroDesc}>{plan.description}</Text>
+          <Text style={styles.heroTitle}>Раскройте потенциал вашего ребенка</Text>
+          <Text style={styles.heroDesc}>
+            AI анализ показывает, как стать сильнее на льду: что уже получается, где зона роста и
+            какие действия дадут самый заметный прогресс.
+          </Text>
           <View style={styles.priceBlock}>
             <Text style={styles.price}>
               {plan.priceMonthly.toLocaleString("ru")} ₽
@@ -62,24 +73,46 @@ export default function MembershipScreen() {
       </Animated.View>
 
       <Animated.View entering={screenReveal(STAGGER)}>
-        <SectionCard title="Что входит" style={styles.featuresSection}>
-          {plan.features.map((f) => (
-            <View key={f.id} style={styles.feature}>
+        <SectionCard title="Что вы получаете" style={styles.featuresSection}>
+          {keyBenefits.map((label) => (
+            <View key={label} style={styles.feature}>
               <Ionicons name="checkmark-circle" size={20} color={colors.accent} />
-              <Text style={styles.featureText}>{f.label}</Text>
+              <Text style={styles.featureText}>{label}</Text>
             </View>
           ))}
         </SectionCard>
       </Animated.View>
 
       <Animated.View entering={screenReveal(STAGGER * 2)}>
+        <SectionCard title="Вы уже видели часть анализа" style={styles.aiUnlockSection}>
+          <Text style={styles.aiUnlockTitle}>Разблокируйте полный AI отчёт</Text>
+          <Text style={styles.aiUnlockText}>
+            Полный доступ открывает сильные стороны, зоны роста, рекомендации и следующий шаг
+            развития в одном месте.
+          </Text>
+        </SectionCard>
+      </Animated.View>
+
+      <Animated.View entering={screenReveal(STAGGER * 3)}>
+        <SectionCard title="Родители используют это, чтобы" style={styles.featuresSection}>
+          {useCases.map((label) => (
+            <View key={label} style={styles.feature}>
+              <Ionicons name="sparkles-outline" size={20} color={colors.accent} />
+              <Text style={styles.featureText}>{label}</Text>
+            </View>
+          ))}
+        </SectionCard>
+      </Animated.View>
+
+      <Animated.View entering={screenReveal(STAGGER * 4)}>
         <Pressable
           style={({ pressed }) => [styles.cta, pressed && { opacity: PRESSED_OPACITY }]}
-          onPress={handleSubscribe}
+          onPress={handleOpenPlans}
           accessibilityRole="button"
-          accessibilityLabel="Подключить Development Plus"
+          accessibilityLabel="Перейти к выбору плана"
         >
-          <Text style={styles.ctaText}>Подключить Development Plus</Text>
+          <Text style={styles.ctaText}>Разблокировать полный AI анализ</Text>
+          <Text style={styles.ctaSubtext}>Доступ к рекомендациям и развитию</Text>
         </Pressable>
       </Animated.View>
     </FlagshipScreen>
@@ -169,6 +202,19 @@ const styles = StyleSheet.create({
   featuresSection: {
     marginBottom: spacing.xxl,
   },
+  aiUnlockSection: {
+    marginBottom: spacing.xxl,
+  },
+  aiUnlockTitle: {
+    ...typography.h2,
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
+  aiUnlockText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    lineHeight: 24,
+  },
   cta: {
     height: buttonStyles.primary.height,
     backgroundColor: colors.accent,
@@ -176,10 +222,16 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
     alignItems: "center",
     justifyContent: "center",
+    gap: 2,
   },
   ctaText: {
     fontSize: 18,
     fontWeight: "800",
     color: colors.bgDeep,
+  },
+  ctaSubtext: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "rgba(2,9,22,0.72)",
   },
 });

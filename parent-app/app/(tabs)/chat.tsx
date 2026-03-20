@@ -12,11 +12,15 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
-import { getConversations } from "@/services/chatService";
+import {
+  getConversations,
+  COACH_MARK_ID,
+} from "@/services/chatService";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { SkeletonBlock } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
+import { trackCoachMarkEvent } from "@/lib/coachMarkAnalytics";
 import { colors, spacing, typography, radius } from "@/constants/theme";
 import type { ConversationItem } from "@/types/chat";
 
@@ -61,7 +65,17 @@ export default function ChatTabScreen() {
     setLoadError(false);
     try {
       const data = await getConversations(user.id);
-      setConversations(data);
+      const coachMarkItem: ConversationItem = {
+        id: COACH_MARK_ID,
+        playerId: "",
+        playerName: "AI-ассистент",
+        coachId: COACH_MARK_ID,
+        coachName: "Coach Mark",
+        parentId: user.id,
+        lastMessage: undefined,
+        updatedAt: new Date().toISOString(),
+      };
+      setConversations([coachMarkItem, ...data]);
     } catch {
       setConversations([]);
       setLoadError(true);
@@ -84,6 +98,9 @@ export default function ChatTabScreen() {
 
   const goToThread = (item: ConversationItem) => {
     triggerHaptic();
+    if (item.id === COACH_MARK_ID) {
+      trackCoachMarkEvent("coachmark_chat_open_from_list");
+    }
     router.push(`/chat/${item.id}`);
   };
 
@@ -94,8 +111,8 @@ export default function ChatTabScreen() {
           <View style={styles.heroIconWrap}>
             <Ionicons name="chatbubbles-outline" size={28} color={colors.accent} />
           </View>
-          <Text style={styles.heroTitle}>Чат с тренером</Text>
-          <Text style={styles.heroSub}>Диалоги с тренерами ваших игроков</Text>
+          <Text style={styles.heroTitle}>Чаты</Text>
+          <Text style={styles.heroSub}>Coach Mark и диалоги с тренерами</Text>
         </View>
         <View style={styles.emptyContainer}>
           <View style={styles.emptyIconWrap}>
@@ -115,8 +132,8 @@ export default function ChatTabScreen() {
       <View style={styles.heroIconWrap}>
         <Ionicons name="chatbubbles-outline" size={28} color={colors.accent} />
       </View>
-      <Text style={styles.heroTitle}>Чат с тренером</Text>
-      <Text style={styles.heroSub}>Диалоги с тренерами ваших игроков</Text>
+      <Text style={styles.heroTitle}>Чаты</Text>
+      <Text style={styles.heroSub}>Coach Mark и диалоги с тренерами</Text>
     </View>
   );
 
@@ -135,7 +152,7 @@ export default function ChatTabScreen() {
       <FlagshipScreen header={header} scroll={false}>
         <View style={styles.errorContainer}>
           <Ionicons name="cloud-offline-outline" size={48} color={colors.textMuted} />
-          <Text style={styles.errorTitle}>Не удалось загрузить чаты</Text>
+          <Text style={styles.errorTitle}>Не получилось загрузить чаты</Text>
           <Text style={styles.errorSub}>
             Проверьте подключение и попробуйте снова
           </Text>
@@ -180,33 +197,55 @@ export default function ChatTabScreen() {
             </View>
             <Text style={styles.emptyTitle}>Чатов пока нет</Text>
             <Text style={styles.emptySub}>
-              Откройте профиль игрока и нажмите «Чат с тренером», чтобы начать диалог
+              Начните с Coach Mark — задайте вопрос о развитии, упражнениях или советах
             </Text>
           </View>
         }
-        renderItem={({ item, index }) => (
-          <Animated.View entering={screenReveal(STAGGER + index * 30)}>
-            <Pressable
-              style={({ pressed }) => [styles.row, pressed && { opacity: PRESSED_OPACITY }]}
-              onPress={() => goToThread(item)}
-            >
-              <View style={styles.avatarWrap}>
-                <Ionicons name="person" size={24} color={colors.accent} />
-              </View>
-              <View style={styles.rowContent}>
-                <Text style={styles.coachName}>{item.coachName}</Text>
-                <Text style={styles.playerName}>{item.playerName}</Text>
-                {item.lastMessage ? (
-                  <Text style={styles.preview} numberOfLines={1}>
-                    {item.lastMessage}
+        renderItem={({ item, index }) => {
+          const isCoachMark = item.id === COACH_MARK_ID;
+          return (
+            <Animated.View entering={screenReveal(STAGGER + index * 30)}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.row,
+                  isCoachMark && styles.rowCoachMark,
+                  pressed && { opacity: PRESSED_OPACITY },
+                ]}
+                onPress={() => goToThread(item)}
+              >
+                <View style={[styles.avatarWrap, isCoachMark && styles.avatarCoachMark]}>
+                  <Ionicons
+                    name={isCoachMark ? "sparkles" : "person"}
+                    size={24}
+                    color={colors.accent}
+                  />
+                </View>
+                <View style={styles.rowContent}>
+                  <View style={styles.rowTitleRow}>
+                    <Text style={[styles.coachName, isCoachMark && styles.coachNameCoachMark]}>
+                      {item.coachName}
+                    </Text>
+                    {isCoachMark && (
+                      <View style={styles.aiBadge}>
+                        <Text style={styles.aiBadgeText}>AI</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.playerName}>
+                    {isCoachMark ? "Персональный хоккейный тренер" : item.playerName}
                   </Text>
-                ) : null}
-              </View>
-              <Text style={styles.time}>{formatTime(item.updatedAt)}</Text>
-              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-            </Pressable>
-          </Animated.View>
-        )}
+                  {item.lastMessage ? (
+                    <Text style={styles.preview} numberOfLines={1}>
+                      {item.lastMessage}
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={styles.time}>{formatTime(item.updatedAt)}</Text>
+                <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+              </Pressable>
+            </Animated.View>
+          );
+        }}
       />
     </FlagshipScreen>
   );
@@ -288,6 +327,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.surfaceLevel1Border,
   },
+  rowCoachMark: {
+    backgroundColor: "rgba(59,130,246,0.08)",
+    borderColor: "rgba(59,130,246,0.25)",
+    borderLeftWidth: 3,
+    borderLeftColor: colors.accent,
+  },
   avatarWrap: {
     width: 52,
     height: 52,
@@ -297,10 +342,34 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: spacing.lg,
   },
+  avatarCoachMark: {
+    backgroundColor: "rgba(59,130,246,0.25)",
+  },
   rowContent: { flex: 1, minWidth: 0 },
+  rowTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    flexWrap: "wrap",
+  },
   coachName: {
     ...typography.cardTitle,
     color: colors.text,
+  },
+  coachNameCoachMark: {
+    color: colors.accentBright,
+  },
+  aiBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: "rgba(59,130,246,0.2)",
+  },
+  aiBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: colors.accentBright,
+    letterSpacing: 0.5,
   },
   playerName: {
     ...typography.caption,
@@ -311,6 +380,7 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textMuted,
     marginTop: spacing.xs,
+    lineHeight: 20,
   },
   time: {
     ...typography.caption,
