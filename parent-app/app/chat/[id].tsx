@@ -12,7 +12,7 @@ import {
   Keyboard,
   Platform,
 } from "react-native";
-import Animated from "react-native-reanimated";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -53,9 +53,9 @@ const PRESSED_OPACITY = 0.88;
 
 const COACH_MARK_STARTER_PROMPTS = [
   "Как улучшить бросок?",
+  "Как мотивировать ребёнка?",
+  "План тренировок на неделю",
   "Какие упражнения для катания?",
-  "Как развивать хоккейное мышление?",
-  "Советы по питанию юного хоккеиста",
 ];
 
 function formatTimestamp(iso: string): string {
@@ -75,6 +75,34 @@ function ChatThreadSkeleton() {
       <SkeletonBlock height={90} style={[styles.skeletonBubble, { alignSelf: "flex-end" }]} />
       <SkeletonBlock height={70} style={styles.skeletonBubble} />
     </View>
+  );
+}
+
+function TypingIndicator() {
+  const [dot, setDot] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setDot((d) => (d + 1) % 3), 400);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <Animated.View
+      entering={FadeIn.duration(200)}
+      style={[styles.bubble, styles.bubbleLeft, styles.bubbleCoachMark, styles.typingBubble]}
+    >
+      <View style={styles.typingRow}>
+        <Text style={styles.typingText}>Coach Mark думает</Text>
+        <View style={styles.typingDots}>
+          {[0, 1, 2].map((i) => (
+            <Animated.Text
+              key={i}
+              style={[styles.typingDot, i === dot && styles.typingDotActive]}
+            >
+              .
+            </Animated.Text>
+          ))}
+        </View>
+      </View>
+    </Animated.View>
   );
 }
 
@@ -235,13 +263,15 @@ export default function ChatConversationScreen() {
     }
   }, [initialMessage]);
 
+  const scrollToEnd = useCallback(() => {
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 50);
+  }, []);
+
   useEffect(() => {
-    if (messages.length > 0) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    }
-  }, [messages.length]);
+    if (messages.length > 0) scrollToEnd();
+  }, [messages.length, scrollToEnd]);
 
   const handleSend = useCallback(async (overrideText?: unknown) => {
     const rawText =
@@ -274,7 +304,7 @@ export default function ChatConversationScreen() {
         void saveCoachMarkMessages(user.id, next);
         return next;
       });
-        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
+        scrollToEnd();
 
       const memForApi = memories.map((m) => ({
         key: m.key.startsWith("note_") ? "note" : m.key,
@@ -308,9 +338,7 @@ export default function ChatConversationScreen() {
         void saveCoachMarkMessages(user.id, next);
         return next;
       });
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      scrollToEnd();
       void (async () => {
         const backend = await getCoachMarkConversation(user.id);
         if (backend !== null && backend.length > 0) {
@@ -326,9 +354,7 @@ export default function ChatConversationScreen() {
 
     if (sent) {
       setMessages((prev) => [...prev, sent]);
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      scrollToEnd();
     } else {
       setInput(text);
       Alert.alert(
@@ -336,7 +362,7 @@ export default function ChatConversationScreen() {
         "Попробуйте ещё раз. Проверьте подключение к интернету."
       );
     }
-  }, [id, user?.id, sending, input, messages, memories, playerContext]);
+  }, [id, user?.id, sending, input, messages, memories, playerContext, scrollToEnd]);
 
   const handleRetrySend = () => {
     if (!lastFailedText?.trim() || sending) return;
@@ -377,9 +403,11 @@ export default function ChatConversationScreen() {
           <ChatThreadSkeleton />
         </View>
       ) : loadError ? (
-        <View style={styles.errorContainer}>
-          <Ionicons name="cloud-offline-outline" size={48} color={colors.textMuted} />
-          <Text style={styles.errorTitle}>Не получилось загрузить чат</Text>
+        <Animated.View entering={FadeIn.duration(300)} style={styles.errorContainer}>
+          <View style={styles.errorIconWrap}>
+            <Ionicons name="cloud-offline-outline" size={40} color={colors.textMuted} />
+          </View>
+          <Text style={styles.errorTitle}>Не удалось загрузить чат</Text>
           <Text style={styles.errorSub}>
             Проверьте подключение и попробуйте снова
           </Text>
@@ -392,7 +420,7 @@ export default function ChatConversationScreen() {
           >
             <Text style={styles.retryBtnText}>Повторить</Text>
           </Pressable>
-        </View>
+        </Animated.View>
       ) : (
         <>
           <View style={styles.listArea}>
@@ -407,19 +435,15 @@ export default function ChatConversationScreen() {
               keyboardDismissMode="on-drag"
               onScrollBeginDrag={() => Keyboard.dismiss()}
               ListFooterComponent={
-                sending && isCoachMarkConversation(id) ? (
-                  <View style={[styles.bubble, styles.bubbleLeft, styles.bubbleCoachMark, styles.typingBubble]}>
-                    <Text style={styles.typingText}>Coach Mark думает…</Text>
-                  </View>
-                ) : null
+                sending && isCoachMarkConversation(id) ? <TypingIndicator /> : null
               }
               ListEmptyComponent={
-                <View style={styles.emptyContainer}>
+                <Animated.View entering={FadeInDown.duration(400).springify().damping(18)} style={styles.emptyContainer}>
                   <View style={styles.emptyIconWrap}>
                     <Ionicons
                       name={id === COACH_MARK_ID ? "sparkles-outline" : "chatbubble-outline"}
-                      size={40}
-                      color={colors.textMuted}
+                      size={48}
+                      color={id === COACH_MARK_ID ? colors.accent : colors.textMuted}
                     />
                   </View>
                   <Text style={styles.emptyTitle}>
@@ -501,10 +525,7 @@ export default function ChatConversationScreen() {
                             void saveCoachMarkMessages(user.id, next);
                             return next;
                           });
-                          setTimeout(
-                            () => flatListRef.current?.scrollToEnd({ animated: true }),
-                            100
-                          );
+                          scrollToEnd();
                           void (async () => {
                             const backend = await getCoachMarkConversation(user.id);
                             if (backend !== null && backend.length > 0) {
@@ -546,7 +567,7 @@ export default function ChatConversationScreen() {
                       </Text>
                     </Pressable>
                   )}
-                </View>
+                </Animated.View>
               }
               renderItem={({ item, index }) => {
                 const isParent = item.senderType === "parent";
@@ -641,8 +662,8 @@ export default function ChatConversationScreen() {
             />
           </View>
           {sendError && isCoachMarkConversation(id) && (
-            <View style={styles.inlineErrorRow}>
-              <Ionicons name="warning-outline" size={18} color={colors.warning} />
+            <Animated.View entering={FadeIn.duration(250)} style={styles.inlineErrorRow}>
+              <Ionicons name="information-circle-outline" size={20} color={colors.textSecondary} />
               <Text style={styles.inlineErrorText}>{sendError}</Text>
               <Pressable
                 style={({ pressed }) => [
@@ -653,12 +674,12 @@ export default function ChatConversationScreen() {
               >
                 <Text style={styles.inlineRetryBtnText}>Повторить</Text>
               </Pressable>
-            </View>
+            </Animated.View>
           )}
           <View style={[styles.inputRow, { paddingBottom: insets.bottom + spacing.lg }]}>
             <TextInput
               ref={inputRef}
-              style={styles.input}
+              style={[styles.input, sending && styles.inputDisabled]}
               placeholder={
                 isCoachMarkConversation(id)
                   ? "Спросите о развитии, упражнениях или советах"
@@ -670,12 +691,16 @@ export default function ChatConversationScreen() {
               multiline
               maxLength={2000}
               editable={!sending}
+              returnKeyType="send"
+              blurOnSubmit={false}
+              onSubmitEditing={() => input.trim() && !sending && handleSend()}
             />
             <Pressable
               style={({ pressed }) => [
                 styles.sendBtn,
                 !input.trim() && !sending && styles.sendBtnDisabled,
                 input.trim() && !sending && pressed && { opacity: PRESSED_OPACITY },
+                sending && styles.sendBtnSending,
               ]}
               onPress={() => handleSend()}
               disabled={!input.trim() || sending}
@@ -685,7 +710,7 @@ export default function ChatConversationScreen() {
               ) : (
                 <Ionicons
                   name="send"
-                  size={20}
+                  size={22}
                   color={input.trim() && !sending ? colors.onAccent : colors.textMuted}
                 />
               )}
@@ -735,47 +760,66 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   bubble: {
-    maxWidth: "80%",
-    padding: spacing.lg,
-    borderRadius: 18,
-    marginBottom: spacing.sm,
+    maxWidth: "82%",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: 20,
+    marginBottom: spacing.md,
   },
   typingBubble: {
-    opacity: 0.95,
-    borderColor: "rgba(59,130,246,0.2)",
+    borderColor: "rgba(59,130,246,0.25)",
+    borderLeftWidth: 3,
+  },
+  typingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
   },
   typingText: {
-    fontSize: 14,
-    color: colors.textMuted,
+    fontSize: 15,
+    color: colors.textSecondary,
     fontStyle: "italic",
+  },
+  typingDots: {
+    flexDirection: "row",
+  },
+  typingDot: {
+    fontSize: 15,
+    color: colors.textMuted,
+    opacity: 0.5,
+  },
+  typingDotActive: {
+    color: colors.accent,
+    opacity: 1,
   },
   bubbleLeft: {
     alignSelf: "flex-start",
     backgroundColor: colors.surfaceLevel1,
     borderWidth: 1,
     borderColor: colors.surfaceLevel1Border,
-    borderBottomLeftRadius: 4,
+    borderBottomLeftRadius: 6,
   },
   bubbleCoachMark: {
     borderLeftColor: "rgba(59,130,246,0.5)",
-    borderLeftWidth: 2,
+    borderLeftWidth: 3,
   },
   bubbleRight: {
     alignSelf: "flex-end",
     backgroundColor: colors.accentSoft,
     borderWidth: 1,
-    borderColor: "rgba(59,130,246,0.3)",
-    borderBottomRightRadius: 4,
+    borderColor: "rgba(59,130,246,0.35)",
+    borderBottomRightRadius: 6,
   },
   bubbleText: {
     ...typography.bodySmall,
+    fontSize: 16,
     color: colors.text,
-    lineHeight: 22,
+    lineHeight: 24,
   },
   bubbleTime: {
     ...typography.captionSmall,
     color: colors.textMuted,
-    marginTop: spacing.xs,
+    marginTop: spacing.sm,
   },
 
   inputRow: {
@@ -791,34 +835,38 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    backgroundColor: colors.glass,
-    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceLevel1,
+    borderRadius: 22,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     paddingTop: spacing.md,
-    minHeight: 44,
+    minHeight: 46,
     ...typography.bodySmall,
     fontSize: 16,
     lineHeight: 22,
     color: colors.text,
-    maxHeight: 100,
+    maxHeight: 120,
     borderWidth: 1,
-    borderColor: colors.borderSoft,
+    borderColor: colors.surfaceLevel1Border,
+  },
+  inputDisabled: {
+    opacity: 0.7,
   },
   sendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     backgroundColor: colors.accent,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(59,130,246,0.4)",
+    borderWidth: 0,
   },
   sendBtnDisabled: {
     backgroundColor: colors.surfaceLevel2,
-    borderColor: colors.surfaceLevel1Border,
-    opacity: 0.7,
+    opacity: 0.6,
+  },
+  sendBtnSending: {
+    opacity: 0.9,
   },
 
   emptyContainer: {
@@ -867,13 +915,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     gap: spacing.lg,
+    paddingHorizontal: spacing.xxl,
+  },
+  errorIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.surfaceLevel2,
+    alignItems: "center",
+    justifyContent: "center",
   },
   errorTitle: { ...typography.h2, color: colors.text, textAlign: "center" },
   errorSub: {
     ...typography.bodySmall,
     color: colors.textSecondary,
     textAlign: "center",
-    paddingHorizontal: spacing.xxl,
+    paddingHorizontal: spacing.lg,
   },
   retryBtn: {
     backgroundColor: colors.accent,
@@ -886,12 +943,12 @@ const styles = StyleSheet.create({
   inlineErrorRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.xxl,
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    backgroundColor: colors.surfaceLevel2,
-    borderTopWidth: 1,
-    borderTopColor: colors.surfaceLevel1Border,
+    backgroundColor: colors.surfaceLevel1,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSoft,
   },
   inlineErrorText: {
     flex: 1,
@@ -914,15 +971,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
-    gap: spacing.sm,
+    gap: spacing.md,
     marginTop: spacing.xl,
     paddingHorizontal: spacing.lg,
   },
   starterPromptChip: {
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     backgroundColor: colors.surfaceLevel1,
-    borderRadius: radius.lg,
+    borderRadius: radius.full,
     borderWidth: 1,
     borderColor: colors.surfaceLevel1Border,
   },
@@ -936,6 +993,6 @@ const styles = StyleSheet.create({
   starterPromptText: {
     ...typography.bodySmall,
     color: colors.textSecondary,
-    maxWidth: 200,
+    maxWidth: 220,
   },
 });
