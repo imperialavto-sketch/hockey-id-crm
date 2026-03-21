@@ -22,6 +22,7 @@ import { SkillRadarPreview } from "@/components/player/SkillRadarPreview";
 import { InsightBlock } from "@/components/player/InsightBlock";
 import { CoachSummaryCard } from "@/components/player/CoachSummaryCard";
 import { ActionLinkCard } from "@/components/player/ActionLinkCard";
+import { PrimaryButton, SecondaryButton, GhostButton } from "@/components/ui";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { SectionCard } from "@/components/player-passport";
 import { triggerHaptic } from "@/lib/haptics";
@@ -195,10 +196,10 @@ export default function AICoachReportScreen() {
             <View style={styles.premiumCta}>
               <Text style={styles.premiumCtaLabel}>Preview</Text>
               <Text style={styles.premiumCtaTitle}>
-                Полный AI Report в Pro и Elite
+                Полный отчёт + Coach Mark как персональный тренер — в Pro
               </Text>
               <Text style={styles.premiumCtaSubtitle}>
-                Зоны роста, персональные рекомендации, прогноз развития и skill-карта
+                Зоны роста, рекомендации, прогноз, skill-карта и еженедельные отчёты под вашего игрока
               </Text>
               <Pressable
                 style={({ pressed }) => [
@@ -211,7 +212,7 @@ export default function AICoachReportScreen() {
                 }}
               >
                 <Text style={styles.premiumCtaButtonText}>
-                  Перейти на Pro или Elite
+                  Получить полный доступ
                 </Text>
               </Pressable>
             </View>
@@ -232,7 +233,7 @@ export default function AICoachReportScreen() {
           {!hasAiReportAccess && strengths.length > 2 && (
             <View style={styles.teaser}>
               <Text style={styles.teaserText}>
-                Ещё {strengths.length - 2} сильных сторон — в Pro
+                Ещё {strengths.length - 2} сильных сторон и полный разбор — в Pro
               </Text>
             </View>
           )}
@@ -244,7 +245,7 @@ export default function AICoachReportScreen() {
           {!hasAiReportAccess ? (
             <View style={styles.teaser}>
               <Text style={styles.teaserText}>
-                Детальный анализ слабых сторон и персональные рекомендации доступны в Pro
+                Детальный разбор слабых сторон, что делать и как расти — в Pro
               </Text>
             </View>
           ) : (
@@ -349,42 +350,34 @@ export default function AICoachReportScreen() {
       </Animated.View>
 
       <Animated.View entering={screenReveal(STAGGER * 7)} style={styles.ctaWrap}>
-        <Pressable
-            style={({ pressed }) => [styles.cta, pressed && { opacity: PRESSED_OPACITY }]}
-            onPress={() => {
-              triggerHaptic();
-              handleFindCoach();
-            }}
-          >
-            <Text style={styles.ctaText}>Подобрать тренера</Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [styles.ctaSecondary, pressed && { opacity: PRESSED_OPACITY }]}
-            onPress={() => {
-              triggerHaptic();
-              handleOpenPlan();
-            }}
-          >
-            <Text style={styles.ctaSecondaryText}>Открыть план развития</Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [styles.coachMarkCta, pressed && { opacity: PRESSED_OPACITY }]}
-            onPress={() => {
-              triggerHaptic();
-              const params = new URLSearchParams();
-              if (id) params.set("playerId", id);
-              params.set(
-                "initialMessage",
-                "Давай обсудим анализ прогресса моего ребёнка"
-              );
-              router.push(`/chat/${COACH_MARK_ID}?${params.toString()}`);
-            }}
-          >
-            <Ionicons name="sparkles-outline" size={18} color={colors.accent} />
-            <Text style={styles.coachMarkCtaText}>Обсудить анализ с Coach Mark</Text>
-          </Pressable>
+        <PrimaryButton
+          label="Подобрать тренера"
+          onPress={() => {
+            triggerHaptic();
+            handleFindCoach();
+          }}
+        />
+        <SecondaryButton
+          label="Открыть план развития"
+          onPress={() => {
+            triggerHaptic();
+            handleOpenPlan();
+          }}
+        />
+        <GhostButton
+          label="Обсудить анализ с Coach Mark"
+          leftIcon={<Ionicons name="sparkles-outline" size={18} color={colors.accent} />}
+          onPress={() => {
+            triggerHaptic();
+            const params = new URLSearchParams();
+            if (id) params.set("playerId", id);
+            params.set(
+              "initialMessage",
+              "Давай обсудим анализ прогресса моего ребёнка"
+            );
+            router.push(`/chat/${COACH_MARK_ID}?${params.toString()}`);
+          }}
+        />
 
         <ActionLinkCard
           icon="videocam-outline"
@@ -462,55 +455,6 @@ const styles = StyleSheet.create({
   },
   ctaWrap: {
     gap: spacing.md,
-  },
-  cta: {
-    backgroundColor: colors.accent,
-    borderRadius: 16,
-    paddingVertical: 18,
-    paddingHorizontal: 24,
-    alignItems: "center",
-    shadowColor: colors.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  ctaSecondary: {
-    backgroundColor: colors.surfaceLevel2,
-    borderRadius: radius.lg,
-    paddingVertical: 18,
-    paddingHorizontal: spacing.xxl,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.surfaceLevel2Border,
-  },
-  ctaText: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: colors.bgDeep,
-  },
-  ctaSecondaryText: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: colors.text,
-  },
-  coachMarkCta: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    marginTop: spacing.md,
-    backgroundColor: colors.accentSoft,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: "rgba(59,130,246,0.25)",
-  },
-  coachMarkCtaText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: colors.accent,
   },
   teaser: {
     padding: spacing.xl,

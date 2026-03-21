@@ -11,6 +11,7 @@ export interface ApiPlayer {
   team?: string;
   parentName?: string;
   status?: string;
+  avatarUrl?: string | null;
 }
 
 const CANONICAL_TEST_PLAYER = {
@@ -77,5 +78,6 @@ export function mapApiPlayerToPlayer(api: ApiPlayer): Player {
     status: translateStatus(
       api.status ?? (isCanonicalTestPlayer ? CANONICAL_TEST_PLAYER.status : "active")
     ),
+    avatarUrl: api.avatarUrl ?? null,
   };
 }

@@ -8,4 +8,6 @@ export interface Player {
   number: number;
   parentName: string;
   status: string;
+  /** Photo URL from API. null/empty = use placeholder. */
+  avatarUrl?: string | null;
 }

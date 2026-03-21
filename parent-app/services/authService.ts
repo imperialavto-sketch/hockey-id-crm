@@ -87,6 +87,7 @@ export async function requestLoginCode(phone: string): Promise<void> {
     const res = await apiFetch<{ ok?: boolean }>(path, {
       method: "POST",
       body: JSON.stringify({ phone: normalized }),
+      timeoutMs: 30000, // Render cold start ~25s; default 5s too short
     });
     if (__DEV__) {
       console.log("[authService] requestLoginCode AFTER RESPONSE", {
@@ -154,6 +155,7 @@ export async function verifyLoginCode(phone: string, code: string): Promise<Veri
     const res = await apiFetch<VerifyLoginResponse>(path, {
       method: "POST",
       body: JSON.stringify(requestBody),
+      timeoutMs: 30000, // Render cold start ~25s; default 5s too short
     });
     if (__DEV__) {
       console.log("[authService] verifyLoginCode AFTER RESPONSE", {

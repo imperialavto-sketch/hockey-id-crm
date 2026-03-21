@@ -59,7 +59,7 @@ function parseStoredUser(raw: string | null): ParentUser | null {
         } as ParentUser;
       }
 
-      if ("email" in parsed && typeof parsed.id !== "undefined") {
+      if ("email" in parsed && typeof parsed.id !== "undefined" && typeof parsed.email === "string") {
         return parentToUser({
           id: Number(parsed.id),
           email: parsed.email,

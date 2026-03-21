@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
+import { Ionicons } from "@expo/vector-icons";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -9,8 +10,7 @@ import Animated, {
   withSpring,
   Easing,
 } from "react-native-reanimated";
-import { Calendar, MapPin, User } from "lucide-react-native";
-import { colors, spacing, radius } from "@/constants/theme";
+import { colors, spacing, radius, typography } from "@/constants/theme";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -61,8 +61,8 @@ export function TrainingCard({
         <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
         <LinearGradient
           colors={[
-            "rgba(37, 99, 235, 0.2)",
-            "rgba(37, 99, 235, 0.05)",
+            colors.accentSoft,
+            "rgba(59,130,246,0.06)",
             "transparent",
           ]}
           start={{ x: 0, y: 0 }}
@@ -73,21 +73,21 @@ export function TrainingCard({
         <View style={styles.content}>
           <View style={styles.avatar}>
             <LinearGradient
-              colors={["rgba(255,255,255,0.15)", "rgba(255,255,255,0.05)"]}
+              colors={[colors.surfaceLevel2, colors.surfaceLevel1]}
               style={StyleSheet.absoluteFill}
             />
-            <User size={24} color={colors.textSecondary} strokeWidth={2} />
+            <Ionicons name="person-outline" size={24} color={colors.textSecondary} />
           </View>
           <View style={styles.main}>
             <Text style={styles.title}>{title}</Text>
             <Text style={styles.coach}>{coach}</Text>
             <View style={styles.details}>
               <View style={styles.row}>
-                <Calendar size={14} color={colors.textSecondary} strokeWidth={2} />
+                <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
                 <Text style={styles.detailText}>{date} · {time}</Text>
               </View>
               <View style={styles.row}>
-                <MapPin size={14} color={colors.textSecondary} strokeWidth={2} />
+                <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
                 <Text style={styles.detailText}>{location}</Text>
               </View>
             </View>
@@ -98,7 +98,7 @@ export function TrainingCard({
               style={[styles.cta, buttonStyle]}
             >
               <LinearGradient
-                colors={[colors.primary, "#1d4ed8"]}
+                colors={[colors.accent, colors.accentSecondary]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.ctaInner}
@@ -120,19 +120,19 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   card: {
-    borderRadius: radius.xl,
+    borderRadius: radius.lg,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: colors.surfaceLevel1Border,
   },
-  accent: { borderRadius: radius.xl },
+  accent: { borderRadius: radius.lg },
   topLine: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     height: 1,
-    backgroundColor: "rgba(37, 99, 235, 0.4)",
+    backgroundColor: "rgba(59,130,246,0.35)",
   },
   content: {
     flexDirection: "row",
@@ -151,12 +151,12 @@ const styles = StyleSheet.create({
   },
   main: { flex: 1 },
   title: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: colors.textPrimary,
-    marginBottom: 6,
+    ...typography.cardTitle,
+    color: colors.text,
+    marginBottom: spacing.sm,
   },
   coach: {
+    ...typography.bodySmall,
     fontSize: 14,
     fontWeight: "600",
     color: colors.textSecondary,
@@ -174,11 +174,11 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   cta: {
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
     overflow: "hidden",
     alignSelf: "flex-start",
     borderWidth: 1,
-    borderColor: "rgba(37, 99, 235, 0.5)",
+    borderColor: "rgba(59,130,246,0.4)",
   },
   ctaInner: {
     paddingHorizontal: spacing.xl,
@@ -196,8 +196,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.2)",
   },
   ctaText: {
+    ...typography.bodySmall,
     fontSize: 15,
     fontWeight: "700",
-    color: "#ffffff",
+    color: colors.onAccent,
   },
 });

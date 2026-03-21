@@ -1,10 +1,10 @@
 import React from "react";
-import { View, Text, Pressable, StyleSheet, type ViewStyle } from "react-native";
+import { View, Text, StyleSheet, type ViewStyle } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, spacing, radius, typography } from "@/constants/theme";
+import { colors, spacing, typography } from "@/constants/theme";
 import { triggerHaptic } from "@/lib/haptics";
-
-const PRESSED_OPACITY = 0.88;
+import { PrimaryButton } from "./PrimaryButton";
+import { GhostButton } from "./GhostButton";
 
 const VARIANT_DEFAULTS = {
   network: {
@@ -93,24 +93,10 @@ export function ErrorStateView({
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.subtitle}>{subtitle}</Text>
       {onAction != null && (
-        <Pressable
-          style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: PRESSED_OPACITY }]}
-          onPress={handlePrimary}
-          accessibilityRole="button"
-          accessibilityLabel={actionAccessibilityLabel ?? actionLabel}
-        >
-          <Text style={styles.primaryBtnText}>{actionLabel}</Text>
-        </Pressable>
+        <PrimaryButton label={actionLabel} onPress={handlePrimary} />
       )}
       {secondaryActionLabel != null && onSecondaryAction != null && (
-        <Pressable
-          style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: PRESSED_OPACITY }]}
-          onPress={handleSecondary}
-          accessibilityRole="button"
-          accessibilityLabel={secondaryActionLabel}
-        >
-          <Text style={styles.secondaryBtnText}>{secondaryActionLabel}</Text>
-        </Pressable>
+        <GhostButton label={secondaryActionLabel} onPress={handleSecondary} />
       )}
     </View>
   );
@@ -146,26 +132,5 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 22,
     maxWidth: 280,
-  },
-  primaryBtn: {
-    backgroundColor: colors.accent,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: radius.sm,
-    marginTop: spacing.sm,
-  },
-  primaryBtnText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#ffffff",
-  },
-  secondaryBtn: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-  },
-  secondaryBtnText: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    fontWeight: "600",
   },
 });

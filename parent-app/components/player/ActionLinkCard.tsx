@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -6,7 +6,7 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
-import { colors } from "@/constants/theme";
+import { colors, radius, spacing, typography } from "@/constants/theme";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -40,7 +40,7 @@ export interface ActionLinkCardProps {
   variant?: ActionLinkVariant;
 }
 
-export function ActionLinkCard({
+export const ActionLinkCard = memo(function ActionLinkCard({
   icon,
   title,
   description,
@@ -68,33 +68,33 @@ export function ActionLinkCard({
       onPressOut={() => { scale.value = withSpring(1); }}
     >
       <View style={[styles.iconWrap, iconWrapStyle]}>
-        <Ionicons name={icon} size={26} color={colors.accent} />
+        <Ionicons name={icon} size={24} color={colors.accent} />
       </View>
       <View style={styles.textWrap}>
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.description}>{description}</Text>
       </View>
-      <Ionicons name="chevron-forward" size={22} color="rgba(255,255,255,0.5)" />
+      <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
     </AnimatedPressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 20,
-    padding: 18,
-    marginBottom: 16,
-    borderWidth: 1.5,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    marginBottom: spacing.xl,
+    borderWidth: 1,
   },
   iconWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
+    width: 48,
+    height: 48,
+    borderRadius: radius.sm,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 16,
+    marginRight: spacing.lg,
   },
   iconWrapDefault: {
     backgroundColor: colors.accentSoft,
@@ -105,15 +105,15 @@ const styles = StyleSheet.create({
   iconWrapSuccess: {
     backgroundColor: "rgba(34,197,94,0.18)",
   },
-  textWrap: { flex: 1 },
+  textWrap: { flex: 1, minWidth: 0 },
   title: {
+    ...typography.cardTitle,
     fontSize: 16,
-    fontWeight: "700",
-    color: "#ffffff",
+    color: colors.text,
   },
   description: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.6)",
-    marginTop: 2,
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
   },
 });

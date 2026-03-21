@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, radius, spacing, typography } from "@/constants/theme";
+import { colors, radius, spacing, typography, feedback } from "@/constants/theme";
 
 export function AnalysisEmptyState({ onPress }: { onPress: () => void }) {
   return (
@@ -12,7 +12,7 @@ export function AnalysisEmptyState({ onPress }: { onPress: () => void }) {
       <Text style={styles.title}>
         Загрузите короткий игровой эпизод, чтобы получить AI-анализ
       </Text>
-      <Pressable style={({ pressed }) => [styles.btn, pressed && { opacity: 0.88 }]} onPress={onPress}>
+      <Pressable style={({ pressed }) => [styles.btn, pressed && { opacity: feedback.pressedOpacity }]} onPress={onPress}>
         <Text style={styles.btnText}>Выбрать видео</Text>
       </Pressable>
     </View>
@@ -40,10 +40,10 @@ const styles = StyleSheet.create({
   btn: {
     height: 48,
     paddingHorizontal: spacing.xl,
-    borderRadius: 14,
+    borderRadius: radius.sm,
     backgroundColor: colors.accent,
     alignItems: "center",
     justifyContent: "center",
   },
-  btnText: { fontSize: 16, fontWeight: "600", color: "#ffffff" },
+  btnText: { fontSize: 16, fontWeight: "600", color: colors.onAccent },
 });

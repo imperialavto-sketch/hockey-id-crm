@@ -1,6 +1,6 @@
-import React from "react";
+import React, { memo } from "react";
 import { View, Text, Image, StyleSheet } from "react-native";
-import { colors } from "@/constants/theme";
+import { colors, spacing, typography, radius, radii } from "@/constants/theme";
 import type { TeamMessage } from "@/types/team";
 
 function formatTime(iso: string): string {
@@ -13,7 +13,10 @@ interface TeamChatMessageProps {
   isCurrentUser?: boolean;
 }
 
-export function TeamChatMessage({ message, isCurrentUser }: TeamChatMessageProps) {
+export const TeamChatMessage = memo(function TeamChatMessage({
+  message,
+  isCurrentUser,
+}: TeamChatMessageProps) {
   const isCoach = message.authorRole === "coach" || message.authorRole === "assistant_coach";
   const isSystem = message.type === "system";
 
@@ -61,70 +64,73 @@ export function TeamChatMessage({ message, isCurrentUser }: TeamChatMessageProps
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrap: {
     alignSelf: "flex-start",
     maxWidth: "85%",
-    marginHorizontal: 20,
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   wrapRight: {
     alignSelf: "flex-end",
   },
   bubble: {
-    backgroundColor: "rgba(255,255,255,0.1)",
-    borderRadius: 18,
-    borderBottomLeftRadius: 4,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    backgroundColor: colors.surfaceLevel1,
+    borderRadius: radius.lg,
+    borderBottomLeftRadius: radii.xs,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: colors.surfaceLevel1Border,
   },
   bubbleCoach: {
     backgroundColor: colors.accentSoft,
-    borderColor: colors.border,
+    borderColor: "rgba(59,130,246,0.25)",
   },
   bubbleRight: {
     backgroundColor: colors.accentSoft,
-    borderColor: colors.border,
-    borderBottomLeftRadius: 18,
-    borderBottomRightRadius: 4,
+    borderColor: "rgba(59,130,246,0.25)",
+    borderBottomLeftRadius: radius.lg,
+    borderBottomRightRadius: radii.xs,
   },
   authorName: {
+    ...typography.captionSmall,
     fontSize: 12,
     fontWeight: "700",
     color: colors.accent,
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
   text: {
+    ...typography.bodySmall,
     fontSize: 15,
-    color: "#E2E8F0",
+    color: colors.textSecondary,
     lineHeight: 22,
   },
   textCoach: {
-    color: "#F8FAFC",
+    color: colors.text,
   },
   time: {
+    ...typography.captionSmall,
     fontSize: 11,
-    color: "#64748B",
-    marginTop: 6,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
   },
   image: {
     width: 200,
     height: 150,
-    borderRadius: 12,
-    marginVertical: 8,
+    borderRadius: radius.sm,
+    marginVertical: spacing.sm,
   },
   systemWrap: {
     alignSelf: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
   },
   systemText: {
+    ...typography.captionSmall,
     fontSize: 13,
-    color: "#64748B",
+    color: colors.textMuted,
     fontStyle: "italic",
   },
 });

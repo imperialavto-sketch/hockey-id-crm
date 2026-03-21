@@ -1,11 +1,12 @@
 import React from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
 import Animated from "react-native-reanimated";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { SectionCard } from "@/components/player-passport";
+import { PrimaryButton, SecondaryButton, GhostButton } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
 import { colors, spacing, typography, radius } from "@/constants/theme";
@@ -112,46 +113,22 @@ export default function BookingSuccessScreen() {
         </Animated.View>
 
         <Animated.View entering={screenReveal(STAGGER * 2)} style={styles.ctaWrap}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.ctaPrimary,
-              pressed && { opacity: PRESSED_OPACITY },
-            ]}
+          <PrimaryButton
+            label="Мои бронирования"
             onPress={() => goTo("/bookings")}
-          >
-            <Ionicons name="calendar" size={22} color={colors.bgDeep} />
-            <Text style={styles.ctaPrimaryText}>Мои бронирования</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [
-              styles.ctaSecondary,
-              pressed && { opacity: PRESSED_OPACITY },
-            ]}
+          />
+          <SecondaryButton
+            label="На главную"
             onPress={() => goTo("/(tabs)")}
-          >
-            <Ionicons name="home-outline" size={20} color={colors.text} />
-            <Text style={styles.ctaSecondaryText}>На главную</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [
-              styles.ctaSecondary,
-              pressed && { opacity: PRESSED_OPACITY },
-            ]}
-            onPress={() => goTo("/(tabs)/profile")}
-          >
-            <Ionicons name="person-outline" size={20} color={colors.text} />
-            <Text style={styles.ctaSecondaryText}>В профиль</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [
-              styles.ctaTertiary,
-              pressed && { opacity: PRESSED_OPACITY },
-            ]}
+          />
+          <SecondaryButton
+            label="В профиль"
+            onPress={() => goTo("/(tabs)/more")}
+          />
+          <GhostButton
+            label="Найти ещё тренера"
             onPress={() => goTo("/marketplace/coaches")}
-          >
-            <Ionicons name="search-outline" size={20} color={colors.textSecondary} />
-            <Text style={styles.ctaTertiaryText}>Найти ещё тренера</Text>
-          </Pressable>
+          />
         </Animated.View>
       </View>
     </FlagshipScreen>
@@ -253,50 +230,5 @@ const styles = StyleSheet.create({
 
   ctaWrap: {
     gap: spacing.lg,
-  },
-  ctaPrimary: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    backgroundColor: colors.accent,
-    borderRadius: radius.sm,
-    paddingVertical: spacing.lg,
-  },
-  ctaSecondary: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    backgroundColor: colors.surfaceLevel1,
-    borderRadius: radius.sm,
-    paddingVertical: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.surfaceLevel1Border,
-  },
-  ctaTertiary: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: radius.sm,
-  },
-  ctaPrimaryText: {
-    ...typography.body,
-    fontWeight: "800",
-    color: colors.bgDeep,
-  },
-  ctaSecondaryText: {
-    ...typography.body,
-    fontWeight: "700",
-    color: colors.text,
-  },
-  ctaTertiaryText: {
-    ...typography.body,
-    fontWeight: "600",
-    color: colors.textSecondary,
   },
 });

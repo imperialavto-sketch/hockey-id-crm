@@ -30,7 +30,12 @@ export function getHeroProps(
     team: player.team ?? "—",
     number: player.number ?? "—",
     position: player.position ?? "—",
-    photo: isDemo ? { uri: DEMO_PLAYER.image } : null,
+    photo: (() => {
+      const url = player.avatarUrl?.trim();
+      if (url) return { uri: url };
+      if (isDemo) return { uri: DEMO_PLAYER.image };
+      return null;
+    })(),
     stats: {
       games: stats?.games?.toString() ?? "—",
       goals: stats?.goals?.toString() ?? "—",
@@ -67,6 +72,7 @@ export function getQuickStats(
     { value: String(stats?.assists ?? "—"), label: "Передачи" },
     { value: String(stats?.points ?? "—"), label: "Очки", accent: true },
   ];
+  // Extended stats only for canonical demo (API has no plusMinus/ppg)
   if (isDemo && DEMO_PLAYER.extendedStats) {
     items.push(
       { value: DEMO_PLAYER.extendedStats.plusMinus, label: "+/−" },

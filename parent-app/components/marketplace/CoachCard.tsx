@@ -1,5 +1,5 @@
 import React from "react";
-import { colors, spacing } from "@/constants/theme";
+import { colors, spacing, radius, typography } from "@/constants/theme";
 import { View, Text, Image, Pressable, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
@@ -103,22 +103,22 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.88 },
   card: {
-    padding: 16,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: 20,
+    padding: spacing.lg,
+    backgroundColor: colors.surfaceLevel1,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
+    borderColor: colors.surfaceLevel1Border,
   },
   top: {
     flexDirection: "row",
     alignItems: "flex-start",
   },
   avatarWrap: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: colors.surfaceLevel2,
   },
   avatar: {
     width: "100%",
@@ -148,46 +148,46 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   name: {
-    fontSize: 17,
-    fontWeight: "700",
+    ...typography.cardTitle,
     color: colors.text,
-    marginBottom: 2,
+    marginBottom: spacing.xs,
   },
   spec: {
+    ...typography.bodySmall,
     fontSize: 14,
     color: colors.textSecondary,
-    fontWeight: "500",
-    marginBottom: 2,
+    marginBottom: spacing.xs,
   },
   city: {
-    fontSize: 12,
+    ...typography.captionSmall,
     color: colors.textMuted,
-    marginBottom: 6,
+    marginBottom: spacing.sm,
   },
   desc: {
-    fontSize: 13,
+    ...typography.caption,
     color: colors.textMuted,
     lineHeight: 18,
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   meta: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: spacing.md,
   },
   ctaRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
-    marginTop: 10,
-    paddingTop: 10,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
-    gap: 4,
-    minHeight: 36,
+    borderTopColor: colors.surfaceLevel1Border,
+    gap: spacing.xs,
+    minHeight: 40,
   },
   ctaText: {
-    fontSize: 13,
+    ...typography.bodySmall,
+    fontSize: 14,
     fontWeight: "600",
     color: colors.accent,
   },

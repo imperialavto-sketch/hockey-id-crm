@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { View, Text, TextInput, StyleSheet, Alert, Pressable } from "react-native";
+import { View, Text, Pressable, StyleSheet, Alert } from "react-native";
 import Animated from "react-native-reanimated";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -13,9 +13,10 @@ import { SelectedVideoPreview } from "@/components/video-analysis/SelectedVideoP
 import { UploadProgressCard } from "@/components/video-analysis/UploadProgressCard";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { SectionCard } from "@/components/player-passport";
+import { Input, PrimaryButton } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
-import { colors, radii, spacing, typography } from "@/constants/theme";
+import { colors, spacing, typography } from "@/constants/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PLAYER_MARK_GOLYSH } from "@/constants/mockPlayerMarkGolysh";
 
@@ -173,21 +174,19 @@ export default function UploadVideoScreen() {
           <Animated.View entering={screenReveal(STAGGER * 4)}>
             <SectionCard title="Описание" style={styles.formCard}>
               <Text style={styles.label}>Название (опционально)</Text>
-              <TextInput
+              <Input
                 value={title}
                 onChangeText={setTitle}
                 placeholder="Бросок / Катание / Игровой момент"
-                placeholderTextColor={colors.textMuted}
-                style={styles.input}
+                style={styles.inputSpacing}
               />
               <Text style={styles.label}>Комментарий (опционально)</Text>
-              <TextInput
+              <Input
                 value={description}
                 onChangeText={setDescription}
                 placeholder="Что хотите проверить в этом эпизоде?"
-                placeholderTextColor={colors.textMuted}
-                style={[styles.input, styles.textArea]}
                 multiline
+                style={styles.inputSpacing}
               />
             </SectionCard>
           </Animated.View>
@@ -209,20 +208,12 @@ export default function UploadVideoScreen() {
         </Animated.View>
       )}
 
-      <Animated.View entering={screenReveal(STAGGER * 6)}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.uploadBtn,
-            pressed && { opacity: PRESSED_OPACITY },
-            (uploading || !video || !!validationError) && styles.uploadBtnDisabled,
-          ]}
+      <Animated.View entering={screenReveal(STAGGER * 6)} style={styles.uploadWrap}>
+        <PrimaryButton
+          label={uploading ? "Загрузка..." : "Загрузить на анализ"}
           onPress={handleUpload}
           disabled={uploading || !video || !!validationError}
-        >
-          <Text style={styles.uploadBtnText}>
-            {uploading ? "Загрузка..." : "Загрузить на анализ"}
-          </Text>
-        </Pressable>
+        />
       </Animated.View>
     </FlagshipScreen>
   );
@@ -249,36 +240,18 @@ const styles = StyleSheet.create({
   headerBtn: { width: 40, height: 40 },
   formCard: { marginBottom: spacing.xl },
   label: { ...typography.caption, color: colors.textSecondary, marginBottom: spacing.sm },
-  input: {
-    borderRadius: radii.sm,
-    backgroundColor: colors.glassLight,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    ...typography.body,
-    color: colors.text,
-    marginBottom: spacing.lg,
-  },
-  textArea: { minHeight: 80, textAlignVertical: "top" },
+  inputSpacing: { marginBottom: spacing.lg },
   errorCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
     marginBottom: spacing.lg,
     padding: spacing.md,
-    borderRadius: radii.sm,
+    borderRadius: 14,
     backgroundColor: colors.errorSoft,
     borderWidth: 1,
     borderColor: colors.error,
   },
   errorText: { ...typography.body, color: colors.error, fontWeight: "600", flex: 1 },
-  uploadBtn: {
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: spacing.md,
-  },
-  uploadBtnDisabled: { opacity: 0.5 },
-  uploadBtnText: { fontSize: 16, fontWeight: "600", color: "#ffffff" },
+  uploadWrap: { marginTop: spacing.md },
 });

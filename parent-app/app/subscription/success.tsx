@@ -109,7 +109,7 @@ export default function SubscriptionSuccessScreen() {
               onPress={() => {
                 triggerHaptic();
                 if (confirmationState === "confirmed") {
-                  router.replace("/(tabs)/profile");
+                  router.replace("/(tabs)/more");
                   return;
                 }
                 verifySubscription();

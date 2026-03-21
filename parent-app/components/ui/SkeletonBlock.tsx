@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { StyleSheet, type ViewStyle } from "react-native";
+import { StyleSheet, type StyleProp, type ViewStyle } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -10,9 +10,9 @@ import Animated, {
 
 export interface SkeletonBlockProps {
   height: number;
-  width?: number | string;
+  width?: number | `${number}%`;
   borderRadius?: number;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }
 
 /**
@@ -36,18 +36,15 @@ export function SkeletonBlock({
 
   const animStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
 
+  const baseStyle: ViewStyle = {
+    height,
+    width: width as ViewStyle["width"],
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius,
+  };
   return (
     <Animated.View
-      style={[
-        {
-          height,
-          width,
-          backgroundColor: "rgba(255,255,255,0.08)",
-          borderRadius,
-        },
-        style,
-        animStyle,
-      ]}
+      style={[baseStyle, style, animStyle]}
     />
   );
 }

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { View, FlatList, StyleSheet, Text, Pressable } from "react-native";
+import { View, FlatList, StyleSheet, Text } from "react-native";
 import Animated from "react-native-reanimated";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -12,14 +12,14 @@ import { CoachFilters } from "@/components/marketplace/CoachFilters";
 import { CoachCard } from "@/components/marketplace/CoachCard";
 import { RecommendedCoachCard } from "@/components/marketplace/RecommendedCoachCard";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
-import { SkeletonBlock } from "@/components/ui";
+import { SkeletonBlock, PrimaryButton, ErrorStateView, EmptyStateView } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
+import { ScreenHeader } from "@/components/navigation/ScreenHeader";
 import { colors, spacing, typography, radius } from "@/constants/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const TOP_RECOMMENDED = 3;
-const PRESSED_OPACITY = 0.88;
 
 function CoachesSkeleton() {
   return (
@@ -145,21 +145,13 @@ export default function CoachesMarketplaceScreen() {
   };
 
   const header = (
-    <View style={[styles.customHeader, { paddingTop: insets.top + spacing.lg }]}>
-      <Pressable
-        style={({ pressed }) => [styles.backBtn, pressed && { opacity: PRESSED_OPACITY }]}
-        onPress={() => {
-          triggerHaptic();
-          router.back();
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Назад"
-      >
-        <Ionicons name="arrow-back" size={24} color="#ffffff" />
-      </Pressable>
-      <Text style={styles.headerTitle}>Тренеры</Text>
-      <View style={styles.headerBtn} />
-    </View>
+    <ScreenHeader
+      title="Тренеры"
+      onBack={() => {
+        triggerHaptic();
+        router.back();
+      }}
+    />
   );
 
   const listBottomPadding = spacing.xxl + insets.bottom;
@@ -177,22 +169,13 @@ export default function CoachesMarketplaceScreen() {
   if (error) {
     return (
       <FlagshipScreen header={header} scroll={false}>
-        <View style={styles.errorContainer}>
-          <Ionicons name="cloud-offline-outline" size={48} color={colors.textMuted} />
-          <Text style={styles.errorTitle}>Не удалось загрузить тренеров</Text>
-          <Text style={styles.errorSub}>
-            Проверьте подключение и попробуйте снова
-          </Text>
-          <Pressable
-            style={({ pressed }) => [styles.retryBtn, pressed && { opacity: PRESSED_OPACITY }]}
-            onPress={() => {
-              triggerHaptic();
-              loadCoaches();
-            }}
-          >
-            <Text style={styles.retryBtnText}>Повторить</Text>
-          </Pressable>
-        </View>
+        <ErrorStateView
+          variant="network"
+          title="Не удалось загрузить тренеров"
+          subtitle="Проверьте подключение и попробуйте снова"
+          onAction={loadCoaches}
+          style={styles.errorWrap}
+        />
       </FlagshipScreen>
     );
   }
@@ -237,18 +220,17 @@ export default function CoachesMarketplaceScreen() {
     </>
   );
 
-  const ListEmpty = () => (
-    <View style={styles.emptyWrap}>
-      <Ionicons name="people-outline" size={48} color={colors.textMuted} />
-      <Text style={styles.emptyTitle}>
-        {coaches.length === 0 ? "Нет тренеров" : "Нет тренеров по фильтру"}
-      </Text>
-      <Text style={styles.emptySub}>
-        {coaches.length === 0
+  const listEmpty = (
+    <EmptyStateView
+      icon="people-outline"
+      title={coaches.length === 0 ? "Нет тренеров" : "Нет тренеров по фильтру"}
+      subtitle={
+        coaches.length === 0
           ? "Тренеры появятся в разделе позже"
-          : "Попробуйте изменить фильтр выше"}
-      </Text>
-    </View>
+          : "Попробуйте изменить фильтр выше"
+      }
+      style={styles.emptyWrap}
+    />
   );
 
   return (
@@ -257,7 +239,7 @@ export default function CoachesMarketplaceScreen() {
         data={filteredCoaches}
         keyExtractor={(item) => item.id}
         ListHeaderComponent={<ListHeader />}
-        ListEmptyComponent={filteredCoaches.length === 0 ? <ListEmpty /> : null}
+        ListEmptyComponent={filteredCoaches.length === 0 ? listEmpty : null}
         contentContainerStyle={[
           styles.list,
           {
@@ -292,25 +274,6 @@ export default function CoachesMarketplaceScreen() {
 }
 
 const styles = StyleSheet.create({
-  customHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.screenPadding,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: -8,
-  },
-  headerTitle: { fontSize: 18, fontWeight: "700", lineHeight: 22, color: "#ffffff" },
-  headerBtn: { width: 40, height: 40 },
-
   paddedContent: {
     flex: 1,
     paddingHorizontal: spacing.screenPadding,
@@ -318,30 +281,9 @@ const styles = StyleSheet.create({
   skeletonContent: { gap: spacing.xl, paddingTop: spacing.sm },
   skeletonHero: { borderRadius: radius.lg, marginBottom: spacing.sm },
   skeletonFilters: { borderRadius: 14, marginBottom: spacing.sm },
-  skeletonCard: { borderRadius: 20 },
+  skeletonCard: { borderRadius: radius.lg },
 
-  errorContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: spacing.lg,
-  },
-  errorTitle: { ...typography.h2, color: colors.text, textAlign: "center" },
-  errorSub: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    textAlign: "center",
-    paddingHorizontal: spacing.xxl,
-    marginBottom: spacing.lg,
-  },
-  retryBtn: {
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xxl,
-    borderRadius: 14,
-  },
-  retryBtnText: { fontSize: 16, fontWeight: "600", color: colors.onAccent },
-
+  errorWrap: { flex: 1 },
   aiSection: { marginBottom: spacing.xl },
   aiSectionGlass: {
     backgroundColor: "rgba(255,255,255,0.05)",
@@ -370,22 +312,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.screenPadding,
     paddingTop: spacing.sm,
   },
-  emptyWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 60,
-    paddingHorizontal: spacing.xxl,
-  },
-  emptyTitle: {
-    ...typography.h2,
-    color: colors.text,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-  },
-  emptySub: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    textAlign: "center",
-  },
+  emptyWrap: { flex: 1, justifyContent: "center" },
 });

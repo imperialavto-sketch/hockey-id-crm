@@ -1,11 +1,9 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, radius, radii, spacing, typography } from "@/constants/theme";
+import { colors, radius, radii, spacing, typography, feedback } from "@/constants/theme";
 import { triggerHaptic } from "@/lib/haptics";
 import type { TeamPost } from "@/types/team";
-
-const PRESSED_OPACITY = 0.88;
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -47,7 +45,7 @@ export function CoachAnnouncementCard({ post, onPress, embedded }: CoachAnnounce
   if (onPress) {
     return (
       <Pressable
-        style={({ pressed }) => [...cardStyle, pressed && { opacity: PRESSED_OPACITY }]}
+        style={({ pressed }) => [...cardStyle, pressed && { opacity: feedback.pressedOpacity }]}
         onPress={handlePress}
       >
         {cardContent}
@@ -96,7 +94,7 @@ const styles = StyleSheet.create({
   },
   text: {
     ...typography.body,
-    color: colors.text,
+    color: colors.textPrimary,
     lineHeight: 24,
     fontStyle: "italic",
   },

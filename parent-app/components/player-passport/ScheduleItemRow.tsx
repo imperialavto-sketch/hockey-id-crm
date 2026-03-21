@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { colors, spacing, typography } from "@/constants/theme";
 
@@ -10,7 +11,7 @@ interface ScheduleItemRowProps {
   muted?: boolean;
 }
 
-export function ScheduleItemRow({ day, title, time, isLast, muted }: ScheduleItemRowProps) {
+export const ScheduleItemRow = memo(function ScheduleItemRow({ day, title, time, isLast, muted }: ScheduleItemRowProps) {
   return (
     <View style={[styles.row, isLast && styles.rowLast, muted && styles.rowMuted]}>
       <Text style={[styles.day, muted && styles.dayMuted]}>{day}</Text>
@@ -20,25 +21,25 @@ export function ScheduleItemRow({ day, title, time, isLast, muted }: ScheduleIte
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 14,
+    paddingVertical: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255, 255, 255, 0.06)",
+    borderBottomColor: colors.surfaceLevel1Border,
   },
   rowLast: {
     borderBottomWidth: 0,
   },
   rowMuted: { opacity: 0.85 },
   day: {
-    ...typography.body,
+    ...typography.bodySmall,
     fontWeight: "600",
     color: colors.text,
-    width: 80,
+    width: 76,
   },
   dayMuted: { color: colors.textSecondary },
   detail: {

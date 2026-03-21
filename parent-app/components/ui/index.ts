@@ -9,6 +9,8 @@ export { PrimaryButton } from "./PrimaryButton";
 export { SecondaryButton } from "./SecondaryButton";
 export { GhostButton } from "./GhostButton";
 export { DangerButton } from "./DangerButton";
+export { Input } from "./Input";
+export { FormRow } from "./FormRow";
 export { EmptyState } from "./EmptyState";
 export { ErrorStateView } from "./ErrorStateView";
 export type { ErrorStateViewProps, ErrorStateVariant } from "./ErrorStateView";

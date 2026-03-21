@@ -8,6 +8,7 @@ import { TRAINING_PACKAGES } from "@/constants/mockPackages";
 import { PackageCard } from "@/components/subscription/PackageCard";
 import { useSubscription } from "@/context/SubscriptionContext";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
+import { EmptyStateView } from "@/components/ui";
 import { triggerHaptic } from "@/lib/haptics";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { colors, radius, spacing, typography } from "@/constants/theme";
@@ -69,12 +70,12 @@ export default function PackagesScreen() {
           ))}
         </View>
       ) : (
-        <Animated.View entering={screenReveal(STAGGER)} style={styles.emptyWrap}>
-          <View style={styles.emptyIconWrap}>
-            <Ionicons name="cube-outline" size={36} color={colors.textMuted} />
-          </View>
-          <Text style={styles.emptyText}>Пакеты временно недоступны</Text>
-          <Text style={styles.emptySub}>Попробуйте позже</Text>
+        <Animated.View entering={screenReveal(STAGGER)}>
+          <EmptyStateView
+            icon="cube-outline"
+            title="Пакеты временно недоступны"
+            subtitle="Попробуйте позже"
+          />
         </Animated.View>
       )}
     </FlagshipScreen>
@@ -113,29 +114,5 @@ const styles = StyleSheet.create({
   },
   cardWrap: {
     marginBottom: spacing.lg,
-  },
-  emptyWrap: {
-    paddingVertical: spacing.xxl,
-    alignItems: "center",
-    marginBottom: spacing.xxl,
-  },
-  emptyIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surfaceLevel1,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing.lg,
-  },
-  emptyText: {
-    ...typography.body,
-    fontWeight: "600",
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  emptySub: {
-    ...typography.caption,
-    color: colors.textMuted,
   },
 });

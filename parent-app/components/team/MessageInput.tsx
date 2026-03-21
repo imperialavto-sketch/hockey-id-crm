@@ -1,41 +1,53 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { View, TextInput, Pressable, StyleSheet } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Send } from "lucide-react-native";
-import { colors, radii, spacing, typography } from "@/constants/theme";
+import { colors, spacing, inputStyles } from "@/constants/theme";
+import { triggerHaptic } from "@/lib/haptics";
 
 interface MessageInputProps {
   onSend: (text: string) => void;
   placeholder?: string;
 }
 
+const PRESSED_OPACITY = 0.9;
+
 export function MessageInput({
   onSend,
   placeholder = "Сообщение...",
 }: MessageInputProps) {
   const [text, setText] = useState("");
+  const insets = useSafeAreaInsets();
 
-  const handleSend = () => {
+  const handleSend = useCallback(() => {
     const trimmed = text.trim();
     if (trimmed) {
+      triggerHaptic();
       onSend(trimmed);
       setText("");
     }
-  };
+  }, [text, onSend]);
+
+  const wrapStyle = [styles.wrap, { paddingBottom: insets.bottom + spacing.lg }];
 
   return (
-    <View style={styles.wrap}>
+    <View style={wrapStyle}>
       <TextInput
         style={styles.input}
         value={text}
         onChangeText={setText}
         placeholder={placeholder}
-        placeholderTextColor={colors.textMuted}
+        placeholderTextColor={inputStyles.placeholderColor}
         multiline
         maxLength={500}
         onSubmitEditing={handleSend}
       />
       <Pressable
-        style={({ pressed }) => [styles.sendBtn, pressed && styles.sendBtnPressed]}
+        style={({ pressed }) => [
+          styles.sendBtn,
+          pressed && styles.sendBtnPressed,
+          !text.trim() && styles.sendBtnDisabled,
+        ]}
         onPress={handleSend}
         disabled={!text.trim()}
         accessibilityRole="button"
@@ -51,32 +63,42 @@ const styles = StyleSheet.create({
   wrap: {
     flexDirection: "row",
     alignItems: "flex-end",
-    padding: spacing[16],
-    paddingBottom: spacing[24],
-    backgroundColor: "rgba(10,20,40,0.65)",
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    backgroundColor: colors.bgDeep,
     borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
-    gap: spacing[12],
+    borderTopColor: colors.surfaceLevel1Border,
+    gap: spacing.md,
   },
   input: {
     flex: 1,
-    backgroundColor: "rgba(10,20,40,0.65)",
-    borderRadius: radii.lg,
-    paddingHorizontal: spacing[16],
-    paddingVertical: spacing[12],
-    ...typography.body,
-    color: colors.text,
+    backgroundColor: inputStyles.backgroundColor,
+    borderRadius: inputStyles.radius,
+    paddingHorizontal: inputStyles.paddingHorizontal,
+    paddingVertical: 16,
+    minHeight: 48,
+    fontSize: inputStyles.fontSize,
+    lineHeight: 23,
+    color: colors.textPrimary,
     maxHeight: 100,
+    borderWidth: inputStyles.borderWidth,
+    borderColor: inputStyles.borderColor,
   },
   sendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.full,
+    width: 48,
+    height: 48,
+    minWidth: 48,
+    minHeight: 48,
+    borderRadius: 14,
     backgroundColor: colors.accent,
     alignItems: "center",
     justifyContent: "center",
   },
   sendBtnPressed: {
-    opacity: 0.9,
+    opacity: PRESSED_OPACITY,
+  },
+  sendBtnDisabled: {
+    backgroundColor: colors.surfaceLevel2,
+    opacity: 0.5,
   },
 });

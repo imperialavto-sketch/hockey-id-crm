@@ -1,10 +1,9 @@
 import React from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, spacing, typography, radius } from "@/constants/theme";
+import { colors, spacing, typography } from "@/constants/theme";
 import { triggerHaptic } from "@/lib/haptics";
-
-const PRESSED_OPACITY = 0.88;
+import { PrimaryButton } from "@/components/ui";
 
 interface EmptyBookingsStateProps {
   onFindCoach: () => void;
@@ -20,16 +19,13 @@ export function EmptyBookingsState({ onFindCoach }: EmptyBookingsStateProps) {
       <Text style={styles.desc}>
         Забронируйте индивидуальную тренировку у лучших тренеров
       </Text>
-      <Pressable
-        style={({ pressed }) => [styles.cta, pressed && { opacity: PRESSED_OPACITY }]}
+      <PrimaryButton
+        label="Найти тренера"
         onPress={() => {
           triggerHaptic();
           onFindCoach();
         }}
-      >
-        <Ionicons name="search-outline" size={20} color="#ffffff" />
-        <Text style={styles.ctaText}>Найти тренера</Text>
-      </Pressable>
+      />
     </View>
   );
 }
@@ -63,20 +59,5 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: spacing.xxl,
     paddingHorizontal: spacing.xl,
-  },
-  cta: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    backgroundColor: colors.accent,
-    borderRadius: radius.sm,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.xxl,
-  },
-  ctaText: {
-    ...typography.body,
-    fontWeight: "700",
-    color: "#ffffff",
   },
 });

@@ -1,8 +1,8 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, cardStyles } from "@/constants/theme";
+import { colors, spacing, radius, typography } from "@/constants/theme";
 import { triggerHaptic } from "@/lib/haptics";
 import { useSubscription } from "@/context/SubscriptionContext";
 
@@ -22,7 +22,7 @@ export function PremiumBlock() {
     subscription &&
     (subscription.status === "active" || subscription.cancelAtPeriodEnd);
 
-  const goTo = (path: string) => {
+  const goTo = (path: Href) => {
     triggerHaptic();
     router.push(path);
   };
@@ -32,7 +32,7 @@ export function PremiumBlock() {
     return (
       <Pressable
         style={({ pressed }) => [styles.card, pressed && { opacity: PRESSED_OPACITY }]}
-        onPress={() => goTo("/profile/billing")}
+        onPress={() => goTo("/profile/billing" as Href)}
       >
         <View style={styles.iconWrap}>
           <Ionicons name="sparkles" size={24} color={colors.accent} />
@@ -41,7 +41,7 @@ export function PremiumBlock() {
           <Text style={styles.title}>Hockey ID Premium</Text>
           <Text style={styles.subtitle}>Тариф: {planName}</Text>
         </View>
-        <Text style={styles.chevron}>›</Text>
+        <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
       </Pressable>
     );
   }
@@ -57,10 +57,13 @@ export function PremiumBlock() {
       <View style={styles.content}>
         <Text style={styles.title}>Hockey ID Premium</Text>
         <Text style={styles.subtitleCta}>
-          AI Report, план развития, скидки
+          Coach Mark как тренер, AI-анализ, план развития
         </Text>
       </View>
-      <Text style={styles.ctaText}>Подключить</Text>
+      <View style={styles.ctaRow}>
+          <Text style={styles.ctaText}>Подключить</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.accent} />
+        </View>
     </Pressable>
   );
 }
@@ -69,50 +72,54 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: cardStyles.backgroundColor,
-    borderRadius: cardStyles.radius,
-    padding: 18,
-    marginBottom: 20,
+    backgroundColor: colors.surfaceLevel1,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
     borderWidth: 1,
-    borderColor: "rgba(46,167,255,0.22)",
+    borderColor: colors.surfaceLevel1Border,
   },
   cardCta: {
-    borderColor: "rgba(46,167,255,0.35)",
-    backgroundColor: "rgba(46,167,255,0.08)",
+    borderColor: "rgba(59,130,246,0.3)",
+    backgroundColor: colors.accentSoft,
   },
   iconWrap: {
     width: 44,
     height: 44,
-    borderRadius: 12,
-    backgroundColor: "rgba(46,167,255,0.15)",
+    borderRadius: radius.md,
+    backgroundColor: "rgba(59,130,246,0.15)",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 14,
+    marginRight: spacing.md,
   },
   content: {
     flex: 1,
   },
   title: {
+    ...typography.cardTitle,
     fontSize: 17,
-    fontWeight: "800",
+    fontWeight: "700",
     color: colors.text,
-    marginBottom: 2,
+    marginBottom: spacing.xs,
   },
   subtitle: {
+    ...typography.bodySmall,
     fontSize: 14,
     color: colors.textSecondary,
   },
   subtitleCta: {
+    ...typography.bodySmall,
     fontSize: 14,
     color: colors.accent,
-    fontWeight: "500",
+    fontWeight: "600",
   },
-  chevron: {
-    fontSize: 22,
-    color: colors.textMuted,
-    fontWeight: "300",
+  ctaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
   },
   ctaText: {
+    ...typography.bodySmall,
     fontSize: 15,
     fontWeight: "700",
     color: colors.accent,

@@ -12,6 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { SectionCard } from "@/components/player-passport";
+import { PrimaryButton } from "@/components/ui";
 import { CurrentPlanCard } from "@/components/subscription/CurrentPlanCard";
 import { BillingHistoryCard } from "@/components/subscription/BillingHistoryCard";
 import { screenReveal, STAGGER } from "@/lib/animations";
@@ -123,15 +124,13 @@ export default function BillingScreen() {
               <Ionicons name="card-outline" size={32} color={colors.textMuted} />
             </View>
             <Text style={styles.noSubText}>У вас нет активной подписки</Text>
-            <Pressable
-              style={({ pressed }) => [styles.cta, pressed && { opacity: PRESSED_OPACITY }]}
+            <PrimaryButton
+              label="Выбрать план"
               onPress={() => {
                 triggerHaptic();
                 router.push("/subscription");
               }}
-            >
-              <Text style={styles.ctaText}>Выбрать план</Text>
-            </Pressable>
+            />
           </View>
         </Animated.View>
       )}
@@ -251,19 +250,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
     textAlign: "center",
   },
-  cta: {
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.xxl,
-    borderRadius: 14,
-    alignItems: "center",
-  },
-  ctaText: {
-    ...typography.body,
-    fontWeight: "700",
-    color: "#ffffff",
-  },
-
   devPanel: {
     marginBottom: spacing.xxl,
     padding: spacing.lg,

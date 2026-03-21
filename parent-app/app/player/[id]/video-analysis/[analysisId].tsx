@@ -13,6 +13,7 @@ import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { SkeletonBlock } from "@/components/ui";
 import { SectionCard } from "@/components/player-passport";
 import { ActionLinkCard } from "@/components/player/ActionLinkCard";
+import { GhostButton, PrimaryButton } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
 import { colors, spacing, typography } from "@/constants/theme";
@@ -100,15 +101,13 @@ export default function VideoAnalysisDetailsScreen() {
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle-outline" size={48} color={colors.textMuted} />
           <Text style={styles.notFoundText}>Анализ не найден</Text>
-          <Pressable
-            style={({ pressed }) => [styles.retryBtn, pressed && { opacity: PRESSED_OPACITY }]}
+          <GhostButton
+            label="Назад"
             onPress={() => {
               triggerHaptic();
               router.back();
             }}
-          >
-            <Text style={styles.retryBtnText}>Назад</Text>
-          </Pressable>
+          />
         </View>
       </FlagshipScreen>
     );
@@ -144,12 +143,10 @@ export default function VideoAnalysisDetailsScreen() {
             <Text style={styles.errorText}>
               {request.errorMessage || "Не удалось завершить анализ."}
             </Text>
-            <Pressable
-              style={({ pressed }) => [styles.retryBtn, pressed && { opacity: PRESSED_OPACITY }]}
+            <PrimaryButton
+              label="Повторить"
               onPress={onRetry}
-            >
-              <Text style={styles.retryBtnText}>Повторить</Text>
-            </Pressable>
+            />
           </SectionCard>
         </Animated.View>
       )}
@@ -241,14 +238,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.errorSoft,
   },
   errorText: { color: colors.error, marginBottom: spacing.lg, ...typography.body },
-  retryBtn: {
-    backgroundColor: colors.accent,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    alignSelf: "flex-start",
-  },
-  retryBtnText: { fontSize: 16, fontWeight: "600", color: colors.onAccent },
   summaryCard: {
     marginBottom: spacing.xl,
     backgroundColor: colors.accentSoft,

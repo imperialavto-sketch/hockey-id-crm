@@ -4,7 +4,6 @@ import {
   Text,
   Pressable,
   StyleSheet,
-  TextInput,
 } from "react-native";
 import Animated from "react-native-reanimated";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -19,7 +18,7 @@ import { BookingDatePicker } from "@/components/marketplace/BookingDatePicker";
 import { TimeSlotPicker } from "@/components/marketplace/TimeSlotPicker";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { SectionCard } from "@/components/player-passport";
-import { SkeletonBlock } from "@/components/ui";
+import { SkeletonBlock, Input, PrimaryButton, GhostButton } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
 import type { TrainingFormat } from "@/types/booking";
@@ -159,15 +158,13 @@ export default function BookingScreen() {
           <Text style={styles.errorSub}>
             Проверьте ссылку или вернитесь к выбору тренера
           </Text>
-          <Pressable
-            style={({ pressed }) => [styles.retryBtn, pressed && { opacity: PRESSED_OPACITY }]}
+          <GhostButton
+            label="Вернуться"
             onPress={() => {
               triggerHaptic();
               router.back();
             }}
-          >
-            <Text style={styles.retryBtnText}>Вернуться</Text>
-          </Pressable>
+          />
         </View>
       </FlagshipScreen>
     );
@@ -272,10 +269,8 @@ export default function BookingScreen() {
 
       <Animated.View entering={screenReveal(STAGGER * 5)}>
         <SectionCard title="Заметка для тренера (опционально)" style={styles.sectionCard}>
-          <TextInput
-            style={styles.noteInput}
+          <Input
             placeholder="Особые пожелания, тема тренировки..."
-            placeholderTextColor={colors.textMuted}
             value={note}
             onChangeText={setNote}
             multiline
@@ -284,19 +279,12 @@ export default function BookingScreen() {
         </SectionCard>
       </Animated.View>
 
-      <Animated.View entering={screenReveal(STAGGER * 6)}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.cta,
-            !canContinue && styles.ctaDisabled,
-            canContinue && pressed && { opacity: PRESSED_OPACITY },
-          ]}
+      <Animated.View entering={screenReveal(STAGGER * 6)} style={styles.ctaWrap}>
+        <PrimaryButton
+          label="Продолжить к оплате"
           onPress={handleContinue}
           disabled={!canContinue}
-        >
-          <Text style={styles.ctaText}>Продолжить к оплате</Text>
-          <Ionicons name="arrow-forward" size={20} color={colors.bgDeep} />
-        </Pressable>
+        />
       </Animated.View>
     </FlagshipScreen>
   );
@@ -345,14 +333,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxl,
     marginBottom: spacing.lg,
   },
-  retryBtn: {
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xxl,
-    borderRadius: 14,
-  },
-  retryBtnText: { fontSize: 16, fontWeight: "600", color: colors.onAccent },
-
   sectionCard: { marginBottom: spacing.xxl },
   durationRow: { flexDirection: "row", gap: spacing.md },
   durationChip: {
@@ -401,32 +381,7 @@ const styles = StyleSheet.create({
   formatTextActive: {
     color: colors.accent,
   },
-  noteInput: {
-    backgroundColor: colors.surfaceLevel1,
-    borderRadius: radius.sm,
-    padding: spacing.lg,
-    ...typography.bodySmall,
-    color: colors.text,
-    minHeight: 80,
-    borderWidth: 1,
-    borderColor: colors.surfaceLevel1Border,
-  },
-  cta: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    backgroundColor: colors.accent,
-    borderRadius: radius.sm,
-    paddingVertical: spacing.lg,
+  ctaWrap: {
     marginTop: spacing.xl,
-  },
-  ctaDisabled: {
-    opacity: 0.5,
-  },
-  ctaText: {
-    ...typography.body,
-    fontWeight: "800",
-    color: colors.bgDeep,
   },
 });

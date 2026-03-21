@@ -1,11 +1,10 @@
 import React from "react";
 import { colors, spacing, typography, radius } from "@/constants/theme";
-import { View, Text, Image, Pressable, StyleSheet } from "react-native";
+import { View, Text, Image, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { triggerHaptic } from "@/lib/haptics";
+import { PrimaryButton } from "@/components/ui";
 import type { MockCoach } from "@/constants/mockCoaches";
-
-const PRESSED_OPACITY = 0.88;
 
 interface VerifiedCoachHeroProps {
   coach: MockCoach;
@@ -59,13 +58,12 @@ export function VerifiedCoachHero({ coach, onBook }: VerifiedCoachHeroProps) {
           </Text>
           <Text style={styles.priceUnit}>/ тренировка</Text>
         </View>
-        <Pressable
-          style={({ pressed }) => [styles.cta, pressed && { opacity: PRESSED_OPACITY }]}
-          onPress={handleBook}
-        >
-          <Text style={styles.ctaText}>Записаться</Text>
-          <Ionicons name="arrow-forward" size={18} color={colors.bgDeep} />
-        </Pressable>
+        <View style={styles.ctaWrap}>
+          <PrimaryButton
+            label="Записаться"
+            onPress={handleBook}
+          />
+        </View>
       </View>
     </View>
   );
@@ -165,19 +163,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginLeft: spacing.xs,
   },
-  cta: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    backgroundColor: colors.accent,
-    borderRadius: radius.sm,
-    paddingVertical: spacing.lg,
+  ctaWrap: {
     marginTop: spacing.xl,
-  },
-  ctaText: {
-    ...typography.body,
-    fontWeight: "800",
-    color: "#020617",
   },
 });

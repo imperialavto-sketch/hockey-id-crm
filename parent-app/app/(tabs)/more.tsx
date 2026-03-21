@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -24,14 +24,16 @@ import type { Player } from "@/types";
 
 const PRESSED_OPACITY = 0.88;
 
-const MENU_ITEMS: { label: string; path: string; icon: keyof typeof Ionicons.glyphMap; description: string }[] = [
+const HUB_ITEMS: { label: string; path: string; icon: keyof typeof Ionicons.glyphMap; description: string }[] = [
+  { label: "Лента", path: "/(tabs)/feed", icon: "newspaper-outline", description: "Новости и объявления" },
+  { label: "Тренеры", path: "/(tabs)/marketplace", icon: "fitness-outline", description: "Найти тренера и забронировать" },
   { label: "Уведомления", path: "/notifications", icon: "notifications-outline", description: "Сообщения и активность" },
   { label: "Подписка и оплаты", path: "/profile/billing", icon: "card-outline", description: "Тариф и способ оплаты" },
   { label: "Мои бронирования", path: "/bookings", icon: "calendar-outline", description: "Занятия с тренерами" },
   { label: "Все настройки", path: "/profile/settings", icon: "settings-outline", description: "Подробные настройки приложения" },
 ];
 
-function ProfileSkeleton() {
+function MoreSkeleton() {
   return (
     <View style={styles.skeletonContent}>
       <SkeletonBlock height={180} style={styles.skeletonCard} />
@@ -42,30 +44,39 @@ function ProfileSkeleton() {
   );
 }
 
-export default function ProfileScreen() {
+export default function MoreScreen() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const [player, setPlayer] = useState<Player | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   const loadProfile = useCallback(async () => {
     if (!user?.id) {
-      setPlayer(null);
-      setLoading(false);
+      if (mountedRef.current) {
+        setPlayer(null);
+        setLoading(false);
+      }
       return;
     }
-    setLoading(true);
-    setError(false);
+    if (mountedRef.current) {
+      setLoading(true);
+      setError(false);
+    }
     try {
       const players = await getPlayers(user.id);
-      setPlayer(players[0] ?? null);
+      if (mountedRef.current) setPlayer(players[0] ?? null);
     } catch {
-      setPlayer(null);
-      setError(true);
+      if (mountedRef.current) {
+        setPlayer(null);
+        setError(true);
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [user?.id]);
 
@@ -83,12 +94,12 @@ export default function ProfileScreen() {
         style: "destructive",
         onPress: async () => {
           triggerHaptic();
-          setLoggingOut(true);
+          if (mountedRef.current) setLoggingOut(true);
           try {
             await logout();
             router.replace("/(auth)/login");
           } finally {
-            setLoggingOut(false);
+            if (mountedRef.current) setLoggingOut(false);
           }
         },
       },
@@ -103,7 +114,7 @@ export default function ProfileScreen() {
   if (loading) {
     return (
       <FlagshipScreen>
-        <ProfileSkeleton />
+        <MoreSkeleton />
       </FlagshipScreen>
     );
   }
@@ -113,7 +124,7 @@ export default function ProfileScreen() {
       <FlagshipScreen scroll={false}>
         <ErrorStateView
           variant="network"
-          title="Не удалось загрузить профиль"
+          title="Не удалось загрузить"
           subtitle="Проверьте подключение и попробуйте снова"
           onAction={loadProfile}
           style={styles.errorWrap}
@@ -131,10 +142,10 @@ export default function ProfileScreen() {
       <Animated.View entering={screenReveal(0)}>
         <View style={styles.heroSection}>
           <View style={styles.heroIconWrap}>
-            <Ionicons name="person-circle" size={32} color={colors.accent} />
+            <Ionicons name="apps-outline" size={32} color={colors.accent} />
           </View>
-          <Text style={styles.heroTitle}>Профиль</Text>
-          <Text style={styles.heroSub}>Управление аккаунтом и подпиской</Text>
+          <Text style={styles.heroTitle}>Ещё</Text>
+          <Text style={styles.heroSub}>Лента, тренеры, настройки и профиль</Text>
         </View>
       </Animated.View>
 
@@ -171,8 +182,8 @@ export default function ProfileScreen() {
       </Animated.View>
 
       <Animated.View entering={screenReveal(STAGGER * 3)}>
-        <SectionCard title="Настройки" style={styles.menuCard}>
-          {MENU_ITEMS.map((item) => (
+        <SectionCard title="Разделы" style={styles.menuCard}>
+          {HUB_ITEMS.map((item) => (
             <ActionLinkCard
               key={item.path}
               icon={item.icon}
@@ -203,8 +214,8 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   skeletonContent: { gap: spacing.xl },
-  skeletonCard: { borderRadius: 20 },
-  skeletonButton: { borderRadius: 14, marginTop: spacing.md },
+  skeletonCard: { borderRadius: radius.lg },
+  skeletonButton: { borderRadius: radius.sm, marginTop: spacing.md },
 
   errorWrap: { flex: 1 },
   heroSection: {
@@ -219,7 +230,7 @@ const styles = StyleSheet.create({
   heroIconWrap: {
     width: 48,
     height: 48,
-    borderRadius: 14,
+    borderRadius: radius.sm,
     backgroundColor: colors.accentSoft,
     alignItems: "center",
     justifyContent: "center",
@@ -269,7 +280,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacing.sm,
     height: 48,
-    borderRadius: 14,
+    borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.errorBorder,
     backgroundColor: colors.errorSoft,

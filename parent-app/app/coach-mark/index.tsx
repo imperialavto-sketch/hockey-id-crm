@@ -10,7 +10,7 @@ import {
   Alert,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -51,6 +51,7 @@ import {
 } from "@/services/chatService";
 import { getPlayerContextForCoachMark } from "@/services/playerService";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
+import { ErrorStateView } from "@/components/ui";
 import { useSubscription } from "@/context/SubscriptionContext";
 import { colors, spacing, typography, radius } from "@/constants/theme";
 import { triggerHaptic } from "@/lib/haptics";
@@ -58,6 +59,8 @@ import { trackCoachMarkEvent } from "@/lib/coachMarkAnalytics";
 import { COACH_MARK_ID } from "@/services/chatService";
 
 const PRESSED_OPACITY = 0.88;
+const SECTION_GAP_PRIMARY = 28;
+const SECTION_GAP_SECONDARY = 20;
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("ru-RU", {
@@ -85,7 +88,9 @@ function EmptySection({
 }) {
   return (
     <View style={styles.emptySection}>
-      <Ionicons name={icon} size={28} color={colors.textMuted} />
+      <View style={styles.emptySectionIconWrap}>
+        <Ionicons name={icon} size={24} color={colors.textMuted} />
+      </View>
       <Text style={styles.emptyText}>{title}</Text>
       {onAction && (
         <Pressable
@@ -179,7 +184,6 @@ export default function CoachMarkHubScreen() {
   }, [user?.id, playerId]);
 
   useEffect(() => {
-    if (__DEV__) console.log("[CoachMark] Hub screen ENTER", { playerId });
     trackCoachMarkEvent("coachmark_hub_open");
   }, []);
 
@@ -196,7 +200,7 @@ export default function CoachMarkHubScreen() {
     if (calendarItems.length === 0) {
       Alert.alert(
         "Нет событий",
-        "Сначала подготовьте план для календаря из чата Coach Mark."
+        "Сначала составьте недельный план в чате с Coach Mark и сохраните его в календарь."
       );
       return;
     }
@@ -312,30 +316,20 @@ export default function CoachMarkHubScreen() {
   if (hubError && notes.length === 0 && plans.length === 0) {
     return (
       <FlagshipScreen scroll={false}>
-        <View style={styles.errorWrap}>
-          <Ionicons name="cloud-offline-outline" size={48} color={colors.textMuted} />
-          <Text style={styles.errorTitle}>Не получилось загрузить</Text>
-          <Text style={styles.errorSub}>Проверьте подключение и нажмите «Повторить»</Text>
-          <Pressable
-            style={({ pressed }) => [styles.retryBtn, pressed && { opacity: PRESSED_OPACITY }]}
-            onPress={() => {
-              triggerHaptic();
-              setHubLoading(true);
-              load();
-            }}
-          >
-            <Text style={styles.retryBtnText}>Повторить</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.backLink, pressed && { opacity: PRESSED_OPACITY }]}
-            onPress={() => {
-              triggerHaptic();
-              router.back();
-            }}
-          >
-            <Text style={styles.backLinkText}>Назад</Text>
-          </Pressable>
-        </View>
+        <ErrorStateView
+          variant="network"
+          title="Не получилось загрузить"
+          subtitle="Проверьте подключение и попробуйте снова"
+          onAction={() => {
+            setHubLoading(true);
+            load();
+          }}
+          secondaryActionLabel="Назад"
+          onSecondaryAction={() => {
+            router.back();
+          }}
+          style={styles.errorWrap}
+        />
       </FlagshipScreen>
     );
   }
@@ -361,7 +355,7 @@ export default function CoachMarkHubScreen() {
             </View>
             <Text style={styles.heroTitle}>Coach Mark</Text>
             <Text style={styles.heroSub}>
-              Ваш персональный хоккейный наставник. Советы, планы, рекомендации — всё в одном месте.
+              Ваш персональный AI-тренер. Советы под вашего игрока, планы на неделю, рекомендации. С Premium — еженедельные отчёты и фокус на прогрессе.
             </Text>
             <View style={styles.quickActionsRow}>
               <Pressable
@@ -382,7 +376,7 @@ export default function CoachMarkHubScreen() {
                 onPress={goToWeeklyPlan}
               >
                 <Ionicons name="calendar-outline" size={18} color={colors.accent} />
-                <Text style={styles.quickActionSecondaryText}>Недельный план</Text>
+                <Text style={styles.quickActionSecondaryText}>План на эту неделю</Text>
               </Pressable>
             </View>
           </View>
@@ -396,7 +390,7 @@ export default function CoachMarkHubScreen() {
             </View>
             <Text style={styles.onboardingTitle}>Coach Mark</Text>
             <Text style={styles.onboardingText}>
-              Ваш персональный хоккейный наставник. Советы, планы, рекомендации тренеров — всё в одном месте.
+              Ваш персональный AI-тренер. Задайте вопрос, получите совет и план на неделю. С Premium — еженедельные отчёты и следующий шаг под вашего игрока.
             </Text>
             <View style={styles.onboardingCtaRow}>
               <Pressable
@@ -407,7 +401,7 @@ export default function CoachMarkHubScreen() {
                 onPress={() => goToChat(playerId)}
               >
                 <Text style={styles.onboardingCtaPrimaryText}>
-                  Задать первый вопрос
+                  Спросить о развитии ребёнка
                 </Text>
               </Pressable>
               <Pressable
@@ -427,20 +421,20 @@ export default function CoachMarkHubScreen() {
                 }}
               >
                 <Text style={styles.onboardingCtaSecondaryText}>
-                  Составить недельный план
+                  План на эту неделю
                 </Text>
               </Pressable>
             </View>
           </View>
         )}
 
-        {/* Nudges */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Подсказки Coach Mark</Text>
+        {/* Nudges — primary */}
+        <View style={styles.sectionPrimary}>
+          <Text style={styles.sectionTitle}>Что можно спросить у Coach Mark</Text>
           {nudges.length === 0 ? (
             <View style={[styles.nudgeCard, styles.nudgeAllGoodCard]}>
               <Ionicons name="checkmark-circle" size={24} color={colors.success} />
-              <Text style={styles.nudgeAllGood}>Всё под контролем</Text>
+              <Text style={styles.nudgeAllGood}>Всё под контролем. Загляните на этой неделе — Coach Mark обновит рекомендации</Text>
             </View>
           ) : (
             nudges.map((nudge) => (
@@ -470,11 +464,10 @@ export default function CoachMarkHubScreen() {
             <View style={styles.premiumValueIconWrap}>
               <Ionicons name="diamond-outline" size={24} color={colors.accent} />
             </View>
-            <Text style={styles.premiumValueTitle}>Coach Mark и Premium</Text>
+            <Text style={styles.premiumValueTitle}>Coach Mark как персональный тренер</Text>
             <Text style={styles.premiumValueText}>
-              Coach Mark уже помогает: недельные планы, экспорт в календарь,
-              рекомендации тренеров, память о семье и игроке. С Premium —
-              персональные weekly check-ins и полный доступ ко всем инструментам.
+              Сейчас: планы на неделю, советы, экспорт в календарь. С Premium —
+              еженедельные отчёты, фокус на прогрессе и следующий шаг под вашего игрока.
             </Text>
             <Pressable
               style={({ pressed }) => [
@@ -486,17 +479,17 @@ export default function CoachMarkHubScreen() {
                 router.push("/subscription");
               }}
             >
-              <Text style={styles.premiumValueCtaText}>Узнать о Premium</Text>
+              <Text style={styles.premiumValueCtaText}>Получить больше от Coach Mark</Text>
               <Ionicons name="chevron-forward" size={18} color={colors.onAccent} />
             </Pressable>
           </View>
         )}
 
-        {/* Weekly Check-in */}
-        <View style={styles.section}>
+        {/* Weekly Check-in — primary */}
+        <View style={styles.sectionPrimary}>
           {lastCheckin ? (
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>Еженедельная проверка Coach Mark</Text>
+              <Text style={styles.sectionTitle}>Проверка на эту неделю</Text>
               <Pressable
                 style={({ pressed }) => [
                   styles.exportBtn,
@@ -510,26 +503,28 @@ export default function CoachMarkHubScreen() {
                 ) : (
                   <>
                     <Ionicons name="refresh-outline" size={18} color={colors.accent} />
-                    <Text style={styles.exportBtnText}>Сделать проверку</Text>
+                    <Text style={styles.exportBtnText}>Обновить проверку</Text>
                   </>
                 )}
               </Pressable>
             </View>
           ) : (
-            <Text style={styles.sectionTitle}>Еженедельная проверка Coach Mark</Text>
+            <Text style={styles.sectionTitle}>Проверка на эту неделю</Text>
           )}
           {!lastCheckin ? (
             checkinGenerating ? (
               <View style={styles.emptySection}>
-                <Ionicons name="hourglass-outline" size={28} color={colors.textMuted} />
+                <View style={styles.emptySectionIconWrap}>
+                  <Ionicons name="hourglass-outline" size={24} color={colors.textMuted} />
+                </View>
                 <Text style={styles.emptyText}>Генерация проверки…</Text>
               </View>
             ) : (
               <EmptySection
                 icon="checkmark-done-outline"
-                title="Пока нет еженедельных проверок"
+                title="Делайте проверку раз в неделю — Coach Mark подскажет следующий шаг и что делать дальше"
                 onAction={handleGenerateCheckin}
-                actionLabel="Сделать проверку"
+                actionLabel="Сделать проверку на эту неделю"
               />
             )
           ) : (
@@ -550,9 +545,9 @@ export default function CoachMarkHubScreen() {
           )}
         </View>
 
-        {/* Recommended Trainers */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Coach Mark рекомендует тренеров</Text>
+        {/* Recommended Trainers — secondary */}
+        <View style={styles.sectionSecondary}>
+          <Text style={styles.sectionTitleSecondary}>Подбор тренеров от Coach Mark</Text>
           {recommendedCoaches.length === 0 ? (
             <EmptySection
               icon="person-outline"
@@ -599,10 +594,10 @@ export default function CoachMarkHubScreen() {
             )}
         </View>
 
-        {/* Memory */}
-        <View style={styles.section}>
+        {/* Memory — secondary */}
+        <View style={styles.sectionSecondary}>
           <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionTitle}>Что Coach Mark запомнил</Text>
+            <Text style={styles.sectionTitleSecondary}>Память Coach Mark о вашем игроке</Text>
             {memories.length > 0 && (
               <View style={styles.memoryCountBadge}>
                 <Text style={styles.memoryCountText}>{memories.length}</Text>
@@ -612,7 +607,7 @@ export default function CoachMarkHubScreen() {
           {memories.length === 0 ? (
             <EmptySection
               icon="bulb-outline"
-              title="Пока ничего не запомнено. Долгое нажатие на ответ в чате — сохранить."
+              title="Coach Mark пока ничего не запомнил. Долгое нажатие на ответ в чате — сохранить для следующих разговоров."
               onAction={goToChat}
               actionLabel="Открыть чат"
             />
@@ -663,9 +658,9 @@ export default function CoachMarkHubScreen() {
           )}
         </View>
 
-        {/* Notes */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Заметки</Text>
+        {/* Notes — secondary */}
+        <View style={styles.sectionSecondary}>
+          <Text style={styles.sectionTitleSecondary}>Заметки</Text>
           {notes.length === 0 ? (
             <EmptySection
               icon="document-text-outline"
@@ -684,13 +679,13 @@ export default function CoachMarkHubScreen() {
           )}
         </View>
 
-        {/* Weekly Plans */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Недельные планы</Text>
+        {/* Weekly Plans — secondary */}
+        <View style={styles.sectionSecondary}>
+          <Text style={styles.sectionTitleSecondary}>Недельные планы</Text>
           {plans.length === 0 ? (
             <EmptySection
               icon="calendar-outline"
-              title="Пока нет недельных планов"
+              title="Составьте план на эту неделю в чате — возвращайтесь каждую неделю"
               onAction={goToChat}
             />
           ) : (
@@ -705,10 +700,10 @@ export default function CoachMarkHubScreen() {
           )}
         </View>
 
-        {/* Calendar Items */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Подготовлено для календаря</Text>
+        {/* Calendar Items — secondary */}
+        <View style={styles.sectionSecondary}>
+          <View style={[styles.sectionHeaderRow, styles.sectionHeaderRowSecondary]}>
+            <Text style={styles.sectionTitleSecondary}>Подготовлено для календаря</Text>
             {calendarItems.length > 0 && (
               <Pressable
                 style={({ pressed }) => [
@@ -726,7 +721,7 @@ export default function CoachMarkHubScreen() {
           {calendarItems.length === 0 ? (
             <EmptySection
               icon="calendar-outline"
-              title="Пока нет событий для календаря"
+              title="Составьте план в чате, затем экспортируйте в календарь — обновляйте каждую неделю"
               onAction={goToChat}
             />
           ) : (
@@ -761,13 +756,26 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: spacing.xxl,
   },
+  sectionPrimary: {
+    marginBottom: SECTION_GAP_PRIMARY,
+  },
+  sectionSecondary: {
+    marginBottom: SECTION_GAP_SECONDARY,
+  },
+  sectionTitleSecondary: {
+    ...typography.sectionTitle,
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+  },
   heroBlock: {
     backgroundColor: colors.accentSoft,
     borderWidth: 1,
-    borderColor: "rgba(59,130,246,0.25)",
+    borderColor: "rgba(59,130,246,0.2)",
     borderRadius: radius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.xxl,
+    padding: spacing.xl,
+    marginBottom: SECTION_GAP_PRIMARY,
   },
   heroIconWrap: {
     width: 44,
@@ -779,7 +787,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   heroTitle: {
-    ...typography.h3,
+    ...typography.h2,
     color: colors.text,
     marginBottom: spacing.xs,
   },
@@ -829,10 +837,10 @@ const styles = StyleSheet.create({
   onboardingBlock: {
     backgroundColor: colors.accentSoft,
     borderWidth: 1,
-    borderColor: "rgba(59,130,246,0.25)",
+    borderColor: "rgba(59,130,246,0.2)",
     borderRadius: radius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.xxl,
+    padding: spacing.xl,
+    marginBottom: SECTION_GAP_PRIMARY,
   },
   onboardingIconWrap: {
     width: 48,
@@ -844,7 +852,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   onboardingTitle: {
-    ...typography.h3,
+    ...typography.h2,
     color: colors.text,
     marginBottom: spacing.sm,
   },
@@ -888,7 +896,7 @@ const styles = StyleSheet.create({
     borderColor: colors.surfaceLevel1Border,
     borderRadius: radius.lg,
     padding: spacing.lg,
-    marginBottom: spacing.xxl,
+    marginBottom: SECTION_GAP_SECONDARY,
   },
   premiumValueIconWrap: {
     width: 40,
@@ -929,7 +937,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  sectionHeaderRowSecondary: {
+    marginBottom: spacing.md,
   },
   sectionTitleRow: {
     flexDirection: "row",
@@ -938,8 +949,9 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...typography.sectionTitle,
+    fontSize: 17,
     color: colors.text,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   memoryCountBadge: {
     backgroundColor: colors.accentSoft,
@@ -1035,9 +1047,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.surfaceLevel1Border,
     borderRadius: radius.lg,
-    padding: spacing.xxl,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
     alignItems: "center",
     gap: spacing.md,
+  },
+  emptySectionIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.surfaceLevel2,
+    alignItems: "center",
+    justifyContent: "center",
   },
   emptyText: {
     ...typography.bodySmall,
@@ -1105,43 +1126,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: spacing.lg,
   },
-  errorWrap: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: spacing.xl,
-    gap: spacing.lg,
-  },
-  errorTitle: {
-    ...typography.h2,
-    color: colors.text,
-    textAlign: "center",
-  },
-  errorSub: {
-    ...typography.bodySmall,
-    color: colors.textMuted,
-    textAlign: "center",
-  },
-  retryBtn: {
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radius.md,
-  },
-  retryBtnText: {
-    ...typography.bodySmall,
-    fontWeight: "600",
-    color: colors.onAccent,
-  },
-  backLink: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-  },
-  backLinkText: {
-    ...typography.bodySmall,
-    color: colors.textMuted,
-    fontWeight: "600",
-  },
+  errorWrap: { flex: 1 },
   centered: {
     flex: 1,
     justifyContent: "center",

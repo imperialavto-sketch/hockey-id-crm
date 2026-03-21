@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, Image, Pressable, StyleSheet } from "react-native";
 import { Heart, MessageCircle, Pin } from "lucide-react-native";
-import { colors, cardStyles, radii, spacing, typography } from "@/constants/theme";
+import { colors, cardStyles, radii, spacing, typography, feedback } from "@/constants/theme";
 import type { TeamPost } from "@/types/team";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -118,16 +118,16 @@ const styles = StyleSheet.create({
     backgroundColor: cardStyles.backgroundColor,
     borderRadius: cardStyles.radius,
     padding: cardStyles.padding,
-    marginHorizontal: spacing[20],
-    marginBottom: spacing[16],
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.lg,
     borderWidth: cardStyles.borderWidth,
     borderColor: cardStyles.borderColor,
   },
-  cardPressed: { opacity: 0.96 },
+  cardPressed: { opacity: feedback.pressedOpacity },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: spacing[12],
+    marginBottom: spacing.md,
   },
   avatarWrap: {},
   avatar: {
@@ -150,13 +150,13 @@ const styles = StyleSheet.create({
   },
   meta: {
     flex: 1,
-    marginLeft: spacing[12],
+    marginLeft: spacing.md,
   },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: spacing[8] },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   name: {
     ...typography.body,
     fontWeight: "700",
-    color: colors.text,
+    color: colors.textPrimary,
   },
   pin: { marginLeft: 2 },
   role: {
@@ -170,23 +170,23 @@ const styles = StyleSheet.create({
   },
   text: {
     ...typography.bodySmall,
-    color: colors.text,
+    color: colors.textPrimary,
     lineHeight: 22,
-    marginBottom: spacing[12],
+    marginBottom: spacing.md,
   },
   matchBlock: {
-    padding: spacing[16],
+    padding: spacing.lg,
     backgroundColor: colors.accentSoft,
     borderRadius: radii.sm,
-    marginBottom: spacing[12],
+    marginBottom: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
   },
   matchScore: {
     ...typography.body,
     fontWeight: "800",
-    color: colors.text,
-    marginBottom: spacing[8],
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
   },
   bestPlayer: {
     ...typography.bodySmall,
@@ -197,18 +197,18 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 200,
     borderRadius: radii.sm,
-    marginBottom: spacing[12],
+    marginBottom: spacing.md,
   },
   eventBlock: {
-    padding: spacing[12],
+    padding: spacing.md,
     backgroundColor: colors.glass,
     borderRadius: radii.sm,
-    marginBottom: spacing[12],
+    marginBottom: spacing.md,
   },
   eventTitle: {
     ...typography.body,
     fontWeight: "700",
-    color: colors.text,
+    color: colors.textPrimary,
   },
   eventMeta: {
     ...typography.caption,
@@ -222,15 +222,15 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: "row",
-    gap: spacing[20],
-    paddingTop: spacing[8],
+    gap: spacing.xl,
+    paddingTop: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.borderLight,
   },
   actionItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[8],
+    gap: spacing.sm,
   },
   actionText: {
     ...typography.bodySmall,

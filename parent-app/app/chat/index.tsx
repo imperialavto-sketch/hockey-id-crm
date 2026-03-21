@@ -9,14 +9,15 @@ import {
 } from "react-native";
 import Animated from "react-native-reanimated";
 import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
 import { getConversations } from "@/services/chatService";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
-import { SkeletonBlock } from "@/components/ui";
+import { SkeletonBlock, ErrorStateView, EmptyStateView } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
+import { ScreenHeader } from "@/components/navigation/ScreenHeader";
 import { colors, spacing, typography, radius } from "@/constants/theme";
 import type { ConversationItem } from "@/types/chat";
 
@@ -81,25 +82,21 @@ export default function ChatListScreen() {
   if (!user?.id) {
     return (
       <FlagshipScreen scroll={false}>
-        <View style={styles.emptyContainer}>
-          <View style={styles.emptyIconWrap}>
-            <Ionicons name="person-outline" size={48} color={colors.textMuted} />
-          </View>
-          <Text style={styles.emptyTitle}>Требуется вход</Text>
-          <Text style={styles.emptySub}>Авторизуйтесь для общения</Text>
-        </View>
+        <EmptyStateView
+          icon="person-outline"
+          title="Требуется вход"
+          subtitle="Авторизуйтесь для общения"
+          style={styles.emptyWrap}
+        />
       </FlagshipScreen>
     );
   }
 
   const header = (
-    <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
-      <View style={styles.heroIconWrap}>
-        <Ionicons name="chatbubbles-outline" size={28} color={colors.accent} />
-      </View>
-      <Text style={styles.heroTitle}>Чат с тренером</Text>
-      <Text style={styles.heroSub}>Диалоги с тренерами ваших игроков</Text>
-    </View>
+    <ScreenHeader
+      title="Чат с тренером"
+      subtitle="Диалоги с тренерами ваших игроков"
+    />
   );
 
   if (loading) {
@@ -112,24 +109,21 @@ export default function ChatListScreen() {
     );
   }
 
+  const handleRetry = useCallback(() => {
+    setLoading(true);
+    load();
+  }, [load]);
+
   if (loadError) {
     return (
       <FlagshipScreen header={header} scroll={false}>
-        <View style={styles.errorContainer}>
-          <Ionicons name="cloud-offline-outline" size={48} color={colors.textMuted} />
-          <Text style={styles.errorTitle}>Не удалось загрузить чаты</Text>
-          <Text style={styles.errorSub}>Проверьте подключение и попробуйте снова</Text>
-          <Pressable
-            style={({ pressed }) => [styles.retryBtn, pressed && { opacity: PRESSED_OPACITY }]}
-            onPress={() => {
-              triggerHaptic();
-              setLoading(true);
-              load();
-            }}
-          >
-            <Text style={styles.retryBtnText}>Повторить</Text>
-          </Pressable>
-        </View>
+        <ErrorStateView
+          variant="network"
+          title="Не удалось загрузить чаты"
+          subtitle="Проверьте подключение и попробуйте снова"
+          onAction={handleRetry}
+          style={styles.errorWrap}
+        />
       </FlagshipScreen>
     );
   }
@@ -157,15 +151,12 @@ export default function ChatListScreen() {
           />
         }
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconWrap}>
-              <Ionicons name="chatbubbles-outline" size={48} color={colors.textMuted} />
-            </View>
-            <Text style={styles.emptyTitle}>Чатов пока нет</Text>
-            <Text style={styles.emptySub}>
-              Откройте профиль игрока и нажмите «Чат с тренером»
-            </Text>
-          </View>
+          <EmptyStateView
+            icon="chatbubbles-outline"
+            title="Чатов пока нет"
+            subtitle="Откройте профиль игрока и нажмите «Чат с тренером»"
+            style={styles.emptyWrap}
+          />
         }
         renderItem={({ item, index }) => (
           <Animated.View entering={screenReveal(STAGGER + index * 30)}>
@@ -194,37 +185,11 @@ export default function ChatListScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    paddingHorizontal: spacing.screenPadding,
-    paddingVertical: spacing.lg,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
-  },
-  heroIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing.md,
-  },
-  heroTitle: { ...typography.sectionTitle, color: colors.text, marginBottom: spacing.xs },
-  heroSub: { ...typography.caption, color: colors.textSecondary },
   paddedContent: { flex: 1, paddingHorizontal: spacing.screenPadding, paddingTop: spacing.lg },
   skeletonContent: { gap: spacing.md },
   skeletonRow: { borderRadius: radius.lg },
-  errorContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: spacing.lg,
-  },
-  errorTitle: { ...typography.h2, color: colors.text, textAlign: "center" },
-  errorSub: { ...typography.bodySmall, color: colors.textSecondary, textAlign: "center", paddingHorizontal: spacing.xxl },
-  retryBtn: { backgroundColor: colors.accent, paddingVertical: spacing.md, paddingHorizontal: spacing.xxl, borderRadius: 14 },
-  retryBtnText: { fontSize: 16, fontWeight: "600", color: colors.onAccent },
+  errorWrap: { flex: 1 },
+  emptyWrap: { flex: 1, justifyContent: "center" },
   list: { paddingHorizontal: spacing.screenPadding },
   emptyList: { flexGrow: 1 },
   row: {
@@ -251,21 +216,4 @@ const styles = StyleSheet.create({
   playerName: { ...typography.caption, color: colors.textSecondary, marginTop: spacing.xs },
   preview: { ...typography.bodySmall, color: colors.textMuted, marginTop: spacing.xs },
   time: { ...typography.caption, color: colors.textMuted, marginRight: spacing.sm },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: spacing.xxxl,
-  },
-  emptyIconWrap: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: colors.surfaceLevel2,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing.xl,
-  },
-  emptyTitle: { ...typography.h2, color: colors.text, textAlign: "center", marginBottom: spacing.sm },
-  emptySub: { ...typography.bodySmall, color: colors.textSecondary, textAlign: "center", paddingHorizontal: spacing.xxl },
 });

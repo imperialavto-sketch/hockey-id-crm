@@ -1,8 +1,8 @@
 import React from "react";
-import { colors } from "@/constants/theme";
+import { colors, spacing, radius, typography } from "@/constants/theme";
 import { View, Text, Pressable, StyleSheet } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { ChevronRight, TrendingUp, Star } from "lucide-react-native";
 import { GlassCard } from "@/components/shared/GlassCard";
 
 interface TimelineSummaryCardProps {
@@ -21,7 +21,7 @@ export function TimelineSummaryCard({
   return (
     <GlassCard style={styles.card} variant="subtle">
       <View style={styles.header}>
-        <Star size={18} color="#FBBF24" strokeWidth={2.5} />
+        <Ionicons name="star" size={18} color={colors.warning} />
         <Text style={styles.title}>Season in Review</Text>
       </View>
       <View style={styles.stats}>
@@ -31,7 +31,7 @@ export function TimelineSummaryCard({
         </View>
         <View style={[styles.stat, styles.statOvr]}>
           <View style={styles.ovrRow}>
-            <TrendingUp size={18} color="#22C55E" strokeWidth={2.5} />
+            <Ionicons name="trending-up" size={18} color={colors.success} />
             <Text style={styles.ovrValue}>{ovrGrowth}</Text>
           </View>
           <Text style={styles.statLabel}>OVR Growth</Text>
@@ -49,13 +49,13 @@ export function TimelineSummaryCard({
         style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
       >
         <LinearGradient
-          colors={["#2563EB", "#3B82F6", "#6366F1"]}
+          colors={[colors.accent, colors.accentSecondary]}
           start={{ x: 0, y: 0.5 }}
           end={{ x: 1, y: 0.5 }}
           style={styles.ctaGradient}
         >
           <Text style={styles.ctaText}>View full player passport</Text>
-          <ChevronRight size={20} color="#fff" strokeWidth={2.5} />
+          <Ionicons name="chevron-forward" size={20} color={colors.onAccent} />
         </LinearGradient>
       </Pressable>
     </GlassCard>
@@ -64,84 +64,84 @@ export function TimelineSummaryCard({
 
 const styles = StyleSheet.create({
   card: {
-    marginTop: 8,
+    marginTop: spacing.sm,
     marginBottom: 100,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 16,
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
   },
   title: {
-    color: "#F8FAFC",
+    ...typography.sectionTitle,
     fontSize: 20,
-    fontWeight: "900",
+    fontWeight: "800",
+    color: colors.text,
     letterSpacing: -0.35,
   },
   stats: {
     flexDirection: "row",
-    gap: 12,
-    marginBottom: 16,
+    gap: spacing.md,
+    marginBottom: spacing.lg,
   },
   stat: {
     flex: 1,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: 16,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.surfaceLevel1,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
+    borderColor: colors.surfaceLevel1Border,
   },
   statOvr: {
-    borderColor: "rgba(34,197,94,0.2)",
-    backgroundColor: "rgba(34,197,94,0.06)",
+    borderColor: "rgba(57,217,138,0.25)",
+    backgroundColor: colors.successSoft,
   },
   statValue: {
-    color: "#F8FAFC",
     fontSize: 28,
-    fontWeight: "900",
+    fontWeight: "800",
     letterSpacing: -0.5,
+    color: colors.text,
   },
   statLabel: {
-    color: "#64748B",
-    fontSize: 12,
-    marginTop: 6,
-    fontWeight: "700",
-    letterSpacing: 0.2,
+    ...typography.captionSmall,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+    fontWeight: "600",
   },
   ovrRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: spacing.sm,
   },
   ovrValue: {
-    color: "#22C55E",
+    color: colors.success,
     fontSize: 24,
-    fontWeight: "900",
+    fontWeight: "800",
   },
   highlights: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 20,
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
   },
   highlightChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     backgroundColor: colors.accentSoft,
-    borderRadius: 12,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.surfaceLevel1Border,
   },
   highlightText: {
+    ...typography.captionSmall,
     color: colors.accent,
-    fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "700",
     letterSpacing: 0.15,
   },
   cta: {
-    borderRadius: 14,
+    borderRadius: radius.sm,
     overflow: "hidden",
   },
   ctaPressed: {
@@ -151,13 +151,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 14,
-    gap: 8,
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
   },
   ctaText: {
-    color: "#fff",
+    ...typography.bodySmall,
     fontSize: 15,
-    fontWeight: "800",
-    letterSpacing: 0.05,
+    fontWeight: "700",
+    color: colors.onAccent,
   },
 });

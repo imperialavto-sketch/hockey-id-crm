@@ -7,7 +7,6 @@ import {
   Platform,
 } from "react-native";
 import Animated from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
@@ -19,7 +18,9 @@ import { growthZoneToSpecialization } from "@/constants/mockCoaches";
 import { useSubscription } from "@/context/SubscriptionContext";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { SectionCard } from "@/components/player-passport";
+import { PrimaryButton, SecondaryButton } from "@/components/ui";
 import { triggerHaptic } from "@/lib/haptics";
+import { ScreenHeader } from "@/components/navigation/ScreenHeader";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { colors, spacing, radius, radii } from "@/constants/theme";
 
@@ -354,7 +355,6 @@ const progressStyles = StyleSheet.create({
 
 export default function DevelopmentPlanScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { hasDevelopmentPlanAccess } = useSubscription();
   const plan = MOCK_DEVELOPMENT_PLAN;
@@ -395,20 +395,13 @@ export default function DevelopmentPlanScreen() {
   };
 
   const header = (
-    <View style={[styles.customHeader, { paddingTop: insets.top + spacing.lg }]}>
-      <Pressable
-        onPress={() => {
-          triggerHaptic();
-          router.back();
-        }}
-        style={({ pressed }) => [styles.backBtn, pressed && { opacity: PRESSED_OPACITY }]}
-        accessibilityRole="button"
-        accessibilityLabel="Назад"
-      >
-        <Ionicons name="chevron-back" size={28} color={colors.text} />
-      </Pressable>
-      <Text style={styles.headerTitle}>План развития</Text>
-    </View>
+    <ScreenHeader
+      title="План развития"
+      onBack={() => {
+        triggerHaptic();
+        router.back();
+      }}
+    />
   );
 
   return (
@@ -430,7 +423,7 @@ export default function DevelopmentPlanScreen() {
                   Персональный план на 4 недели
                 </Text>
                 <Text style={devPlanStyles.teaserText}>
-                  Недельные цели, упражнения, прогресс и рекомендации тренеров под слабые стороны игрока
+                  Персональный план: цели на 4 недели, упражнения, прогресс и рекомендации под слабые стороны
                 </Text>
                 <Pressable
                   style={({ pressed }) => [
@@ -442,9 +435,9 @@ export default function DevelopmentPlanScreen() {
                     router.push("/subscription");
                   }}
                 >
-                  <Text style={devPlanStyles.teaserCtaText}>
-                    Открыть полный план
-                  </Text>
+                <Text style={devPlanStyles.teaserCtaText}>
+                  Получить полный план
+                </Text>
                 </Pressable>
               </View>
               <View style={devPlanStyles.teaserLocked}>
@@ -521,26 +514,20 @@ export default function DevelopmentPlanScreen() {
       </Animated.View>
 
       <Animated.View entering={screenReveal(STAGGER * 6)} style={styles.ctaWrap}>
-            <Pressable
-              style={({ pressed }) => [styles.ctaPrimary, pressed && { opacity: PRESSED_OPACITY }]}
-              onPress={() => {
-                triggerHaptic();
-                handleBookCoach();
-              }}
-            >
-              <Text style={styles.ctaPrimaryText}>Записаться на индивидуальную тренировку</Text>
-              <Ionicons name="chevron-forward" size={20} color={colors.bgDeep} />
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.ctaSecondary, pressed && { opacity: PRESSED_OPACITY }]}
-              onPress={() => {
-                triggerHaptic();
-                handleOpenMarketplace();
-              }}
-            >
-              <Text style={styles.ctaSecondaryText}>Открыть Marketplace</Text>
-              <Ionicons name="chevron-forward" size={20} color={colors.accent} />
-            </Pressable>
+        <PrimaryButton
+          label="Записаться на индивидуальную тренировку"
+          onPress={() => {
+            triggerHaptic();
+            handleBookCoach();
+          }}
+        />
+        <SecondaryButton
+          label="Открыть Marketplace"
+          onPress={() => {
+            triggerHaptic();
+            handleOpenMarketplace();
+          }}
+        />
       </Animated.View>
     </FlagshipScreen>
   );
@@ -609,27 +596,6 @@ const devPlanStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-  customHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: spacing.screenPadding,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.surfaceLevel1Border,
-  },
-  backBtn: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerTitle: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: "800",
-    marginLeft: spacing.sm,
-  },
   headerBlock: {
     marginBottom: 24,
   },
@@ -662,37 +628,5 @@ const styles = StyleSheet.create({
   ctaWrap: {
     gap: 12,
     marginTop: 8,
-  },
-  ctaPrimary: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.accent,
-    borderRadius: 16,
-    paddingVertical: 18,
-    paddingHorizontal: 24,
-  },
-  ctaSecondary: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.accentSoft,
-    borderRadius: 16,
-    paddingVertical: 18,
-    paddingHorizontal: 24,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-  },
-  ctaPrimaryText: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: colors.bgDeep,
-    marginRight: spacing.sm,
-  },
-  ctaSecondaryText: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: colors.accent,
-    marginRight: spacing.sm,
   },
 });

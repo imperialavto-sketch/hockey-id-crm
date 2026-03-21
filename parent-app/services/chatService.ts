@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { ConversationItem, ChatMessage } from "@/types/chat";
 import { apiFetch, getApiBase, ApiRequestError } from "@/lib/api";
+import { withFallback } from "@/utils/withFallback";
 import { logApiError } from "@/lib/apiErrors";
 import {
   getDemoConversations,
@@ -147,7 +148,7 @@ export async function getCoachMarkConversation(
     return raw
       .filter(
         (m): m is Record<string, unknown> =>
-          m && typeof m === "object" && typeof (m as { text?: unknown }).text === "string"
+          Boolean(m && typeof m === "object" && typeof (m as { text?: unknown }).text === "string")
       )
       .map((m) => ({
         id: String((m as { id?: unknown }).id ?? `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`),
@@ -157,7 +158,7 @@ export async function getCoachMarkConversation(
         text: String((m as { text: string }).text),
         createdAt: String((m as { createdAt?: unknown }).createdAt ?? new Date().toISOString()),
         readAt: (m as { readAt?: unknown }).readAt as string | null | undefined,
-        isAI: (m as { isAI?: boolean }).isAI ?? (m as { senderId?: string }).senderId === COACH_MARK_ID,
+        isAI: Boolean((m as { isAI?: unknown }).isAI === true || (m as { senderId?: string }).senderId === COACH_MARK_ID),
       }));
   } catch (err) {
     if (__DEV__) {

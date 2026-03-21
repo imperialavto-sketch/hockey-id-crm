@@ -1,14 +1,15 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { View, Text, StyleSheet, Pressable } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
 import Animated from "react-native-reanimated";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
 import { COACH_MARK_ID } from "@/services/chatService";
 import { getPlayers } from "@/services/playerService";
-import { getPlayerSchedule } from "@/services/scheduleService";
+import { getMeSchedule } from "@/services/scheduleService";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { SectionCard } from "@/components/player-passport";
 import { ScheduleItemRow } from "@/components/player-passport";
+import { ActionLinkCard } from "@/components/player/ActionLinkCard";
 import { SkeletonBlock, ErrorStateView } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
@@ -21,13 +22,14 @@ function ScheduleSkeleton() {
   return (
     <View style={styles.skeletonContent}>
       <SkeletonBlock height={100} style={styles.skeletonHeader} />
+      <SkeletonBlock height={56} style={styles.skeletonCta} />
       <SkeletonBlock height={180} style={styles.skeletonCard} />
       <SkeletonBlock height={220} style={styles.skeletonCard} />
     </View>
   );
 }
 
-const PRESSED_OPACITY = 0.88;
+const SECTION_GAP = 24;
 
 export default function ScheduleScreen() {
   const router = useRouter();
@@ -49,16 +51,15 @@ export default function ScheduleScreen() {
     setLoading(true);
     setError(false);
     try {
-      const players = await getPlayers(user.id);
-      const pid = players[0]?.id ?? null;
+      const [scheduleData, playersData] = await Promise.all([
+        getMeSchedule(),
+        getPlayers(user.id).catch(() => []),
+      ]);
       if (!mountedRef.current) return;
-      if (mountedRef.current) setPlayerId(pid);
-      if (!pid) {
-        setSchedule([]);
-        return;
+      if (mountedRef.current) {
+        setSchedule(Array.isArray(scheduleData) ? scheduleData : []);
+        setPlayerId(playersData?.[0]?.id ?? null);
       }
-      const data = await getPlayerSchedule(pid, user.id);
-      if (mountedRef.current) setSchedule(data);
     } catch {
       if (mountedRef.current) {
         setSchedule([]);
@@ -99,7 +100,8 @@ export default function ScheduleScreen() {
 
   const hasContent = schedule.length > 0;
   const today = schedule.filter((s) => s.title !== "Выходной").slice(0, 3);
-  const rest = schedule.filter((s) => !today.includes(s));
+  const todayIds = new Set(today.map((t) => t.id));
+  const rest = schedule.filter((s) => !todayIds.has(s.id));
 
   if (!hasContent) {
     return (
@@ -107,7 +109,7 @@ export default function ScheduleScreen() {
         <Animated.View entering={screenReveal(0)}>
           <View style={styles.heroSection}>
             <View style={styles.heroIconWrap}>
-              <Ionicons name="calendar-outline" size={32} color={colors.accent} />
+              <Ionicons name="calendar-outline" size={28} color={colors.accent} />
             </View>
             <Text style={styles.heroTitle}>Расписание</Text>
             <Text style={styles.heroSub}>
@@ -117,30 +119,28 @@ export default function ScheduleScreen() {
         </Animated.View>
         <Animated.View entering={screenReveal(STAGGER)}>
           <View style={styles.emptyCard}>
-            <Ionicons name="calendar-outline" size={40} color={colors.textMuted} />
+            <View style={styles.emptyIconWrap}>
+              <Ionicons name="calendar-outline" size={32} color={colors.textMuted} />
+            </View>
             <Text style={styles.emptyTitle}>Пока нет расписания</Text>
             <Text style={styles.emptySub}>
               Когда тренер добавит тренировки и игры, они появятся здесь.
             </Text>
-            <Pressable
-              style={({ pressed }) => [
-                styles.coachMarkCta,
-                styles.coachMarkCtaInline,
-                pressed && { opacity: PRESSED_OPACITY },
-              ]}
-              onPress={() => {
-                triggerHaptic();
-                const q = playerId
-                  ? `?playerId=${encodeURIComponent(playerId)}&initialMessage=${encodeURIComponent("Помоги составить план тренировок на неделю")}`
-                  : "";
-                router.push(`/chat/${COACH_MARK_ID}${q}`);
-              }}
-            >
-              <Ionicons name="sparkles-outline" size={18} color={colors.accent} />
-              <Text style={styles.coachMarkCtaText}>
-                Спросить Coach Mark о плане тренировок
-              </Text>
-            </Pressable>
+            <View style={styles.emptyCoachMarkWrap}>
+              <ActionLinkCard
+                icon="sparkles"
+                title="Coach Mark"
+                description="Составь план на эту неделю. Обновляй каждую неделю"
+                onPress={() => {
+                  triggerHaptic();
+                  const q = playerId
+                    ? `?playerId=${encodeURIComponent(playerId)}&initialMessage=${encodeURIComponent("Составь персональный план тренировок на неделю с учётом расписания")}`
+                    : "";
+                  router.push(`/chat/${COACH_MARK_ID}${q}` as never);
+                }}
+                variant="accent"
+              />
+            </View>
           </View>
         </Animated.View>
       </FlagshipScreen>
@@ -153,39 +153,34 @@ export default function ScheduleScreen() {
       <Animated.View entering={screenReveal(0)}>
         <View style={styles.heroSection}>
           <View style={styles.heroIconWrap}>
-            <Ionicons name="calendar-outline" size={32} color={colors.accent} />
+            <Ionicons name="calendar-outline" size={28} color={colors.accent} />
           </View>
           <Text style={styles.heroTitle}>Расписание</Text>
           <Text style={styles.heroSub}>
-            Тренер может отправлять изменения в приложение
+            Проверяйте расписание — тренер может обновлять тренировки и игры
           </Text>
         </View>
       </Animated.View>
 
       <Animated.View entering={screenReveal(STAGGER)}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.coachMarkCta,
-            pressed && { opacity: PRESSED_OPACITY },
-          ]}
+        <ActionLinkCard
+          icon="sparkles"
+          title="Coach Mark"
+          description="Составь план на эту неделю. Обновляй каждую неделю"
           onPress={() => {
             triggerHaptic();
             const q = playerId
-              ? `?playerId=${encodeURIComponent(playerId)}&initialMessage=${encodeURIComponent("Помоги составить план тренировок на неделю")}`
+              ? `?playerId=${encodeURIComponent(playerId)}&initialMessage=${encodeURIComponent("Составь персональный план тренировок на неделю с учётом расписания")}`
               : "";
-            router.push(`/chat/${COACH_MARK_ID}${q}`);
+            router.push(`/chat/${COACH_MARK_ID}${q}` as never);
           }}
-        >
-          <Ionicons name="sparkles-outline" size={18} color={colors.accent} />
-          <Text style={styles.coachMarkCtaText}>
-            Спросить Coach Mark о плане тренировок
-          </Text>
-        </Pressable>
+          variant="accent"
+        />
       </Animated.View>
 
       {today.length > 0 && (
         <Animated.View entering={screenReveal(STAGGER * 2)}>
-          <SectionCard title="Ближайшие" style={styles.sectionCard}>
+          <SectionCard title="Ближайшие" variant="primary" style={styles.sectionCard}>
             {today.map((item, index) => (
               <ScheduleItemRow
                 key={item.id}
@@ -220,14 +215,15 @@ export default function ScheduleScreen() {
 }
 
 const styles = StyleSheet.create({
-  skeletonContent: { gap: spacing.xl },
-  skeletonHeader: { borderRadius: radius.lg, marginBottom: spacing.sm },
-  skeletonCard: { borderRadius: 20 },
+  skeletonContent: { gap: SECTION_GAP },
+  skeletonHeader: { borderRadius: radius.lg },
+  skeletonCta: { borderRadius: radius.md },
+  skeletonCard: { borderRadius: radius.lg },
 
   errorWrap: { flex: 1 },
   heroSection: {
-    marginBottom: spacing.xl,
-    paddingVertical: spacing.xl,
+    marginBottom: SECTION_GAP,
+    paddingVertical: spacing.lg,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.lg,
     backgroundColor: colors.surfaceLevel2,
@@ -244,7 +240,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   heroTitle: {
-    ...typography.sectionTitle,
+    ...typography.h2,
     color: colors.text,
     marginBottom: spacing.xs,
   },
@@ -253,43 +249,28 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
 
-  coachMarkCta: {
-    flexDirection: "row",
+  emptyCard: {
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceLevel1,
+    borderWidth: 1,
+    borderColor: colors.surfaceLevel1Border,
+    alignItems: "center",
+  },
+  emptyIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.surfaceLevel2,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
-    backgroundColor: colors.accentSoft,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: "rgba(59,130,246,0.25)",
-  },
-  coachMarkCtaText: {
-    ...typography.bodySmall,
-    fontWeight: "600",
-    color: colors.accent,
-  },
-  coachMarkCtaInline: {
-    marginTop: spacing.lg,
-    marginBottom: 0,
-  },
-
-  emptyCard: {
-    paddingVertical: spacing.xxl,
-    paddingHorizontal: spacing.xxl,
-    borderRadius: 20,
-    backgroundColor: colors.glass,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    alignItems: "center",
+    marginBottom: spacing.md,
   },
   emptyTitle: {
-    ...typography.h2,
+    ...typography.section,
     color: colors.text,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   emptySub: {
     ...typography.bodySmall,
@@ -297,9 +278,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 22,
   },
+  emptyCoachMarkWrap: {
+    width: "100%",
+    marginTop: spacing.lg,
+  },
 
   sectionCard: {
-    marginBottom: spacing.xl,
+    marginBottom: SECTION_GAP,
     borderColor: colors.surfaceLevel1Border,
   },
 });

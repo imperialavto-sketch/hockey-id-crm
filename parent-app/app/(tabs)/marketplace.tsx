@@ -14,7 +14,7 @@ import { CoachFilters } from "@/components/marketplace/CoachFilters";
 import { CoachCard } from "@/components/marketplace/CoachCard";
 import { RecommendedCoachCard } from "@/components/marketplace/RecommendedCoachCard";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
-import { SkeletonBlock, ErrorStateView } from "@/components/ui";
+import { SkeletonBlock, ErrorStateView, EmptyStateView } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
 import { colors, spacing, typography, radius } from "@/constants/theme";
@@ -139,7 +139,7 @@ export default function MarketplaceTabScreen() {
           title="Не удалось загрузить тренеров"
           subtitle="Проверьте подключение и попробуйте снова"
           onAction={loadCoaches}
-          style={styles.errorContainer}
+          style={styles.errorWrap}
         />
       </FlagshipScreen>
     );
@@ -189,18 +189,17 @@ export default function MarketplaceTabScreen() {
     </>
   );
 
-  const ListEmpty = () => (
-    <View style={styles.emptyWrap}>
-      <Ionicons name="people-outline" size={48} color={colors.textMuted} />
-      <Text style={styles.emptyTitle}>
-        {coaches.length === 0 ? "Нет тренеров" : "Нет тренеров по фильтру"}
-      </Text>
-      <Text style={styles.emptySub}>
-        {coaches.length === 0
+  const listEmpty = (
+    <EmptyStateView
+      icon="people-outline"
+      title={coaches.length === 0 ? "Нет тренеров" : "Нет тренеров по фильтру"}
+      subtitle={
+        coaches.length === 0
           ? "Тренеры появятся в разделе позже"
-          : "Попробуйте изменить фильтр"}
-      </Text>
-    </View>
+          : "Попробуйте изменить фильтр"
+      }
+      style={styles.emptyWrap}
+    />
   );
 
   return (
@@ -209,7 +208,7 @@ export default function MarketplaceTabScreen() {
         data={filteredCoaches}
         keyExtractor={(item) => item.id}
         ListHeaderComponent={ListHeader}
-        ListEmptyComponent={filteredCoaches.length === 0 ? <ListEmpty /> : null}
+        ListEmptyComponent={filteredCoaches.length === 0 ? listEmpty : null}
         contentContainerStyle={[
           styles.list,
           {
@@ -250,10 +249,10 @@ const styles = StyleSheet.create({
   },
   skeletonContent: { gap: spacing.xl, paddingTop: spacing.sm },
   skeletonHero: { borderRadius: radius.lg, marginBottom: spacing.sm },
-  skeletonFilters: { borderRadius: 14, marginBottom: spacing.sm },
-  skeletonCard: { borderRadius: 20 },
+  skeletonFilters: { borderRadius: radius.sm, marginBottom: spacing.sm },
+  skeletonCard: { borderRadius: radius.lg },
 
-  errorContainer: { flex: 1 },
+  errorWrap: { flex: 1 },
   aiSection: {
     marginBottom: spacing.xl,
   },
@@ -284,22 +283,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.screenPadding,
     paddingTop: spacing.sm,
   },
-  emptyWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 60,
-    paddingHorizontal: spacing.xxl,
-  },
-  emptyTitle: {
-    ...typography.h2,
-    color: colors.text,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-  },
-  emptySub: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    textAlign: "center",
-  },
+  emptyWrap: { flex: 1, justifyContent: "center" },
 });

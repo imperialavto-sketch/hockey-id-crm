@@ -2,6 +2,7 @@ import React from "react";
 import { colors, radius, radii, spacing } from "@/constants/theme";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { PrimaryButton, SecondaryButton } from "@/components/ui";
 import type { SubscriptionPlan } from "@/types/subscription";
 
 const PRESSED_OPACITY = 0.88;
@@ -51,18 +52,11 @@ export function PlanCard({
           </View>
         ))}
       </View>
-      <Pressable
-        style={({ pressed }) => [
-          styles.cta,
-          plan.popular && styles.ctaPopular,
-          pressed && { opacity: PRESSED_OPACITY },
-        ]}
-        onPress={onSelect}
-      >
-        <Text style={[styles.ctaText, plan.popular && styles.ctaTextPopular]}>
-          Выбрать
-        </Text>
-      </Pressable>
+      {plan.popular ? (
+        <PrimaryButton label="Выбрать" onPress={onSelect} />
+      ) : (
+        <SecondaryButton label="Выбрать" onPress={onSelect} />
+      )}
     </Pressable>
   );
 }
@@ -135,24 +129,5 @@ const styles = StyleSheet.create({
   featureText: {
     fontSize: 14,
     color: colors.textSecondary,
-  },
-  cta: {
-    paddingVertical: spacing.lg,
-    borderRadius: radii.sm,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.surfaceLevel2Border,
-  },
-  ctaPopular: {
-    backgroundColor: colors.accent,
-    borderColor: "transparent",
-  },
-  ctaText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: colors.text,
-  },
-  ctaTextPopular: {
-    color: colors.bgDeep,
   },
 });

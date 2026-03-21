@@ -1,18 +1,20 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   View,
   Text,
-  TextInput,
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
   Pressable,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter, Link, Redirect } from "expo-router";
+import { useRouter, Redirect } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
-import { PrimaryButton } from "@/components/ui";
-import { colors, spacing, radii } from "@/constants/theme";
+import { PrimaryButton, Input } from "@/components/ui";
+import { colors, spacing, inputStyles, typography, feedback } from "@/constants/theme";
+import { triggerHaptic } from "@/lib/haptics";
 import { registerRequest } from "@/services/authService";
 
 export default function RegisterScreen() {
@@ -23,16 +25,7 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  if (authLoading) {
-    return (
-      <View style={styles.loading}>
-        <SafeAreaView style={styles.loadingSafe} edges={["top", "bottom"]} />
-      </View>
-    );
-  }
-  if (isAuthenticated) return <Redirect href="/(tabs)" />;
-
-  const handleRegister = async () => {
+  const handleRegister = useCallback(async () => {
     setError("");
     if (!email.trim() || !password) {
       setError("Введите email и пароль");
@@ -48,7 +41,18 @@ export default function RegisterScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [email, password, login, router]);
+
+  if (authLoading) {
+    return (
+      <View style={styles.loading}>
+        <SafeAreaView style={styles.loadingSafe} edges={["top", "bottom"]}>
+          <ActivityIndicator size="large" color={colors.accent} style={styles.loader} />
+        </SafeAreaView>
+      </View>
+    );
+  }
+  if (isAuthenticated) return <Redirect href="/(tabs)" />;
 
   return (
     <View style={styles.container}>
@@ -57,13 +61,16 @@ export default function RegisterScreen() {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.keyboard}
         >
-          <View style={styles.content}>
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             <Text style={styles.title}>Регистрация</Text>
             <Text style={styles.subtitle}>Создайте аккаунт родителя</Text>
 
-            <TextInput
+            <Input
               placeholder="Email"
-              placeholderTextColor={colors.textMuted}
               value={email}
               onChangeText={(t) => {
                 setEmail(t);
@@ -73,11 +80,10 @@ export default function RegisterScreen() {
               autoCapitalize="none"
               autoComplete="email"
               editable={!loading}
-              style={[styles.input, error ? styles.inputError : null]}
+              error={!!error}
             />
-            <TextInput
+            <Input
               placeholder="Пароль"
-              placeholderTextColor={colors.textMuted}
               value={password}
               onChangeText={(t) => {
                 setPassword(t);
@@ -86,7 +92,7 @@ export default function RegisterScreen() {
               secureTextEntry
               autoComplete="password"
               editable={!loading}
-              style={[styles.input, error ? styles.inputError : null]}
+              error={!!error}
             />
 
             <PrimaryButton
@@ -97,12 +103,16 @@ export default function RegisterScreen() {
 
             {error ? <Text style={styles.error}>{error}</Text> : null}
 
-            <Link href="/(auth)/login" asChild>
-              <Pressable style={styles.linkWrap}>
-                <Text style={styles.link}>Уже есть аккаунт? Войти</Text>
-              </Pressable>
-            </Link>
-          </View>
+            <Pressable
+              style={({ pressed }) => [styles.linkWrap, pressed && { opacity: feedback.pressedOpacity }]}
+              onPress={() => {
+                triggerHaptic();
+                router.push("/(auth)/login");
+              }}
+            >
+              <Text style={styles.link}>Уже есть аккаунт? Войти</Text>
+            </Pressable>
+          </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
@@ -112,40 +122,35 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   loading: { flex: 1 },
-  loadingSafe: { flex: 1 },
+  loadingSafe: { flex: 1, justifyContent: "center", alignItems: "center" },
+  loader: { marginTop: spacing.xl },
   safe: { flex: 1 },
-  keyboard: { flex: 1, justifyContent: "center", padding: spacing[24] },
-  content: { gap: spacing[16] },
+  keyboard: { flex: 1 },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    padding: spacing.xxl,
+    gap: inputStyles.formFieldGap,
+  },
   title: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: colors.text,
-    marginBottom: 4,
+    ...typography.h1,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
   },
   subtitle: {
-    fontSize: 15,
+    ...typography.bodySmall,
     color: colors.textSecondary,
-    marginBottom: spacing[8],
+    marginBottom: spacing.lg,
   },
-  input: {
-    backgroundColor: "rgba(10,20,40,0.65)",
-    borderRadius: radii.md,
-    padding: spacing[16],
-    color: colors.text,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-  },
-  inputError: { borderColor: colors.error },
   error: {
-    fontSize: 14,
+    ...typography.captionSmall,
     color: colors.error,
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
-  linkWrap: { marginTop: spacing[8], alignSelf: "center" },
+  linkWrap: { marginTop: spacing.xl, alignSelf: "center" },
   link: {
     fontSize: 14,
     color: colors.accent,
-    fontWeight: "500",
+    fontWeight: "600",
   },
 });

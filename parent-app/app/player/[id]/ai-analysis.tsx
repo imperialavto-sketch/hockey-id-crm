@@ -401,15 +401,16 @@ export default function PlayerAIAnalysisScreen() {
         </>
       ) : (
         <Animated.View entering={screenReveal(STAGGER * 3)}>
-          <SectionCard title="Разблокируйте полный AI анализ" style={styles.paywallCard}>
+          <SectionCard title="Получите полный разбор" style={styles.paywallCard}>
             <View style={styles.paywallIconWrap}>
               <Ionicons name="lock-closed" size={18} color={colors.accent} />
             </View>
             <Text style={styles.paywallTitle}>
-              Полный AI анализ доступен в Development Membership
+              Зоны роста, рекомендации и фокус тренера — в Membership
             </Text>
             <Text style={styles.paywallText}>
-              Получите полный разбор зон роста, персональные рекомендации, фокус тренера и мотивационный блок.
+              Coach Mark как персональный тренер + полный AI-анализ: что делать, над чем работать,
+              мотивационный блок и следующий шаг под вашего игрока.
             </Text>
             <Pressable
               style={({ pressed }) => [styles.paywallBtn, pressed && { opacity: PRESSED_OPACITY }]}
@@ -421,7 +422,7 @@ export default function PlayerAIAnalysisScreen() {
               accessibilityLabel="Разблокировать полный AI анализ"
             >
               <Ionicons name="sparkles" size={16} color="#ffffff" />
-              <Text style={styles.paywallBtnText}>Разблокировать полный AI анализ</Text>
+              <Text style={styles.paywallBtnText}>Получить полный доступ</Text>
             </Pressable>
           </SectionCard>
         </Animated.View>
@@ -436,13 +437,13 @@ export default function PlayerAIAnalysisScreen() {
             if (id) params.set("playerId", id);
             params.set(
               "initialMessage",
-              "Давай обсудим анализ прогресса моего ребёнка"
+              "Давай разберём анализ прогресса и что делать дальше"
             );
             router.push(`/chat/${COACH_MARK_ID}?${params.toString()}`);
           }}
         >
           <Ionicons name="sparkles-outline" size={18} color={colors.accent} />
-          <Text style={styles.coachMarkCtaText}>Обсудить анализ с Coach Mark</Text>
+          <Text style={styles.coachMarkCtaText}>Обсудить выводы с Coach Mark — получить персональные рекомендации</Text>
         </Pressable>
       </Animated.View>
 

@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
-import { View, Text, StyleSheet, Image, Pressable } from "react-native";
+import React, { useEffect, useState, useCallback, useRef, useMemo, memo } from "react";
+import { View, Text, StyleSheet, Image } from "react-native";
 import Animated from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -15,16 +15,14 @@ import {
 import { getCoachMarkMessages } from "@/services/chatService";
 import { computeCoachMarkNudges } from "@/services/coachMarkNudges";
 import { ActionLinkCard } from "@/components/player/ActionLinkCard";
+import { PrimaryButton } from "@/components/ui";
 import { SectionCard } from "@/components/player-passport";
-import { PremiumStatGrid, SkeletonBlock, ErrorStateView } from "@/components/ui";
+import { PremiumStatGrid, SkeletonBlock, ErrorStateView, EmptyStateView } from "@/components/ui";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
 import { colors, spacing, shadows, radius, typography } from "@/constants/theme";
-import { Ionicons } from "@expo/vector-icons";
 import type { Player } from "@/types";
-
-const PRESSED_OPACITY = 0.88;
 
 function buildPlayerDisplay(p: Player) {
   return {
@@ -50,12 +48,14 @@ const IMPROVEMENTS = [
   { skill: "Сила", change: "+15%" },
 ];
 
-function HomeSkeleton() {
+const SKELETON_KEYS = [1, 2, 3, 4] as const;
+
+const HomeSkeleton = memo(function HomeSkeleton() {
   return (
     <View style={styles.skeletonContent}>
       <SkeletonBlock height={200} style={styles.skeletonHero} />
       <View style={styles.skeletonStats}>
-        {[1, 2, 3, 4].map((i) => (
+        {SKELETON_KEYS.map((i) => (
           <SkeletonBlock key={i} height={76} style={styles.skeletonStatBlock} />
         ))}
       </View>
@@ -64,7 +64,7 @@ function HomeSkeleton() {
       <SkeletonBlock height={56} style={styles.skeletonButton} />
     </View>
   );
-}
+});
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -121,7 +121,7 @@ export default function HomeScreen() {
           summaryText = firstNudge.description;
           summaryPlayerId = firstNudge.playerId ?? summaryPlayerId;
         } else {
-          summaryText = "Откройте Coach Mark для персональных советов";
+          summaryText = "Спросите Coach Mark — заходите раз в неделю за советом";
         }
       }
       if (mountedRef.current) {
@@ -141,20 +141,48 @@ export default function HomeScreen() {
     loadData();
   }, [loadData]);
 
-  const goTo = (path: string) => {
-    triggerHaptic();
-    router.push(path as never);
-  };
+  const goTo = useCallback(
+    (path: string) => {
+      triggerHaptic();
+      router.push(path as never);
+    },
+    [router]
+  );
 
-  const openPassport = () => {
+  const openPassport = useCallback(() => {
     triggerHaptic();
     const playerId = players[0]?.id;
     if (!playerId) {
-      router.push("/player" as never);
+      router.push("/(tabs)/player" as never);
       return;
     }
     router.push(`/player/${playerId}/passport` as never);
-  };
+  }, [router, players]);
+
+  const handleAddPlayer = useCallback(() => {
+    triggerHaptic();
+    router.push("/player/add");
+  }, [router]);
+
+  const handleCoachMarkEmpty = useCallback(() => {
+    triggerHaptic();
+    const q = coachMarkSummary?.playerId
+      ? `?playerId=${encodeURIComponent(coachMarkSummary.playerId)}`
+      : "";
+    router.push(`/chat/${COACH_MARK_ID}${q}` as never);
+  }, [router, coachMarkSummary?.playerId]);
+
+  const handleCoachMarkFilled = useCallback(() => {
+    triggerHaptic();
+    const pid = coachMarkSummary?.playerId ?? players[0]?.id;
+    const q = pid ? `?playerId=${encodeURIComponent(pid)}` : "";
+    router.push(`/chat/${COACH_MARK_ID}${q}` as never);
+  }, [router, coachMarkSummary?.playerId, players]);
+
+  const heroPlayer = useMemo(
+    () => (players[0] ? buildPlayerDisplay(players[0]) : null),
+    [players[0]]
+  );
 
   if (loading) {
     return (
@@ -184,69 +212,56 @@ export default function HomeScreen() {
         /* Empty state when no players */
         <Animated.View entering={screenReveal(0)}>
           <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconWrap}>
-              <Ionicons name="people-outline" size={48} color={colors.textMuted} />
-            </View>
-            <Text style={styles.emptyTitle}>Нет игроков</Text>
-            <Text style={styles.emptySub}>
-              Добавьте игрока через тренера или организацию, чтобы видеть профиль и статистику
-            </Text>
+            <EmptyStateView
+              icon="people-outline"
+              title="Нет игроков"
+              subtitle="Добавьте игрока, чтобы видеть профиль и статистику"
+              style={styles.emptyStateWrap}
+            />
             <View style={styles.emptyCoachMarkWrap}>
               <ActionLinkCard
                 icon="sparkles"
                 title="Coach Mark"
                 description={
                   coachMarkSummary?.text ||
-                  "Персональный помощник для развития игрока"
+                  "Персональный AI-тренер: советы, планы и рекомендации"
                 }
-                onPress={() => {
-                  triggerHaptic();
-                  const q = coachMarkSummary?.playerId
-                    ? `?playerId=${encodeURIComponent(coachMarkSummary.playerId)}`
-                    : "";
-                  router.push(`/chat/${COACH_MARK_ID}${q}` as never);
-                }}
+                onPress={handleCoachMarkEmpty}
                 variant="accent"
               />
             </View>
-            <Pressable
-              style={({ pressed }) => [
-                styles.ctaBtn,
-                pressed && { opacity: PRESSED_OPACITY },
-              ]}
-              onPress={() => {
-                triggerHaptic();
-                router.push("/player" as never);
-              }}
-            >
-              <Text style={styles.ctaBtnText}>Перейти к профилю</Text>
-            </Pressable>
+            <PrimaryButton
+              label="Добавить игрока"
+              onPress={handleAddPlayer}
+            />
           </View>
         </Animated.View>
       ) : (
         <>
           {/* Hero */}
-          <Animated.View entering={screenReveal(0)} style={styles.heroSection}>
-            <View style={styles.hero}>
-              <LinearGradient
-                colors={[colors.accentSoft, "transparent"]}
-                style={styles.heroGlow}
-              />
-              <View style={styles.heroContent}>
-                <Text style={styles.heroNumber}>{buildPlayerDisplay(players[0]).number}</Text>
-                <Text style={styles.heroName}>{buildPlayerDisplay(players[0]).name}</Text>
-                <Text style={styles.heroMeta}>
-                  {buildPlayerDisplay(players[0]).position} • {buildPlayerDisplay(players[0]).team} • {buildPlayerDisplay(players[0]).age} лет
-                </Text>
-              </View>
-              <View style={styles.photoWrap}>
-                <Image
-                  source={{ uri: buildPlayerDisplay(players[0]).photo || "https://via.placeholder.com/80" }}
-                  style={styles.photo}
+          {heroPlayer && (
+            <Animated.View entering={screenReveal(0)} style={styles.heroSection}>
+              <View style={styles.hero}>
+                <LinearGradient
+                  colors={[colors.accentSoft, "transparent"]}
+                  style={styles.heroGlow}
                 />
+                <View style={styles.heroContent}>
+                  <Text style={styles.heroNumber}>{heroPlayer.number}</Text>
+                  <Text style={styles.heroName}>{heroPlayer.name}</Text>
+                  <Text style={styles.heroMeta}>
+                    {heroPlayer.position} • {heroPlayer.team} • {heroPlayer.age} лет
+                  </Text>
+                </View>
+                <View style={styles.photoWrap}>
+                  <Image
+                    source={{ uri: heroPlayer.photo || "https://via.placeholder.com/80" }}
+                    style={styles.photo}
+                  />
+                </View>
               </View>
-            </View>
-          </Animated.View>
+            </Animated.View>
+          )}
 
           {/* Stats */}
           <Animated.View entering={screenReveal(STAGGER)}>
@@ -274,16 +289,9 @@ export default function HomeScreen() {
               title="Coach Mark"
               description={
                 coachMarkSummary?.text ||
-                "План, подсказки и поддержка для семьи хоккеиста"
+                "Персональный AI-тренер: планы, подсказки и поддержка для семьи хоккеиста"
               }
-              onPress={() => {
-                if (__DEV__) console.log("[CoachMark] BEFORE tap — home Coach Mark card");
-                triggerHaptic();
-                const pid =
-                  coachMarkSummary?.playerId ?? players[0]?.id;
-                const q = pid ? `?playerId=${encodeURIComponent(pid)}` : "";
-                router.push(`/chat/${COACH_MARK_ID}${q}` as never);
-              }}
+              onPress={handleCoachMarkFilled}
               variant="accent"
             />
           </Animated.View>
@@ -333,15 +341,13 @@ const styles = StyleSheet.create({
   skeletonStatBlock: {
     flex: 1,
     minWidth: 72,
-    borderRadius: 18,
+    borderRadius: radius.md,
   },
   skeletonCard: {
-    borderRadius: 20,
-    marginTop: spacing.sm,
+    borderRadius: radius.lg,
   },
   skeletonButton: {
-    borderRadius: 12,
-    marginTop: spacing.sm,
+    borderRadius: radius.sm,
   },
   errorWrap: { flex: 1 },
   emptyContainer: {
@@ -351,43 +357,14 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xxxl,
     paddingHorizontal: spacing.xl,
   },
-  emptyIconWrap: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: colors.surfaceLevel2,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing.xl,
-  },
-  emptyTitle: {
-    ...typography.h2,
-    color: colors.text,
-    textAlign: "center",
-    marginBottom: spacing.sm,
-  },
-  emptySub: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    textAlign: "center",
-    marginBottom: spacing.xl,
+  emptyStateWrap: {
+    marginBottom: spacing.lg,
   },
   emptyCoachMarkWrap: {
     width: "100%",
     marginBottom: spacing.lg,
   },
-  ctaBtn: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    backgroundColor: colors.accent,
-    borderRadius: radius.lg,
-  },
-  ctaBtnText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: colors.onAccent,
-  },
-  heroSection: { marginBottom: spacing.xl },
+  heroSection: { marginBottom: spacing.xxl },
   hero: {
     position: "relative" as const,
     alignItems: "center",
@@ -396,7 +373,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     backgroundColor: colors.surfaceLevel2,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: colors.surfaceLevel1Border,
     ...shadows.level2,
   },
   heroGlow: {
@@ -438,7 +415,7 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     overflow: "hidden",
     borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: colors.surfaceLevel1Border,
   },
   photo: {
     width: "100%",
@@ -447,10 +424,8 @@ const styles = StyleSheet.create({
   },
 
   sectionTitle: {
+    ...typography.sectionTitle,
     color: colors.textPrimary,
-    fontSize: 17,
-    fontWeight: "800",
-    letterSpacing: -0.35,
     marginTop: spacing.xxl,
   },
   sectionTitleFirst: { marginTop: 0 },
@@ -458,11 +433,11 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 12,
     marginTop: spacing.xs,
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
   },
   quickStatsWrap: { marginBottom: spacing.xl },
   sectionCard: {
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: colors.surfaceLevel1Border,
     ...shadows.level1,
     marginBottom: spacing.xl,
   },

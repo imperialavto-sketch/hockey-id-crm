@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { colors } from "@/constants/theme";
+import { colors, spacing, typography } from "@/constants/theme";
 
 interface TeamHeaderProps {
   teamName: string;
@@ -18,19 +18,19 @@ export function TeamHeader({ teamName, subtitle = "Командная лента
 
 const styles = StyleSheet.create({
   wrap: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
   },
   teamName: {
-    fontSize: 28,
+    ...typography.h1,
     fontWeight: "900",
-    color: colors.text,
+    color: colors.textPrimary,
     letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 15,
+    ...typography.bodySmall,
     color: colors.textSecondary,
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
 });

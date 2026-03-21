@@ -28,6 +28,7 @@ const styles = StyleSheet.create({
   button: {
     height: buttonStyles.danger.height,
     borderRadius: buttonStyles.danger.radius,
+    paddingHorizontal: buttonStyles.danger.paddingHorizontal,
     borderWidth: buttonStyles.danger.borderWidth,
     borderColor: buttonStyles.danger.borderColor,
     backgroundColor: buttonStyles.danger.backgroundColor,

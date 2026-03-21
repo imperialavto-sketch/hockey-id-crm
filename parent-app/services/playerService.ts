@@ -12,8 +12,8 @@ import { mockPlayerStats } from "@/mocks/stats";
 import { mockRecommendations } from "@/mocks/recommendations";
 import { mockPlayerSchedule } from "@/mocks/schedule";
 import { PLAYER_MARK_GOLYSH } from "@/constants/mockPlayerMarkGolysh";
-import { getPlayerSchedule } from "@/services/scheduleService";
-import { demoPlayers, getDemoPlayerById } from "@/demo/demoPlayers";
+import { getMeSchedule } from "@/services/scheduleService";
+import { getDemoPlayers, getDemoPlayerById, addDemoPlayer } from "@/demo/demoPlayers";
 
 const PARENT_ID_HEADER = "x-parent-id";
 
@@ -29,6 +29,8 @@ interface BackendPlayer {
   parentId?: number | null;
   teamId?: number | null;
   team?: { name: string } | string | null;
+  avatarUrl?: string | null;
+  avatar?: string | null;
   games?: number | null;
   goals?: number | null;
   assists?: number | null;
@@ -126,6 +128,7 @@ function mapBackendPlayerToApiPlayer(b: BackendPlayer): ApiPlayer {
     age: b.age ?? undefined,
     position: b.position ?? undefined,
     team: teamName,
+    avatarUrl: (b.avatarUrl ?? b.avatar ?? null) as string | null | undefined,
   };
 }
 
@@ -150,7 +153,7 @@ const MOCK_FULL_PROFILE: FullPlayerProfile = {
 };
 
 async function getDemoFullProfile(playerId: string): Promise<FullPlayerProfile | null> {
-  const player = getDemoPlayerById(playerId) ?? demoPlayers[0] ?? null;
+  const player = getDemoPlayerById(playerId) ?? getDemoPlayers()[0] ?? null;
   if (!player) return null;
   const schedule = mockPlayerSchedule[player.id] ?? [];
   return {
@@ -164,7 +167,7 @@ async function getDemoFullProfile(playerId: string): Promise<FullPlayerProfile |
   };
 }
 
-/** Fetch full player profile from backend: getPlayer + getPlayerSchedule, with demo fallback. */
+/** Fetch full player profile from backend: getPlayer + getMeSchedule, with demo fallback. */
 export async function getFullPlayerProfile(
   playerId: string,
   parentId: string,
@@ -176,7 +179,7 @@ export async function getFullPlayerProfile(
 
   const [playerResult, scheduleResult, statsResult, recommendationsResult] = await Promise.allSettled([
     getBasePlayerProfile(playerId),
-    getPlayerSchedule(playerId, parentId),
+    getMeSchedule(),
     getPlayerStats(playerId, parentId),
     getCoachRecommendations(playerId, parentId),
   ]);
@@ -252,7 +255,7 @@ function normalizeAIAnalysisResponse(data: unknown): PlayerAIAnalysis | null {
 /** Fetch players from backend (GET /api/me/players). */
 export async function getPlayers(_parentId: string): Promise<Player[]> {
   if (isDemoMode) {
-    return [...demoPlayers];
+    return getDemoPlayers();
   }
 
   const data = await apiFetch<BackendPlayer[]>("/api/me/players", {
@@ -270,7 +273,7 @@ export async function getPlayers(_parentId: string): Promise<Player[]> {
 /** Fetch single player from backend (GET /api/me/players/:id). */
 export async function getPlayerById(id: string, _parentId?: string): Promise<Player | null> {
   if (isDemoMode) {
-    return useFallbackPlayerById(id);
+    return getDemoPlayerById(id) ?? useFallbackPlayerById(id);
   }
 
   const data = await apiFetch<BackendPlayer>(`/api/me/players/${encodeURIComponent(id)}`, {
@@ -294,6 +297,50 @@ export async function createPlayer(data: {
   const created = await apiFetch<BackendPlayer>("/api/players", {
     method: "POST",
     body: JSON.stringify(data),
+    timeoutMs: 6000,
+  });
+  return mapApiPlayerToPlayer(mapBackendPlayerToApiPlayer(created));
+}
+
+/**
+ * Create player for current parent (POST /api/me/players).
+ * Uses parent auth token — parentId is taken from server.
+ * In demo mode: adds to in-memory list and returns.
+ */
+export async function createPlayerForParent(data: {
+  firstName: string;
+  lastName: string;
+  birthYear: number;
+  position?: string;
+}): Promise<Player> {
+  if (isDemoMode) {
+    const id = `demo-${Date.now()}`;
+    const name = `${data.firstName} ${data.lastName}`.trim() || "Игрок";
+    const age = new Date().getFullYear() - data.birthYear;
+    const player: Player = {
+      id,
+      name,
+      age,
+      birthYear: data.birthYear,
+      team: "",
+      position: data.position ?? "Нападающий",
+      number: 0,
+      parentName: "",
+      status: "active",
+      avatarUrl: null,
+    };
+    addDemoPlayer(player);
+    return player;
+  }
+
+  const created = await apiFetch<BackendPlayer>("/api/me/players", {
+    method: "POST",
+    body: JSON.stringify({
+      firstName: data.firstName.trim(),
+      lastName: data.lastName.trim(),
+      birthYear: data.birthYear,
+      position: data.position?.trim() || undefined,
+    }),
     timeoutMs: 6000,
   });
   return mapApiPlayerToPlayer(mapBackendPlayerToApiPlayer(created));

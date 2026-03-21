@@ -1,24 +1,18 @@
 import type { ScheduleItem } from "@/types";
 import type { TeamEvent } from "@/types/team";
 import { apiFetch } from "@/lib/api";
-import { withFallback } from "@/utils/withFallback";
-import { getDemoScheduleForPlayer, getDemoWeeklySchedule } from "@/demo/demoSchedule";
+import { isDemoMode } from "@/config/api";
+import { getDemoWeeklySchedule } from "@/demo/demoSchedule";
 import { MOCK_TEAM_EVENTS } from "@/constants/mockTeamEvents";
 
-/** Backend training row shape from GET /api/schedule */
-interface BackendTraining {
-  id: string;
-  title: string | null;
+/** Backend response item from GET /api/me/schedule (parent's personal schedule) */
+export interface MeScheduleItem {
+  id: number | string;
+  title: string;
   startTime?: string;
   date?: string;
   location?: string | null;
-  teamId: string;
-}
-
-/** Backend player (minimal for teamId) */
-interface BackendPlayerRef {
-  id: string;
-  teamId?: string | null;
+  teamId?: number | string;
 }
 
 function formatDay(dateStr: string): string {
@@ -39,72 +33,53 @@ function formatTime(dateStr: string): string {
   }
 }
 
-function mapBackendTrainingToItem(t: BackendTraining): ScheduleItem {
-  const rawStart = t.startTime ?? t.date ?? "";
+function getDisplayDateTime(item: MeScheduleItem): string {
+  return (item.startTime ?? item.date ?? "").trim() || "";
+}
+
+function mapMeScheduleToItem(s: MeScheduleItem): ScheduleItem {
+  const rawStart = getDisplayDateTime(s);
   return {
-    id: t.id,
+    id: String(s.id),
     day: formatDay(rawStart),
-    title: t.title ?? "",
+    title: s.title ?? "",
     time: formatTime(rawStart),
   };
 }
 
-/** Fetch all schedule from backend (GET /api/schedule) with demo fallback. */
-export async function getSchedule(): Promise<ScheduleItem[]> {
-  return withFallback(
-    async () => {
-      const data = await apiFetch<BackendTraining[]>("/api/schedule", { timeoutMs: 6000 });
-      if (!Array.isArray(data)) return [];
-      return data.map(mapBackendTrainingToItem);
-    },
-    async () => getDemoWeeklySchedule()
-  );
+function mapMeScheduleToTeamEvent(s: MeScheduleItem): TeamEvent {
+  const rawStart = getDisplayDateTime(s);
+  const d = new Date(rawStart || 0);
+  return {
+    id: String(s.id),
+    type: "training",
+    title: s.title ?? "Событие",
+    date: d.toISOString().slice(0, 10),
+    time: d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }),
+    location: s.location ?? undefined,
+  };
 }
 
-/** Fetch schedule for a player: get player's teamId, then filter schedule by teamId, with demo fallback. */
-export async function getPlayerSchedule(
-  playerId: string,
-  _parentId: string
-): Promise<ScheduleItem[]> {
-  return withFallback(
-    async () => {
-      const [player, scheduleList] = await Promise.all([
-        apiFetch<BackendPlayerRef>(`/api/me/players/${playerId}`, { timeoutMs: 6000 }),
-        apiFetch<BackendTraining[]>("/api/schedule", { timeoutMs: 6000 }),
-      ]);
-      if (!Array.isArray(scheduleList)) return [];
-      if (player?.teamId) {
-        const forTeam = scheduleList.filter((s) => s.teamId === player.teamId);
-        return forTeam.map(mapBackendTrainingToItem);
-      }
-      return scheduleList.map(mapBackendTrainingToItem);
-    },
-    async () => getDemoScheduleForPlayer(playerId)
-  );
+/**
+ * Fetch parent's personal schedule from GET /api/me/schedule.
+ * Auth: Bearer token. Backend filters by parent's children.
+ * Demo mode: returns demo data.
+ */
+export async function getMeSchedule(): Promise<ScheduleItem[]> {
+  if (isDemoMode) {
+    return getDemoWeeklySchedule();
+  }
+  const data = await apiFetch<MeScheduleItem[]>("/api/me/schedule", { timeoutMs: 6000 });
+  if (!Array.isArray(data)) return [];
+  return data.map(mapMeScheduleToItem);
 }
 
-/** Fetch schedule from backend and map to TeamEvent[] for team feed "Ближайшие события", with demo fallback. */
+/** Fetch events for team feed "Ближайшие события". Uses parent's schedule. Demo mode: mock events. */
 export async function getTeamEvents(): Promise<TeamEvent[]> {
-  return withFallback(
-    async () => {
-      const data = await apiFetch<BackendTraining[]>("/api/schedule", { timeoutMs: 6000 });
-      if (!Array.isArray(data)) return [];
-      return data
-        .slice(0, 10)
-        .map((s): TeamEvent => {
-          const rawStart = s.startTime ?? s.date ?? "";
-          const d = new Date(rawStart);
-          return {
-            id: s.id,
-            type: "training",
-            title: s.title ?? "Событие",
-            date: d.toISOString().slice(0, 10),
-            time: d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }),
-            location: s.location ?? undefined,
-          };
-        });
-    },
-    async () => [...MOCK_TEAM_EVENTS]
-  );
+  if (isDemoMode) {
+    return [...MOCK_TEAM_EVENTS];
+  }
+  const data = await apiFetch<MeScheduleItem[]>("/api/me/schedule", { timeoutMs: 6000 });
+  if (!Array.isArray(data)) return [];
+  return data.slice(0, 10).map(mapMeScheduleToTeamEvent);
 }
-

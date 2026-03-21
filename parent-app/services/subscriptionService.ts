@@ -85,7 +85,7 @@ function mapPlan(api: unknown): SubscriptionPlan {
     code: (p.code ?? p.planCode ?? "basic") as SubscriptionPlan["code"],
     name: String(p.name ?? ""),
     priceMonthly: Number(p.priceMonthly ?? p.price ?? 0),
-    priceYearly: Number(p.priceYearly ?? p.price * 12 ?? 0),
+    priceYearly: Number(p.priceYearly ?? (typeof p.price === "number" ? p.price * 12 : 0)),
     features: features.map((f, i) => ({
       id: String(f?.id ?? `f${i}`),
       label: String(f?.label ?? ""),

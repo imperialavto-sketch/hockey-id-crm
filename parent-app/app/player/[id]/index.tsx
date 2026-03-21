@@ -21,7 +21,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { HeroPlayerCard } from "@/components/player/HeroPlayerCard";
 import { PlayerScreenBackground } from "@/components/player/PlayerScreenBackground";
 import { ActionLinkCard } from "@/components/player/ActionLinkCard";
-import { PremiumStatGrid, SkeletonBlock } from "@/components/ui";
+import { PremiumStatGrid, SkeletonBlock, PrimaryButton } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
 import {
@@ -29,6 +29,7 @@ import {
   ProgressTimelineCard,
   ScheduleItemRow,
 } from "@/components/player-passport";
+import { ScreenHeader } from "@/components/navigation/ScreenHeader";
 import { PressableCard } from "@/components/ui/PressableCard";
 import { SharePlayerSheet } from "@/components/player/SharePlayerSheet";
 import {
@@ -84,40 +85,34 @@ function ProfileSkeleton() {
 }
 
 function ProfileHeader({
-  insetTop,
   onBack,
   onShare,
   showShareButton = false,
 }: {
-  insetTop: number;
   onBack: () => void;
   onShare?: () => void;
   showShareButton?: boolean;
 }) {
   return (
-    <View style={[styles.customHeader, { paddingTop: insetTop + spacing.lg }]}>
-      <Pressable
-        style={({ pressed }) => [styles.backBtn, pressed && { opacity: PRESSED_OPACITY }]}
-        onPress={onBack}
-        accessibilityRole="button"
-        accessibilityLabel="Назад"
-      >
-        <Ionicons name="arrow-back" size={24} color="#ffffff" />
-      </Pressable>
-      <Text style={styles.headerTitle}>Профиль игрока</Text>
-      {showShareButton ? (
-        <Pressable
-          style={({ pressed }) => [styles.headerBtn, pressed && { opacity: PRESSED_OPACITY }]}
-          onPress={onShare}
-          accessibilityRole="button"
-          accessibilityLabel="Поделиться"
-        >
-          <Ionicons name="share-outline" size={24} color="#ffffff" />
-        </Pressable>
-      ) : (
-        <View style={styles.headerBtn} />
-      )}
-    </View>
+    <ScreenHeader
+      title="Профиль игрока"
+      onBack={onBack}
+      rightAction={
+        showShareButton ? (
+          <Pressable
+            style={({ pressed }) => [
+              { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+              pressed && { opacity: PRESSED_OPACITY },
+            ]}
+            onPress={onShare}
+            accessibilityRole="button"
+            accessibilityLabel="Поделиться"
+          >
+            <Ionicons name="share-outline" size={24} color={colors.text} />
+          </Pressable>
+        ) : undefined
+      }
+    />
   );
 }
 
@@ -137,14 +132,10 @@ function ProfileErrorState({
       </View>
       <Text style={styles.errorTitle}>{content.title}</Text>
       <Text style={styles.errorSub}>{content.subtitle}</Text>
-      <Pressable
-        style={({ pressed }) => [styles.retryBtn, pressed && { opacity: PRESSED_OPACITY }]}
+      <PrimaryButton
+        label="Повторить"
         onPress={onRetry}
-        accessibilityRole="button"
-        accessibilityLabel="Повторить"
-      >
-        <Text style={styles.retryBtnText}>Повторить</Text>
-      </Pressable>
+      />
     </View>
   );
 }
@@ -337,7 +328,7 @@ export default function PlayerProfileScreen() {
       <View style={styles.screenWrap}>
         <PlayerScreenBackground />
         <SafeAreaView style={styles.container} edges={["bottom"]}>
-          <ProfileHeader insetTop={insets.top} onBack={goBack} />
+          <ProfileHeader onBack={goBack} />
           <ScrollView
             style={styles.scroll}
             contentContainerStyle={styles.content}
@@ -358,7 +349,7 @@ export default function PlayerProfileScreen() {
       <View style={styles.screenWrap}>
         <PlayerScreenBackground />
         <SafeAreaView style={styles.container} edges={["bottom"]}>
-          <ProfileHeader insetTop={insets.top} onBack={goBack} />
+          <ProfileHeader onBack={goBack} />
           <ProfileErrorState
             type={errorType}
             onRetry={() => {
@@ -379,7 +370,6 @@ export default function PlayerProfileScreen() {
       <PlayerScreenBackground />
       <SafeAreaView style={styles.container} edges={["bottom"]}>
         <ProfileHeader
-          insetTop={insets.top}
           onBack={goBack}
           onShare={openShareSheet}
           showShareButton
@@ -479,9 +469,8 @@ export default function PlayerProfileScreen() {
           <ActionLinkCard
             icon="chatbubbles"
             title="Спросить Coach Mark"
-            description="Персональный AI-тренер для родителей"
+            description="Задайте вопрос о развитии — получите совет под вашего игрока"
             onPress={() => {
-              if (__DEV__) console.log("[CoachMark] BEFORE tap — Спросить Coach Mark");
               triggerHaptic();
               id && router.push(`/chat/${COACH_MARK_ID}?playerId=${encodeURIComponent(id)}`);
             }}
@@ -491,9 +480,8 @@ export default function PlayerProfileScreen() {
           <ActionLinkCard
             icon="folder-open-outline"
             title="Coach Mark Hub"
-            description="Заметки, планы и календарь"
+            description="Всё, что Coach Mark сохранил: заметки, планы, экспорт в календарь"
             onPress={() => {
-              if (__DEV__) console.log("[CoachMark] BEFORE tap — Coach Mark Hub");
               triggerHaptic();
               id && router.push(`/coach-mark?playerId=${encodeURIComponent(id)}`);
             }}
@@ -779,7 +767,7 @@ export default function PlayerProfileScreen() {
         />
 
         {/* Ближайшее расписание */}
-        <SectionCard title="Ближайшее расписание" style={styles.sectionCard}>
+        <SectionCard title="Ближайшее расписание" variant="primary" style={styles.sectionCard}>
           {schedulePreview.length === 0 ? (
             <Text style={styles.placeholder}>Нет запланированных мероприятий</Text>
           ) : (
@@ -838,7 +826,13 @@ export default function PlayerProfileScreen() {
         number={player.number}
         age={player.age}
         city={isDemo ? DEMO_PLAYER.city : undefined}
-        photo={isDemo ? { uri: DEMO_PLAYER.image } : null}
+        photo={
+          player.avatarUrl?.trim()
+            ? { uri: player.avatarUrl.trim() }
+            : isDemo
+              ? { uri: DEMO_PLAYER.image }
+              : null
+        }
         stats={
           stats
             ? {
@@ -944,46 +938,6 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: "center",
     maxWidth: 280,
-  },
-  retryBtn: {
-    backgroundColor: colors.accent,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: radius.sm,
-    marginTop: spacing.sm,
-  },
-  retryBtnText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#ffffff",
-  },
-  customHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.screenPadding,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.surfaceLevel1Border,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: -8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    lineHeight: 22,
-    color: "#ffffff",
-  },
-  headerBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
   },
   actionsBlock: {
     marginBottom: spacing.lg,

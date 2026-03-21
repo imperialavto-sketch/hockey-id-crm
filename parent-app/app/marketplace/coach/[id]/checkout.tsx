@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
-  Pressable,
   StyleSheet,
   Alert,
 } from "react-native";
@@ -16,7 +15,7 @@ import { PriceBreakdownCard } from "@/components/marketplace/PriceBreakdownCard"
 import { CheckoutButton } from "@/components/marketplace/CheckoutButton";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { SectionCard } from "@/components/player-passport";
-import { SkeletonBlock } from "@/components/ui";
+import { SkeletonBlock, GhostButton } from "@/components/ui";
 import {
   calculatePriceBreakdown,
   createBooking,
@@ -35,6 +34,7 @@ import { getPlayers } from "@/services/playerService";
 import { isDev } from "@/config/api";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
+import { ScreenHeader } from "@/components/navigation/ScreenHeader";
 import { colors, spacing, typography } from "@/constants/theme";
 
 const PRESSED_OPACITY = 0.88;
@@ -220,21 +220,13 @@ export default function CheckoutScreen() {
   };
 
   const header = (
-    <View style={[styles.customHeader, { paddingTop: insets.top + spacing.lg }]}>
-      <Pressable
-        style={({ pressed }) => [styles.backBtn, pressed && { opacity: PRESSED_OPACITY }]}
-        onPress={() => {
-          triggerHaptic();
-          router.back();
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Назад"
-      >
-        <Ionicons name="arrow-back" size={24} color="#ffffff" />
-      </Pressable>
-      <Text style={styles.headerTitle}>Оформление бронирования</Text>
-      <View style={styles.headerBtn} />
-    </View>
+    <ScreenHeader
+      title="Оформление бронирования"
+      onBack={() => {
+        triggerHaptic();
+        router.back();
+      }}
+    />
   );
 
   if (coachLoading) {
@@ -256,15 +248,13 @@ export default function CheckoutScreen() {
           <Text style={styles.errorSub}>
             Не удалось загрузить данные для оплаты. Вернитесь к выбору тренировки.
           </Text>
-          <Pressable
-            style={({ pressed }) => [styles.retryBtn, pressed && { opacity: PRESSED_OPACITY }]}
+          <GhostButton
+            label="Вернуться"
             onPress={() => {
               triggerHaptic();
               router.back();
             }}
-          >
-            <Text style={styles.retryBtnText}>Вернуться</Text>
-          </Pressable>
+          />
         </View>
       </FlagshipScreen>
     );
@@ -338,25 +328,6 @@ export default function CheckoutScreen() {
 }
 
 const styles = StyleSheet.create({
-  customHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.screenPadding,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: -8,
-  },
-  headerTitle: { fontSize: 18, fontWeight: "700", lineHeight: 22, color: "#ffffff" },
-  headerBtn: { width: 40, height: 40 },
-
   paddedContent: {
     flex: 1,
     paddingHorizontal: spacing.screenPadding,
@@ -380,14 +351,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxl,
     marginBottom: spacing.lg,
   },
-  retryBtn: {
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xxl,
-    borderRadius: 14,
-  },
-  retryBtnText: { fontSize: 16, fontWeight: "600", color: colors.onAccent },
-
   sectionCard: { marginBottom: spacing.xxl },
   infoRow: {
     flexDirection: "row",

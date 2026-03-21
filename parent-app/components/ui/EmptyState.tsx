@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { colors, spacing, typography } from "@/constants/theme";
+import { colors, spacing, typography, radius } from "@/constants/theme";
 import { PrimaryButton } from "./PrimaryButton";
 
 type Props = {
@@ -34,32 +34,32 @@ export function EmptyState({
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: spacing[32],
-    paddingHorizontal: spacing[24],
+    paddingVertical: spacing.xxxl,
+    paddingHorizontal: spacing.xxl,
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.02)",
-    marginHorizontal: spacing[20],
-    marginVertical: spacing[16],
-    borderRadius: 22,
+    backgroundColor: colors.surfaceLightAlt,
+    marginHorizontal: spacing.xl,
+    marginVertical: spacing.lg,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
+    borderColor: colors.surfaceLevel1Border,
   },
   iconWrap: {
-    marginBottom: spacing[20],
-    opacity: 0.8,
+    marginBottom: spacing.xl,
+    opacity: 0.85,
   },
   title: {
     ...typography.h2,
-    color: colors.text,
+    color: colors.textPrimary,
     textAlign: "center",
-    marginBottom: spacing[8],
+    marginBottom: spacing.sm,
   },
   subtitle: {
     ...typography.bodySmall,
     color: colors.textSecondary,
     textAlign: "center",
     lineHeight: 22,
-    marginBottom: spacing[24],
+    marginBottom: spacing.xxl,
   },
   buttonWrap: {
     width: "100%",

@@ -16,9 +16,10 @@ import { getFullPlayerProfile } from "@/services/playerService";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { SectionCard } from "@/components/player-passport";
 import { AchievementBadge } from "@/components/player-passport";
-import { SkeletonBlock } from "@/components/ui";
+import { SkeletonBlock, PrimaryButton } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
+import { ScreenHeader } from "@/components/navigation/ScreenHeader";
 import { colors, spacing, typography, radius } from "@/constants/theme";
 import type { AchievementsResponse } from "@/types";
 
@@ -156,33 +157,18 @@ export default function PlayerAchievementsScreen() {
   }, [load]);
 
   const header = (
-    <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
-      <Pressable
-        style={({ pressed }) => [styles.backBtn, pressed && { opacity: PRESSED_OPACITY }]}
-        onPress={() => {
-          triggerHaptic();
-          router.back();
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Назад"
-      >
-        <Ionicons name="arrow-back" size={24} color="#ffffff" />
-      </Pressable>
-      <View style={styles.headerCenter}>
-        <View style={styles.heroIconWrap}>
-          <Ionicons name="trophy" size={24} color={colors.accent} />
-        </View>
-        <View>
-          <Text style={styles.headerTitle}>Достижения</Text>
-          <Text style={styles.headerSub}>
-            {achievements
-              ? `${achievements.unlocked.length} получено · ${achievements.locked.length} впереди`
-              : "Значки и цели игрока"}
-          </Text>
-        </View>
-      </View>
-      <View style={styles.backBtn} />
-    </View>
+    <ScreenHeader
+      title="Достижения"
+      subtitle={
+        achievements
+          ? `${achievements.unlocked.length} получено · ${achievements.locked.length} впереди`
+          : "Значки и цели игрока"
+      }
+      onBack={() => {
+        triggerHaptic();
+        router.back();
+      }}
+    />
   );
 
   if (loading) {
@@ -204,16 +190,14 @@ export default function PlayerAchievementsScreen() {
           <Ionicons name={content.icon} size={48} color={colors.textMuted} />
           <Text style={styles.errorTitle}>{content.title}</Text>
           <Text style={styles.errorSub}>{content.subtitle}</Text>
-          <Pressable
-            style={({ pressed }) => [styles.retryBtn, pressed && { opacity: PRESSED_OPACITY }]}
+          <PrimaryButton
+            label="Повторить"
             onPress={() => {
               triggerHaptic();
               setLoading(true);
               load();
             }}
-          >
-            <Text style={styles.retryBtnText}>Повторить</Text>
-          </Pressable>
+          />
         </View>
       </FlagshipScreen>
     );
@@ -274,10 +258,11 @@ export default function PlayerAchievementsScreen() {
         {achievements!.locked.length > 0 && (
           <SectionCard
             title="Следующие цели"
-            style={[
-              styles.sectionCard,
-              achievements!.unlocked.length > 0 && styles.sectionCardSecond,
-            ]}
+            style={
+              achievements!.unlocked.length > 0
+                ? { ...styles.sectionCard, ...styles.sectionCardSecond }
+                : styles.sectionCard
+            }
           >
             <Text style={styles.sectionSub}>
               Цели для новых достижений
@@ -301,48 +286,6 @@ export default function PlayerAchievementsScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.screenPadding,
-    paddingVertical: spacing.md,
-    paddingBottom: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    marginHorizontal: -8,
-  },
-  headerCenter: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    justifyContent: "center",
-  },
-  heroIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerTitle: {
-    ...typography.sectionTitle,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  headerSub: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-
   paddedContent: {
     flex: 1,
     paddingHorizontal: spacing.screenPadding,
@@ -365,14 +308,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxl,
     marginBottom: spacing.lg,
   },
-  retryBtn: {
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xxl,
-    borderRadius: 14,
-  },
-  retryBtnText: { fontSize: 16, fontWeight: "600", color: colors.onAccent },
-
   emptyContainer: {
     flex: 1,
     justifyContent: "center",

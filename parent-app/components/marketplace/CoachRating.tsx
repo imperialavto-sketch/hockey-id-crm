@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { Star } from "lucide-react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { colors, spacing, typography } from "@/constants/theme";
 
 interface CoachRatingProps {
   rating: number;
@@ -10,7 +11,7 @@ interface CoachRatingProps {
 export function CoachRating({ rating, reviewsCount }: CoachRatingProps) {
   return (
     <View style={styles.wrap}>
-      <Star size={16} color="#F59E0B" fill="#F59E0B" />
+      <Ionicons name="star" size={16} color={colors.warning} />
       <Text style={styles.rating}>{rating.toFixed(1)}</Text>
       <Text style={styles.reviews}>({reviewsCount} отзывов)</Text>
     </View>
@@ -21,16 +22,15 @@ const styles = StyleSheet.create({
   wrap: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: spacing.sm,
   },
   rating: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#F8FAFC",
+    ...typography.bodySmall,
+    fontWeight: "700",
+    color: colors.text,
   },
   reviews: {
-    fontSize: 13,
-    color: "#64748B",
-    fontWeight: "500",
+    ...typography.captionSmall,
+    color: colors.textMuted,
   },
 });

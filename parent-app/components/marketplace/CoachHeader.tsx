@@ -1,5 +1,5 @@
 import React from "react";
-import { colors } from "@/constants/theme";
+import { colors, feedback, radius } from "@/constants/theme";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { useSubscription } from "@/context/SubscriptionContext";
@@ -15,7 +15,7 @@ export function CoachHeader() {
         </View>
       ) : (
         <Pressable
-          style={({ pressed }) => [styles.benefitsBadge, pressed && { opacity: 0.8 }]}
+          style={({ pressed }) => [styles.benefitsBadge, pressed && { opacity: feedback.pressedOpacity }]}
           onPress={() => router.push("/subscription")}
         >
           <Text style={styles.benefitsBadgeText}>
@@ -26,7 +26,7 @@ export function CoachHeader() {
       <View style={styles.titleRow}>
         <Text style={styles.title}>Индивидуальные тренировки</Text>
         <Pressable
-          style={({ pressed }) => [styles.packagesLink, pressed && { opacity: 0.8 }]}
+          style={({ pressed }) => [styles.packagesLink, pressed && { opacity: feedback.pressedOpacity }]}
           onPress={() => router.push("/marketplace/packages")}
         >
           <Text style={styles.packagesLinkText}>Пакеты</Text>
@@ -43,7 +43,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 12,
     backgroundColor: "rgba(34,197,94,0.2)",
-    borderRadius: 10,
+    borderRadius: radius.sm,
     marginBottom: 12,
   },
   badgeText: {
@@ -56,7 +56,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 14,
     backgroundColor: colors.accentSoft,
-    borderRadius: 12,
+    borderRadius: radius.sm,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.border,

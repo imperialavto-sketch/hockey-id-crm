@@ -1,10 +1,8 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet, type ViewStyle } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, spacing, radius, typography } from "@/constants/theme";
+import { colors, spacing, radius, typography, feedback } from "@/constants/theme";
 import { triggerHaptic } from "@/lib/haptics";
-
-const PRESSED_OPACITY = 0.88;
 
 export interface EmptyStateViewProps {
   /** Title (e.g. "Пока пусто", "Нет видео"). */
@@ -46,7 +44,7 @@ export function EmptyStateView({
     icon === undefined ? (
       <Ionicons name="document-text-outline" size={28} color={colors.textMuted} />
     ) : typeof icon === "string" ? (
-      <Ionicons name={icon} size={28} color={colors.textMuted} />
+      <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={28} color={colors.textMuted} />
     ) : (
       icon
     );
@@ -58,7 +56,7 @@ export function EmptyStateView({
       <Text style={styles.subtitle}>{subtitle}</Text>
       {buttonLabel != null && onButtonPress != null && (
         <Pressable
-          style={({ pressed }) => [styles.button, pressed && { opacity: PRESSED_OPACITY }]}
+          style={({ pressed }) => [styles.button, pressed && { opacity: feedback.pressedOpacity }]}
           onPress={handlePress}
           accessibilityRole="button"
           accessibilityLabel={buttonAccessibilityLabel ?? buttonLabel}
@@ -110,6 +108,6 @@ const styles = StyleSheet.create({
   buttonText: {
     fontSize: 15,
     fontWeight: "600",
-    color: "#ffffff",
+    color: colors.onAccent,
   },
 });

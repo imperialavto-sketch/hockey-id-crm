@@ -3,23 +3,20 @@ import {
   View,
   Text,
   Image,
-  Pressable,
   StyleSheet,
 } from "react-native";
 import Animated from "react-native-reanimated";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
 import { getFeedPost } from "@/services/feedService";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
-import { SkeletonBlock } from "@/components/ui";
+import { SkeletonBlock, PrimaryButton } from "@/components/ui";
 import { triggerHaptic } from "@/lib/haptics";
+import { ScreenHeader } from "@/components/navigation/ScreenHeader";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { colors, radius, radii, spacing, typography } from "@/constants/theme";
 import type { FeedPostItem } from "@/types/feed";
-
-const PRESSED_OPACITY = 0.88;
 
 const TYPE_LABELS: Record<string, string> = {
   announcement: "Объявление",
@@ -43,7 +40,6 @@ function PostSkeleton() {
 
 export default function FeedPostScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const [post, setPost] = useState<FeedPostItem | null>(null);
@@ -73,20 +69,13 @@ export default function FeedPostScreen() {
   }, [load]);
 
   const header = (
-    <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
-      <Pressable
-        style={({ pressed }) => [styles.backBtn, pressed && { opacity: PRESSED_OPACITY }]}
-        onPress={() => {
-          triggerHaptic();
-          router.back();
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Назад"
-      >
-        <Ionicons name="chevron-back" size={28} color={colors.text} />
-      </Pressable>
-      <Text style={styles.headerTitle}>Публикация</Text>
-    </View>
+    <ScreenHeader
+      title="Публикация"
+      onBack={() => {
+        triggerHaptic();
+        router.back();
+      }}
+    />
   );
 
   if (!user?.id) {
@@ -133,17 +122,15 @@ export default function FeedPostScreen() {
               : "Возможно, она была удалена"}
           </Text>
           {error && (
-            <Pressable
-              style={({ pressed }) => [styles.retryBtn, pressed && { opacity: PRESSED_OPACITY }]}
-              onPress={() => {
-                triggerHaptic();
-                load();
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Повторить"
-            >
-              <Text style={styles.retryBtnText}>Повторить</Text>
-            </Pressable>
+            <View style={styles.retryWrap}>
+              <PrimaryButton
+                label="Повторить"
+                onPress={() => {
+                  triggerHaptic();
+                  load();
+                }}
+              />
+            </View>
           )}
         </View>
       </FlagshipScreen>
@@ -191,26 +178,6 @@ export default function FeedPostScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: spacing.screenPadding,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.surfaceLevel1Border,
-  },
-  backBtn: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerTitle: {
-    flex: 1,
-    ...typography.sectionTitle,
-    color: colors.text,
-    marginLeft: spacing.sm,
-  },
   centered: {
     flex: 1,
     justifyContent: "center",
@@ -237,17 +204,8 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: "center",
   },
-  retryBtn: {
+  retryWrap: {
     marginTop: spacing.xxl,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xxl,
-    backgroundColor: colors.accent,
-    borderRadius: radii.sm,
-  },
-  retryBtnText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: colors.onAccent,
   },
   skeletonContent: {
     gap: spacing.lg,

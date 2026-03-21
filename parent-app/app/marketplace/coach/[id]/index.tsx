@@ -25,10 +25,11 @@ import { CoachSpecializationTags } from "@/components/marketplace/CoachSpecializ
 import { CoachReviewsSection } from "@/components/marketplace/CoachReviewsSection";
 import { SmartMatchCard } from "@/components/marketplace/SmartMatchCard";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
-import { SkeletonBlock } from "@/components/ui";
+import { SkeletonBlock, GhostButton, PrimaryButton } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
-import { colors, spacing, typography } from "@/constants/theme";
+import { ScreenHeader } from "@/components/navigation/ScreenHeader";
+import { colors, spacing, typography, radius } from "@/constants/theme";
 
 const PRESSED_OPACITY = 0.88;
 
@@ -110,21 +111,13 @@ export default function CoachDetailScreen() {
   }, [coach, players]);
 
   const header = (
-    <View style={[styles.customHeader, { paddingTop: insets.top + spacing.lg }]}>
-      <Pressable
-        style={({ pressed }) => [styles.backBtn, pressed && { opacity: PRESSED_OPACITY }]}
-        onPress={() => {
-          triggerHaptic();
-          router.back();
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Назад"
-      >
-        <Ionicons name="arrow-back" size={24} color="#ffffff" />
-      </Pressable>
-      <Text style={styles.headerTitle}>Тренер</Text>
-      <View style={styles.headerBtn} />
-    </View>
+    <ScreenHeader
+      title="Тренер"
+      onBack={() => {
+        triggerHaptic();
+        router.back();
+      }}
+    />
   );
 
   if (loading) {
@@ -146,15 +139,13 @@ export default function CoachDetailScreen() {
           <Text style={styles.errorSub}>
             Проверьте ссылку или вернитесь в каталог тренеров
           </Text>
-          <Pressable
-            style={({ pressed }) => [styles.retryBtn, pressed && { opacity: PRESSED_OPACITY }]}
+          <GhostButton
+            label="Вернуться"
             onPress={() => {
               triggerHaptic();
               router.back();
             }}
-          >
-            <Text style={styles.retryBtnText}>Вернуться</Text>
-          </Pressable>
+          />
         </View>
       </FlagshipScreen>
     );
@@ -203,11 +194,9 @@ export default function CoachDetailScreen() {
       </Animated.View>
 
       <Animated.View entering={screenReveal(matchResult && matchResult.matchScore >= 60 ? STAGGER * 6.5 : STAGGER * 5.5)}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.coachMarkCta,
-            pressed && { opacity: PRESSED_OPACITY },
-          ]}
+        <GhostButton
+          label="Узнать у Coach Mark, подойдёт ли тренер моему ребёнку"
+          leftIcon={<Ionicons name="sparkles-outline" size={18} color={colors.accent} />}
           onPress={() => {
             triggerHaptic();
             const params = new URLSearchParams();
@@ -218,47 +207,20 @@ export default function CoachDetailScreen() {
             );
             router.push(`/chat/${COACH_MARK_ID}?${params.toString()}`);
           }}
-        >
-          <Ionicons name="sparkles-outline" size={18} color={colors.accent} />
-          <Text style={styles.coachMarkCtaText}>
-            Спросить Coach Mark, подходит ли этот тренер
-          </Text>
-        </Pressable>
+        />
       </Animated.View>
 
-      <Animated.View entering={screenReveal(matchResult && matchResult.matchScore >= 60 ? STAGGER * 7 : STAGGER * 6)}>
-        <Pressable
-          style={({ pressed }) => [styles.cta, pressed && { opacity: PRESSED_OPACITY }]}
+      <Animated.View entering={screenReveal(matchResult && matchResult.matchScore >= 60 ? STAGGER * 7 : STAGGER * 6)} style={styles.ctaWrap}>
+        <PrimaryButton
+          label="Записаться на тренировку"
           onPress={goToBooking}
-        >
-          <Text style={styles.ctaText}>Записаться на тренировку</Text>
-          <Ionicons name="arrow-forward" size={22} color={colors.bgDeep} />
-        </Pressable>
+        />
       </Animated.View>
     </FlagshipScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  customHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.screenPadding,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.surfaceLevel1Border,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: -8,
-  },
-  headerTitle: { fontSize: 18, fontWeight: "700", lineHeight: 22, color: colors.text },
-  headerBtn: { width: 40, height: 40 },
-
   paddedContent: {
     flex: 1,
     paddingHorizontal: spacing.screenPadding,
@@ -266,7 +228,7 @@ const styles = StyleSheet.create({
   },
   skeletonContent: { gap: spacing.xl },
   skeletonHero: { borderRadius: 20 },
-  skeletonCard: { borderRadius: 20 },
+  skeletonCard: { borderRadius: radius.lg },
   skeletonCta: { borderRadius: 14, marginTop: spacing.md },
 
   errorContainer: {
@@ -283,46 +245,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxl,
     marginBottom: spacing.lg,
   },
-  retryBtn: {
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xxl,
-    borderRadius: 14,
-  },
-  retryBtnText: { fontSize: 16, fontWeight: "600", color: colors.onAccent },
-
   spacer: { height: spacing.xxl },
-  cta: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    backgroundColor: colors.accent,
-    borderRadius: 14,
-    paddingVertical: spacing.lg,
+  ctaWrap: {
     marginTop: spacing.xl,
-    ...typography.body,
-    fontWeight: "800",
-  },
-  ctaText: {
-    color: colors.bgDeep,
-  },
-  coachMarkCta: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    marginTop: spacing.lg,
-    backgroundColor: colors.accentSoft,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(59,130,246,0.25)",
-  },
-  coachMarkCtaText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.accent,
   },
 });

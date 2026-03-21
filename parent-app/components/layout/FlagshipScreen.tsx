@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { View, ScrollView, StyleSheet, type ViewStyle } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { PlayerScreenBackground } from "@/components/player/PlayerScreenBackground";
@@ -18,6 +18,8 @@ export interface FlagshipScreenProps {
   contentContainerStyle?: ViewStyle;
   /** ScrollView bounces. Default: true when scroll */
   bounces?: boolean;
+  /** Safe area edges. Default ["top","bottom"]. Use ["top"] for chat/keyboard screens. */
+  safeAreaEdges?: ("top" | "bottom")[];
 }
 
 /**
@@ -32,27 +34,32 @@ export function FlagshipScreen({
   scroll = true,
   contentContainerStyle,
   bounces = true,
+  safeAreaEdges = ["top", "bottom"],
 }: FlagshipScreenProps) {
   const insets = useSafeAreaInsets();
 
-  const bottomSpacer = { height: spacing.xxl + insets.bottom };
-  const contentTopPadding = header
-    ? spacing.sm
-    : insets.top + spacing.lg;
+  const bottomSpacer = useMemo(
+    () => ({
+      height: spacing.xxl + (safeAreaEdges.includes("bottom") ? insets.bottom : 0),
+    }),
+    [insets.bottom, safeAreaEdges]
+  );
+
+  const contentTopPadding = header ? spacing.sm : spacing.lg;
+  const scrollContentStyle = useMemo(
+    () => [styles.content, { paddingTop: contentTopPadding }, contentContainerStyle],
+    [contentTopPadding, contentContainerStyle]
+  );
 
   return (
     <View style={styles.screenWrap}>
       {background ?? <PlayerScreenBackground />}
-      <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <SafeAreaView style={styles.container} edges={safeAreaEdges}>
         {header}
         {scroll ? (
           <ScrollView
             style={styles.scroll}
-            contentContainerStyle={[
-              styles.content,
-              { paddingTop: contentTopPadding },
-              contentContainerStyle,
-            ]}
+            contentContainerStyle={scrollContentStyle}
             showsVerticalScrollIndicator={false}
             bounces={bounces}
           >

@@ -8,7 +8,6 @@ import {
 } from "react-native";
 import Animated from "react-native-reanimated";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { getFullPlayerProfile } from "@/services/playerService";
 import { Ionicons } from "@expo/vector-icons";
@@ -22,6 +21,7 @@ import { SkeletonBlock, ErrorStateView } from "@/components/ui";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
+import { ScreenHeader } from "@/components/navigation/ScreenHeader";
 import { DEMO_PLAYER } from "@/constants/demoPlayer";
 import { PLAYER_MARK_GOLYSH, PLAYER_AGE } from "@/constants/mockPlayerMarkGolysh";
 import { colors, shadows, spacing } from "@/constants/theme";
@@ -42,40 +42,34 @@ function PassportSkeleton() {
 }
 
 function PassportHeader({
-  insetTop,
   onBack,
   onShare,
   showShareButton = false,
 }: {
-  insetTop: number;
   onBack: () => void;
   onShare?: () => void;
   showShareButton?: boolean;
 }) {
   return (
-    <View style={[styles.customHeader, { paddingTop: insetTop + spacing.lg }]}>
-      <Pressable
-        style={({ pressed }) => [styles.backBtn, pressed && { opacity: PRESSED_OPACITY }]}
-        onPress={onBack}
-        accessibilityRole="button"
-        accessibilityLabel="Назад"
-      >
-        <Ionicons name="arrow-back" size={24} color="#ffffff" />
-      </Pressable>
-      <Text style={styles.headerTitle}>Паспорт игрока</Text>
-      {showShareButton ? (
-        <Pressable
-          style={({ pressed }) => [styles.headerBtn, pressed && { opacity: PRESSED_OPACITY }]}
-          onPress={onShare}
-          accessibilityRole="button"
-          accessibilityLabel="Share"
-        >
-          <Ionicons name="share-outline" size={24} color="#ffffff" />
-        </Pressable>
-      ) : (
-        <View style={styles.headerBtn} />
-      )}
-    </View>
+    <ScreenHeader
+      title="Паспорт игрока"
+      onBack={onBack}
+      rightAction={
+        showShareButton ? (
+          <Pressable
+            style={({ pressed }) => [
+              { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+              pressed && { opacity: PRESSED_OPACITY },
+            ]}
+            onPress={onShare}
+            accessibilityRole="button"
+            accessibilityLabel="Поделиться"
+          >
+            <Ionicons name="share-outline" size={24} color={colors.text} />
+          </Pressable>
+        ) : undefined
+      }
+    />
   );
 }
 
@@ -90,7 +84,6 @@ export default function PlayerPassportScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const [player, setPlayer] = useState<Player | null>(null);
   const [stats, setStats] = useState<PlayerStats | null>(null);
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
@@ -180,7 +173,7 @@ export default function PlayerPassportScreen() {
     return (
       <FlagshipScreen
         background={<PassportBackground />}
-        header={<PassportHeader insetTop={insets.top} onBack={goBack} />}
+        header={<PassportHeader onBack={goBack} />}
       >
         <PassportSkeleton />
       </FlagshipScreen>
@@ -192,7 +185,7 @@ export default function PlayerPassportScreen() {
     return (
       <FlagshipScreen
         background={<PassportBackground />}
-        header={<PassportHeader insetTop={insets.top} onBack={goBack} />}
+        header={<PassportHeader onBack={goBack} />}
         scroll={false}
       >
         <ErrorStateView
@@ -220,7 +213,6 @@ export default function PlayerPassportScreen() {
       background={<PassportBackground />}
       header={
         <PassportHeader
-          insetTop={insets.top}
           onBack={goBack}
           onShare={openShareSheet}
           showShareButton
@@ -367,24 +359,6 @@ export default function PlayerPassportScreen() {
 }
 
 const styles = StyleSheet.create({
-  customHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.screenPadding,
-    paddingVertical: 12,
-    paddingTop: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.surfaceLevel1Border,
-  },
-  backBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center", marginLeft: -8 },
-  headerTitle: { fontSize: 18, fontWeight: "700", lineHeight: 22, color: "#ffffff" },
-  headerBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   skeletonContent: { gap: spacing.xl },
   skeletonHeader: { borderRadius: 20, marginBottom: spacing.sm },
   skeletonCard: { borderRadius: 20 },

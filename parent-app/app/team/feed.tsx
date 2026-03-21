@@ -1,14 +1,7 @@
-import React, { useState, useCallback } from "react";
-import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-  Alert,
-} from "react-native";
+import React, { useState, useCallback, useMemo } from "react";
+import { View, Text, Pressable, StyleSheet, Alert } from "react-native";
 import Animated from "react-native-reanimated";
 import { useRouter, useFocusEffect } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { getTeamPosts } from "@/services/teamService";
 import { getTeamEvents } from "@/services/scheduleService";
@@ -21,10 +14,9 @@ import { SkeletonBlock, ErrorStateView } from "@/components/ui";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
-import { colors, spacing, shadows, radius } from "@/constants/theme";
+import { ScreenHeader } from "@/components/navigation/ScreenHeader";
+import { colors, spacing, shadows, radius, typography, feedback } from "@/constants/theme";
 import { Ionicons } from "@expo/vector-icons";
-
-const PRESSED_OPACITY = 0.88;
 
 function FeedSkeleton() {
   return (
@@ -75,28 +67,36 @@ export default function TeamFeedScreen() {
   const announcements = posts.filter((p) => p.isCoachAnnouncement);
   const otherPosts = posts.filter((p) => !p.isCoachAnnouncement);
 
-  const goTo = (path: string) => {
-    triggerHaptic();
-    router.push(path as never);
-  };
+  const goTo = useCallback(
+    (path: string) => {
+      triggerHaptic();
+      router.push(path as never);
+    },
+    [router]
+  );
 
-  const insets = useSafeAreaInsets();
-  const feedHeader = (
-    <View style={[styles.customHeader, { paddingTop: insets.top + spacing.lg }]}>
-      <Pressable
-        style={({ pressed }) => [styles.backBtn, pressed && { opacity: PRESSED_OPACITY }]}
-        onPress={() => {
-          triggerHaptic();
-          router.back();
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Назад"
-      >
-        <Ionicons name="arrow-back" size={24} color="#ffffff" />
-      </Pressable>
-      <Text style={styles.headerTitle}>Команда</Text>
-      <View style={styles.headerBtn} />
-    </View>
+  const handleBack = useCallback(() => router.back(), [router]);
+
+  const feedHeader = useMemo(
+    () => <ScreenHeader title="Команда" onBack={handleBack} />,
+    [handleBack]
+  );
+
+  const handleAnnouncementPress = useCallback(
+    (id: string) => () => router.push(`/team/announcement/${id}` as never),
+    [router]
+  );
+
+  const handlePostPress = useCallback(
+    (post: { id: string; isCoachAnnouncement?: boolean; author: { name: string }; text: string }) => () => {
+      triggerHaptic();
+      if (post.isCoachAnnouncement) {
+        router.push(`/team/announcement/${post.id}` as never);
+      } else {
+        Alert.alert(post.author.name, post.text, [{ text: "OK" }]);
+      }
+    },
+    [router]
   );
 
   if (loading) {
@@ -135,21 +135,21 @@ export default function TeamFeedScreen() {
             style={styles.navRow}
           >
             <Pressable
-              style={({ pressed }) => [styles.navBtn, pressed && { opacity: PRESSED_OPACITY }]}
+              style={({ pressed }) => [styles.navBtn, pressed && { opacity: feedback.pressedOpacity }]}
               onPress={() => goTo("/team/chat")}
             >
               <Ionicons name="chatbubbles-outline" size={20} color={colors.accent} />
               <Text style={styles.navBtnText}>Чат</Text>
             </Pressable>
             <Pressable
-              style={({ pressed }) => [styles.navBtn, pressed && { opacity: PRESSED_OPACITY }]}
+              style={({ pressed }) => [styles.navBtn, pressed && { opacity: feedback.pressedOpacity }]}
               onPress={() => goTo("/team/members")}
             >
               <Ionicons name="people-outline" size={20} color={colors.accent} />
               <Text style={styles.navBtnText}>Участники</Text>
             </Pressable>
             <Pressable
-              style={({ pressed }) => [styles.navBtn, pressed && { opacity: PRESSED_OPACITY }]}
+              style={({ pressed }) => [styles.navBtn, pressed && { opacity: feedback.pressedOpacity }]}
               onPress={() => goTo("/team/create-post")}
             >
               <Ionicons name="add-circle-outline" size={20} color={colors.accent} />
@@ -158,18 +158,13 @@ export default function TeamFeedScreen() {
           </Animated.View>
 
           {announcements.length > 0 ? (
-            <Animated.View
-              entering={screenReveal(STAGGER * 2)}
-            >
+            <Animated.View entering={screenReveal(STAGGER * 2)} style={styles.sectionBlock}>
               <Text style={styles.sectionTitle}>Объявления тренера</Text>
               {announcements.map((p) => (
                 <CoachAnnouncementCard
                   key={p.id}
                   post={p}
-                  onPress={() => {
-                    triggerHaptic();
-                    router.push(`/team/announcement/${p.id}` as never);
-                  }}
+                  onPress={handleAnnouncementPress(p.id)}
                 />
               ))}
             </Animated.View>
@@ -177,6 +172,7 @@ export default function TeamFeedScreen() {
 
           <Animated.View
             entering={screenReveal(STAGGER * 3)}
+            style={styles.sectionBlock}
           >
             <Text style={styles.sectionTitle}>Ближайшие события</Text>
             {events.length > 0 ? (
@@ -186,34 +182,25 @@ export default function TeamFeedScreen() {
             ) : (
               <View style={styles.emptySection}>
                 <Text style={styles.emptyText}>Ближайших событий пока нет</Text>
+                <Text style={styles.emptySub}>Проверяйте — тренер может добавить тренировки и игры</Text>
               </View>
             )}
           </Animated.View>
 
           <Animated.View
             entering={screenReveal(STAGGER * 4)}
+            style={styles.sectionBlock}
           >
             <Text style={styles.sectionTitle}>Лента</Text>
             {otherPosts.length > 0 ? (
               otherPosts.map((p) => (
-                <TeamPostCard
-                  key={p.id}
-                  post={p}
-                  onPress={() => {
-                    triggerHaptic();
-                    if (p.isCoachAnnouncement) {
-                      router.push(`/team/announcement/${p.id}` as never);
-                    } else {
-                      Alert.alert(p.author.name, p.text, [{ text: "OK" }]);
-                    }
-                  }}
-                />
+                <TeamPostCard key={p.id} post={p} onPress={handlePostPress(p)} />
               ))
             ) : (
               <View style={styles.emptySection}>
                 <Text style={styles.emptyText}>В ленте пока нет публикаций</Text>
                 <Text style={styles.emptySub}>
-                  Создайте первый пост или дождитесь новостей от тренера
+                  Создайте первый пост или загляните позже — тренер может публиковать новости
                 </Text>
               </View>
             )}
@@ -223,35 +210,6 @@ export default function TeamFeedScreen() {
 }
 
 const styles = StyleSheet.create({
-  customHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.screenPadding,
-    paddingVertical: 12,
-    paddingTop: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.surfaceLevel1Border,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: -8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    lineHeight: 22,
-    color: "#ffffff",
-  },
-  headerBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   skeletonContent: { gap: spacing.xl },
   skeletonHeader: {
     borderRadius: radius.lg,
@@ -290,12 +248,13 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: colors.accent,
   },
+  sectionBlock: {
+    marginTop: spacing.sectionGap,
+  },
   sectionTitle: {
-    fontSize: 17,
-    fontWeight: "800",
+    ...typography.sectionTitle,
     color: colors.textPrimary,
     marginBottom: spacing.md,
-    letterSpacing: -0.35,
   },
   emptySection: {
     padding: spacing.xxl,
@@ -307,11 +266,11 @@ const styles = StyleSheet.create({
     borderColor: colors.surfaceLevel1Border,
   },
   emptyText: {
-    fontSize: 16,
-    fontWeight: "500",
+    ...typography.body,
     color: colors.textSecondary,
   },
   emptySub: {
+    ...typography.bodySmall,
     fontSize: 14,
     color: colors.textMuted,
     marginTop: spacing.xs,

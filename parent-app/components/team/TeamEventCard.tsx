@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Calendar, MapPin } from "lucide-react-native";
-import { colors, cardStyles, radii, spacing, typography } from "@/constants/theme";
+import { colors, cardStyles, radii, spacing, typography, feedback } from "@/constants/theme";
 import type { TeamEvent } from "@/types/team";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -49,17 +49,17 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: cardStyles.backgroundColor,
     borderRadius: radii.md,
-    padding: spacing[16],
-    marginBottom: spacing[12],
+    padding: spacing.lg,
+    marginBottom: spacing.md,
     borderWidth: cardStyles.borderWidth,
     borderColor: cardStyles.borderColor,
   },
-  cardPressed: { opacity: 0.96 },
+  cardPressed: { opacity: feedback.pressedOpacity },
   dateBlock: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[8],
-    marginBottom: spacing[8],
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
   dateText: {
     ...typography.bodySmall,
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
   title: {
     ...typography.section,
     fontSize: 17,
-    color: colors.text,
+    color: colors.textPrimary,
     marginBottom: 4,
   },
   time: {
@@ -79,8 +79,8 @@ const styles = StyleSheet.create({
   locationRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[8],
-    marginTop: spacing[8],
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
   location: {
     ...typography.caption,

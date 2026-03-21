@@ -1,4 +1,5 @@
-import type { CoachProfileItem, CoachDetailWithServices } from "@/services/marketplaceService";
+import type { CoachProfileItem } from "@/types/marketplace";
+import type { CoachDetailWithServices } from "@/services/marketplaceService";
 import type { MockCoach } from "@/constants/mockCoaches";
 
 /**

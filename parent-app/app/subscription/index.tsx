@@ -10,10 +10,10 @@ import { PricingToggle } from "@/components/subscription/PricingToggle";
 import { PlanCard } from "@/components/subscription/PlanCard";
 import { ActionLinkCard } from "@/components/player/ActionLinkCard";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
-import { SkeletonBlock, ErrorStateView } from "@/components/ui";
+import { SkeletonBlock, ErrorStateView, EmptyStateView } from "@/components/ui";
 import { triggerHaptic } from "@/lib/haptics";
 import { screenReveal, STAGGER } from "@/lib/animations";
-import { colors, spacing } from "@/constants/theme";
+import { colors, spacing, radius } from "@/constants/theme";
 import { isDemoMode } from "@/config/api";
 import type { SubscriptionPlan } from "@/types/subscription";
 
@@ -165,12 +165,12 @@ export default function SubscriptionScreen() {
           </View>
         </Animated.View>
       ) : (
-        <Animated.View entering={screenReveal(STAGGER * 2)} style={styles.emptyWrap}>
-          <View style={styles.emptyIconWrap}>
-            <Ionicons name="calendar-outline" size={36} color={colors.textMuted} />
-          </View>
-          <Text style={styles.emptyText}>Планы временно недоступны</Text>
-          <Text style={styles.emptySub}>Попробуйте позже</Text>
+        <Animated.View entering={screenReveal(STAGGER * 2)}>
+          <EmptyStateView
+            icon="calendar-outline"
+            title="Планы временно недоступны"
+            subtitle="Попробуйте позже"
+          />
         </Animated.View>
       )}
 
@@ -178,7 +178,7 @@ export default function SubscriptionScreen() {
         <ActionLinkCard
           icon="star"
           title="Membership — полный комплект"
-          description="AI Report, план развития, видео-анализ и больше"
+          description="Coach Mark как тренер, AI Report, план развития и скидки на тренеров"
           onPress={() => {
             triggerHaptic();
             router.push("/subscription/membership");
@@ -220,31 +220,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xxl,
   },
   skeletonCard: {
-    borderRadius: 24,
-  },
-  emptyWrap: {
-    paddingVertical: spacing.xxl,
-    alignItems: "center",
-    marginBottom: spacing.xxl,
-  },
-  emptyIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: colors.surfaceLevel1,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing.lg,
-  },
-  emptyText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  emptySub: {
-    fontSize: 14,
-    color: colors.textMuted,
+    borderRadius: radius.xl,
   },
   errorWrap: {
     flex: 1,

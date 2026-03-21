@@ -1,12 +1,5 @@
-import React, { useState, useCallback } from "react";
-import {
-  View,
-  Text,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-} from "react-native";
+import React, { useState, useCallback, useMemo, memo } from "react";
+import { View, Text, FlatList, Pressable, RefreshControl, StyleSheet } from "react-native";
 import Animated from "react-native-reanimated";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -14,7 +7,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { getNotifications, markNotificationAsRead } from "@/services/notificationService";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
-import { SkeletonBlock, ErrorStateView } from "@/components/ui";
+import { ScreenHeader } from "@/components/navigation/ScreenHeader";
+import { SkeletonBlock, ErrorStateView, EmptyStateView } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
 import { colors, spacing, typography, radius } from "@/constants/theme";
@@ -69,7 +63,7 @@ function navigateFromNotification(
   }
 }
 
-function NotificationsSkeleton() {
+const NotificationsSkeleton = memo(function NotificationsSkeleton() {
   return (
     <View style={styles.skeletonContent}>
       <SkeletonBlock height={96} style={styles.skeletonRow} />
@@ -79,17 +73,18 @@ function NotificationsSkeleton() {
       <SkeletonBlock height={96} style={styles.skeletonRow} />
     </View>
   );
-}
+});
 
-function NotificationCard({
+const NotificationCard = memo(function NotificationCard({
   item,
   onPress,
 }: {
   item: AppNotificationItem;
-  onPress: () => void;
+  onPress: (item: AppNotificationItem) => void;
 }) {
   const isUnread = !item.isRead;
   const iconName = TYPE_ICONS[item.type] ?? "notifications-outline";
+  const handlePress = useCallback(() => onPress(item), [item, onPress]);
 
   return (
     <Pressable
@@ -98,7 +93,7 @@ function NotificationCard({
         isUnread && styles.cardUnread,
         pressed && { opacity: PRESSED_OPACITY },
       ]}
-      onPress={onPress}
+      onPress={handlePress}
     >
       <View style={[styles.iconWrap, isUnread && styles.iconWrapUnread]}>
         <Ionicons
@@ -122,7 +117,7 @@ function NotificationCard({
       <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
     </Pressable>
   );
-}
+});
 
 export default function NotificationsScreen() {
   const { user } = useAuth();
@@ -172,30 +167,56 @@ export default function NotificationsScreen() {
     [router, user?.id]
   );
 
-  const header = (
-    <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
-      <Pressable
-        style={({ pressed }) => [styles.backBtn, pressed && { opacity: PRESSED_OPACITY }]}
-        onPress={() => {
+  const handleRetry = useCallback(() => {
+    setLoading(true);
+    load();
+  }, [load]);
+
+  const header = useMemo(
+    () => (
+      <ScreenHeader
+        title="Уведомления"
+        subtitle="Активность и обновления"
+        onBack={() => {
           triggerHaptic();
           router.back();
         }}
-        accessibilityRole="button"
-        accessibilityLabel="Назад"
-      >
-        <Ionicons name="arrow-back" size={24} color="#ffffff" />
-      </Pressable>
-      <View style={styles.headerCenter}>
-        <View style={styles.heroIconWrap}>
-          <Ionicons name="notifications-outline" size={24} color={colors.accent} />
-        </View>
-        <View>
-          <Text style={styles.headerTitle}>Уведомления</Text>
-          <Text style={styles.headerSub}>Активность и обновления</Text>
-        </View>
+      />
+    ),
+    [router]
+  );
+
+  const keyExtractor = useCallback((item: AppNotificationItem) => item.id, []);
+
+  const listContentStyle = useMemo(
+    () => [
+      styles.list,
+      items.length === 0 ? styles.emptyList : {},
+      { paddingBottom: spacing.xxl + insets.bottom + 40 },
+    ],
+    [items.length, insets.bottom]
+  );
+
+  const listEmptyComponent = useMemo(
+    () => (
+      <View style={styles.emptyWrap}>
+        <EmptyStateView
+          icon="notifications-off-outline"
+          title="Нет уведомлений"
+          subtitle="Здесь появятся сообщения от тренера, изменения расписания и важные обновления"
+        />
       </View>
-      <View style={styles.backBtn} />
-    </View>
+    ),
+    []
+  );
+
+  const renderItem = useCallback(
+    ({ item, index }: { item: AppNotificationItem; index: number }) => (
+      <Animated.View entering={screenReveal(STAGGER + index * 30)}>
+        <NotificationCard item={item} onPress={handleItemPress} />
+      </Animated.View>
+    ),
+    [handleItemPress]
   );
 
   if (loading) {
@@ -215,28 +236,20 @@ export default function NotificationsScreen() {
           variant="network"
           title="Не удалось загрузить уведомления"
           subtitle="Проверьте подключение и попробуйте снова"
-          onAction={() => {
-            setLoading(true);
-            load();
-          }}
+          onAction={handleRetry}
           style={styles.errorWrap}
         />
       </FlagshipScreen>
     );
   }
 
-  const listBottomPadding = spacing.xxl + insets.bottom + 40;
-
   return (
     <FlagshipScreen header={header} scroll={false}>
       <FlatList
         data={items}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={[
-          styles.list,
-          items.length === 0 ? styles.emptyList : {},
-          { paddingBottom: listBottomPadding },
-        ]}
+        keyExtractor={keyExtractor}
+        contentContainerStyle={listContentStyle}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -244,70 +257,14 @@ export default function NotificationsScreen() {
             tintColor={colors.accent}
           />
         }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconWrap}>
-              <Ionicons name="notifications-off-outline" size={48} color={colors.textMuted} />
-            </View>
-            <Text style={styles.emptyTitle}>Нет уведомлений</Text>
-            <Text style={styles.emptySub}>
-              Здесь появятся сообщения от тренера, изменения расписания и важные обновления
-            </Text>
-          </View>
-        }
-        renderItem={({ item, index }) => (
-          <Animated.View entering={screenReveal(STAGGER + index * 30)}>
-            <NotificationCard item={item} onPress={() => handleItemPress(item)} />
-          </Animated.View>
-        )}
+        ListEmptyComponent={listEmptyComponent}
+        renderItem={renderItem}
       />
     </FlagshipScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.screenPadding,
-    paddingVertical: spacing.md,
-    paddingBottom: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.surfaceLevel1Border,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    marginHorizontal: -8,
-  },
-  headerCenter: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    justifyContent: "center",
-  },
-  heroIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerTitle: {
-    ...typography.sectionTitle,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  headerSub: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-
   paddedContent: {
     flex: 1,
     paddingHorizontal: spacing.screenPadding,
@@ -322,11 +279,16 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
   },
   emptyList: { flexGrow: 1 },
+  emptyWrap: {
+    flex: 1,
+    justifyContent: "center",
+    paddingVertical: spacing.xxxl,
+  },
   card: {
     flexDirection: "row",
     alignItems: "center",
     padding: spacing.lg,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
     backgroundColor: colors.surfaceLevel1,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -354,7 +316,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   cardTitleUnread: {
-    color: colors.text,
+    color: colors.textPrimary,
     fontWeight: "700",
   },
   cardTitleRead: {
@@ -369,33 +331,5 @@ const styles = StyleSheet.create({
   cardTime: {
     ...typography.captionSmall,
     color: colors.textMuted,
-  },
-
-  emptyContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: spacing.xxxl,
-  },
-  emptyIconWrap: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: colors.surfaceLevel2,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing.xl,
-  },
-  emptyTitle: {
-    ...typography.h2,
-    color: colors.text,
-    textAlign: "center",
-    marginBottom: spacing.sm,
-  },
-  emptySub: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    textAlign: "center",
-    paddingHorizontal: spacing.xxl,
   },
 });

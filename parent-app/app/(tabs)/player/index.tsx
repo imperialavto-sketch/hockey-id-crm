@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, memo } from "react";
 import {
   View,
   Text,
@@ -16,32 +16,61 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { useRouter, useFocusEffect } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
-import { getPlayers } from "@/services/playerService";
+import { getPlayers, getPlayerStats } from "@/services/playerService";
 import { PLAYER_CARD } from "@/constants/mockPlayer";
 import { DEMO_PLAYER } from "@/constants/demoPlayer";
 import { ActionLinkCard } from "@/components/player/ActionLinkCard";
 import { SectionCard } from "@/components/player-passport";
-import { PremiumStatGrid, SkeletonBlock } from "@/components/ui";
+import { PremiumStatGrid, SkeletonBlock, ErrorStateView, PrimaryButton } from "@/components/ui";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
+import { isDemoPlayer } from "@/helpers/playerProfileHelpers";
 import { colors, spacing, shadows, radius, typography } from "@/constants/theme";
 import { Ionicons } from "@expo/vector-icons";
-import type { Player } from "@/types";
+import type { Player, PlayerStats } from "@/types";
 
 const PRESSED_OPACITY = 0.88;
 
-/** Build display data for hero: use API player where available, fallback to DEMO */
+/** Placeholder when player has no photo. */
+const HERO_PLACEHOLDER_IMAGE =
+  "https://images.unsplash.com/photo-1515703407324-5f753afd8be8?auto=format&fit=crop&w=800&q=80";
+
+/** Build display data for hero: use player data, minimal fallback when missing. */
 function getHeroDisplay(selected: Player | null) {
+  if (!selected) {
+    return {
+      name: "Игрок",
+      number: "—",
+      position: "—",
+      team: "—",
+      age: "—",
+      city: "—",
+      image: HERO_PLACEHOLDER_IMAGE,
+      hasAvatar: false,
+      initials: "?",
+      coach: HERO_PLACEHOLDER_IMAGE,
+    };
+  }
+  const avatarUrl = selected.avatarUrl?.trim();
+  const name = selected.name || "Игрок";
+  const initials = name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "?";
   return {
-    name: selected?.name ?? DEMO_PLAYER.name,
-    number: selected?.number ? `#${selected.number}` : DEMO_PLAYER.number,
-    position: selected?.position || DEMO_PLAYER.positionRu,
-    team: selected?.team || DEMO_PLAYER.team,
-    age: selected?.age ?? DEMO_PLAYER.age,
-    city: DEMO_PLAYER.city,
-    image: DEMO_PLAYER.image,
-    coach: DEMO_PLAYER.coachAvatar,
+    name,
+    number: selected.number ? `#${selected.number}` : "—",
+    position: selected.position || "—",
+    team: selected.team || "—",
+    age: selected.age ?? "—",
+    city: "—",
+    image: avatarUrl || HERO_PLACEHOLDER_IMAGE,
+    hasAvatar: !!avatarUrl,
+    initials,
+    coach: HERO_PLACEHOLDER_IMAGE,
   };
 }
 
@@ -107,14 +136,14 @@ function HubSkeleton() {
   );
 }
 
-function PlayerCard({
+const PlayerCard = memo(function PlayerCard({
   player,
   isSelected,
-  onPress,
+  onSelect,
 }: {
   player: Player;
   isSelected: boolean;
-  onPress: () => void;
+  onSelect: (id: string) => void;
 }) {
   const initials = player.name
     .split(/\s+/)
@@ -130,7 +159,7 @@ function PlayerCard({
         isSelected && styles.playerCardSelected,
         pressed && { opacity: PRESSED_OPACITY },
       ]}
-      onPress={onPress}
+      onPress={() => onSelect(player.id)}
     >
       <View style={[styles.playerCardAvatar, isSelected && styles.playerCardAvatarSelected]}>
         <Text style={styles.playerCardInitials}>{initials || "?"}</Text>
@@ -148,39 +177,50 @@ function PlayerCard({
       )}
     </Pressable>
   );
-}
+});
 
 export default function PlayerScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const [players, setPlayers] = useState<Player[]>([]);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const [selectedStats, setSelectedStats] = useState<PlayerStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hubError, setHubError] = useState<"network" | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   const loadPlayers = useCallback(async () => {
     if (!user?.id) {
-      setLoading(false);
-      setPlayers([]);
-      setSelectedPlayerId(null);
+      if (mountedRef.current) {
+        setLoading(false);
+        setPlayers([]);
+        setSelectedPlayerId(null);
+      }
       return;
     }
-    setHubError(null);
+    if (mountedRef.current) setHubError(null);
     try {
       const list = await getPlayers(user.id);
+      if (!mountedRef.current) return;
       setPlayers(list);
       setSelectedPlayerId((prev) => {
         const stillExists = list.some((p) => p.id === prev);
         return stillExists ? prev : list[0]?.id ?? null;
       });
     } catch {
-      setPlayers([]);
-      setSelectedPlayerId(null);
-      setHubError("network");
+      if (mountedRef.current) {
+        setPlayers([]);
+        setSelectedPlayerId(null);
+        setHubError("network");
+      }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (mountedRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [user?.id]);
 
@@ -188,13 +228,32 @@ export default function PlayerScreen() {
     useCallback(() => {
       if (user?.id) {
         loadPlayers();
-      } else {
+      } else if (mountedRef.current) {
         setLoading(false);
         setPlayers([]);
         setSelectedPlayerId(null);
       }
     }, [loadPlayers, user?.id])
   );
+
+  // Load stats when selected player changes
+  useEffect(() => {
+    if (!selectedPlayerId || !user?.id) {
+      setSelectedStats(null);
+      return;
+    }
+    let cancelled = false;
+    getPlayerStats(selectedPlayerId, user.id)
+      .then((s) => {
+        if (!cancelled) setSelectedStats(s ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedStats(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPlayerId, user?.id]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -206,10 +265,10 @@ export default function PlayerScreen() {
   const display = getHeroDisplay(selectedPlayer);
 
   const quickStats = [
-    { label: "Игры", value: String(DEMO_PLAYER.stats.games) },
-    { label: "Голы", value: String(DEMO_PLAYER.stats.goals) },
-    { label: "Передачи", value: String(DEMO_PLAYER.stats.assists) },
-    { label: "Очки", value: String(DEMO_PLAYER.stats.points), accent: true },
+    { label: "Игры", value: String(selectedStats?.games ?? "—") },
+    { label: "Голы", value: String(selectedStats?.goals ?? "—") },
+    { label: "Передачи", value: String(selectedStats?.assists ?? "—") },
+    { label: "Очки", value: String(selectedStats?.points ?? "—"), accent: true },
   ];
 
   const goTo = (path: string) => {
@@ -218,10 +277,10 @@ export default function PlayerScreen() {
     router.push(path as never);
   };
 
-  const selectPlayer = (id: string) => {
+  const selectPlayer = useCallback((id: string) => {
     triggerHaptic();
     setSelectedPlayerId(id);
-  };
+  }, []);
 
   if (loading) {
     return (
@@ -234,30 +293,16 @@ export default function PlayerScreen() {
   if (hubError) {
     return (
       <FlagshipScreen scroll={false}>
-        <View style={styles.errorContainer}>
-          <Ionicons
-            name="cloud-offline-outline"
-            size={48}
-            color={colors.textMuted}
-          />
-          <Text style={styles.errorTitle}>Не удалось загрузить игроков</Text>
-          <Text style={styles.errorSub}>
-            Проверьте подключение и попробуйте снова
-          </Text>
-          <Pressable
-            style={({ pressed }) => [
-              styles.retryBtn,
-              pressed && { opacity: PRESSED_OPACITY },
-            ]}
-            onPress={() => {
-              triggerHaptic();
-              setLoading(true);
-              loadPlayers();
-            }}
-          >
-            <Text style={styles.retryBtnText}>Повторить</Text>
-          </Pressable>
-        </View>
+        <ErrorStateView
+          variant="network"
+          title="Не удалось загрузить игроков"
+          subtitle="Проверьте подключение и попробуйте снова"
+          onAction={() => {
+            setLoading(true);
+            loadPlayers();
+          }}
+          style={styles.errorWrap}
+        />
       </FlagshipScreen>
     );
   }
@@ -271,8 +316,17 @@ export default function PlayerScreen() {
           </View>
           <Text style={styles.emptyTitle}>Нет игроков</Text>
           <Text style={styles.emptySub}>
-            Добавьте игрока через тренера или организацию, чтобы видеть профиль и статистику
+            Добавьте игрока, чтобы видеть профиль и статистику
           </Text>
+          <View style={styles.emptyCta}>
+            <PrimaryButton
+              label="Добавить игрока"
+              onPress={() => {
+                triggerHaptic();
+                router.push("/player/add");
+              }}
+            />
+          </View>
         </View>
       </FlagshipScreen>
     );
@@ -306,7 +360,7 @@ export default function PlayerScreen() {
                     <PlayerCard
                       player={p}
                       isSelected={p.id === selectedPlayerId}
-                      onPress={() => selectPlayer(p.id)}
+                      onSelect={selectPlayer}
                     />
                   </AnimatedReanimated.View>
                 ))}
@@ -328,34 +382,34 @@ export default function PlayerScreen() {
             >
               <LinearGradient
                 colors={[
-                  "rgba(2,6,23,0.12)",
-                  "rgba(2,6,23,0.35)",
-                  "rgba(2,6,23,0.78)",
-                  "rgba(2,6,23,0.96)",
+                  "rgba(2,6,23,0.15)",
+                  "rgba(2,6,23,0.4)",
+                  "rgba(2,6,23,0.85)",
+                  "rgba(2,6,23,0.98)",
                 ]}
-                locations={[0, 0.4, 0.78, 1]}
+                locations={[0, 0.35, 0.75, 1]}
                 style={StyleSheet.absoluteFill}
               />
               <LinearGradient
-                colors={["rgba(255,255,255,0.04)", "transparent"]}
-                locations={[0, 0.25]}
+                colors={["rgba(255,255,255,0.05)", "transparent"]}
+                locations={[0, 0.2]}
                 style={[StyleSheet.absoluteFill, styles.heroTopHighlight]}
               />
               <LinearGradient
                 colors={[
-                  "rgba(0,0,0,0.12)",
+                  "rgba(0,0,0,0.08)",
                   "transparent",
                   "transparent",
-                  "rgba(0,0,0,0.18)",
+                  "rgba(0,0,0,0.25)",
                 ]}
-                locations={[0, 0.15, 0.5, 1]}
+                locations={[0, 0.12, 0.5, 1]}
                 style={StyleSheet.absoluteFill}
               />
               <LinearGradient
                 colors={[
-                  "rgba(59,130,246,0.12)",
+                  "rgba(59,130,246,0.08)",
                   "transparent",
-                  "rgba(59,130,246,0.06)",
+                  "rgba(59,130,246,0.04)",
                 ]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
@@ -367,45 +421,38 @@ export default function PlayerScreen() {
                   <Text style={styles.heroBadgeText}>ПРОГРЕСС</Text>
                 </View>
               ) : (
-                <BlurView intensity={24} tint="dark" style={styles.heroBadge}>
+                <BlurView intensity={20} tint="dark" style={styles.heroBadge}>
                   <Text style={styles.heroBadgeText}>ПРОГРЕСС</Text>
                 </BlurView>
               )}
 
-              <View style={styles.heroBottom}>
+              <View style={styles.heroContent}>
+                <View style={styles.heroAvatarWrap}>
+                  {display.hasAvatar ? (
+                    <Image source={{ uri: display.image }} style={styles.heroAvatar} />
+                  ) : (
+                    <View style={styles.heroAvatarPlaceholder}>
+                      <Text style={styles.heroAvatarInitials}>{display.initials}</Text>
+                    </View>
+                  )}
+                  <View style={styles.heroAvatarRing} />
+                </View>
                 <View style={styles.heroIdentity}>
-                  <Text style={styles.heroNumber}>{display.number}</Text>
+                  {display.number !== "—" && (
+                    <View style={styles.heroNumberBadge}>
+                      <Text style={styles.heroNumber}>{display.number}</Text>
+                    </View>
+                  )}
                   <Text style={styles.heroName}>{display.name}</Text>
                   <Text style={styles.heroMeta}>
                     {display.position} • {display.team}
                   </Text>
                   <Text style={styles.heroMeta2}>
-                    {display.age} лет • {display.city}
+                    {typeof display.age === "number"
+                      ? `${display.age} лет`
+                      : display.age}
+                    {display.city !== "—" ? ` • ${display.city}` : ""}
                   </Text>
-                </View>
-
-                <View style={styles.heroStats}>
-                  <LinearGradient
-                    colors={["rgba(255,255,255,0.06)", "transparent"]}
-                    locations={[0, 0.6]}
-                    style={styles.heroStatsHighlight}
-                  />
-                  <View style={styles.heroStatItem}>
-                    <Text style={styles.heroStatValue}>{DEMO_PLAYER.stats.games}</Text>
-                    <Text style={styles.heroStatLabel}>Игры</Text>
-                  </View>
-                  <View style={styles.heroStatItem}>
-                    <Text style={styles.heroStatValue}>{DEMO_PLAYER.stats.goals}</Text>
-                    <Text style={styles.heroStatLabel}>Голы</Text>
-                  </View>
-                  <View style={styles.heroStatItem}>
-                    <Text style={styles.heroStatValue}>{DEMO_PLAYER.stats.assists}</Text>
-                    <Text style={styles.heroStatLabel}>Передачи</Text>
-                  </View>
-                  <View style={styles.heroStatItem}>
-                    <Text style={styles.heroStatValue}>{DEMO_PLAYER.stats.points}</Text>
-                    <Text style={styles.heroStatLabel}>Очки</Text>
-                  </View>
                 </View>
               </View>
             </ImageBackground>
@@ -417,7 +464,7 @@ export default function PlayerScreen() {
           <Text style={[styles.sectionTitle, !showPlayerSwitcher && styles.sectionTitleFirst]}>
             Статистика
           </Text>
-          <Text style={styles.sectionSub}>Премиальный профиль юного хоккеиста</Text>
+          <Text style={styles.sectionSub}>Быстрая статистика сезона</Text>
           <View style={styles.quickStatsWrap}>
             <PremiumStatGrid stats={quickStats} />
           </View>
@@ -427,8 +474,7 @@ export default function PlayerScreen() {
         <AnimatedReanimated.View
           entering={screenReveal(STAGGER * (showPlayerSwitcher ? 3 : 2))}
         >
-          <Text style={styles.sectionTitle}>Разделы</Text>
-          <Text style={styles.sectionSub}>Ключевые разделы игрока</Text>
+          <Text style={[styles.sectionTitle, { marginBottom: spacing.lg }]}>Разделы</Text>
           <View style={styles.actionsBlock}>
             <ActionLinkCard
               icon="person-outline"
@@ -457,23 +503,25 @@ export default function PlayerScreen() {
           </View>
         </AnimatedReanimated.View>
 
-        {/* Skills */}
-        <AnimatedReanimated.View
-          entering={screenReveal(STAGGER * (showPlayerSwitcher ? 4 : 3))}
-        >
-          <SectionCard title="Навыки" style={styles.sectionCard}>
-            <SkillBar title="Скорость катания" value={DEMO_PLAYER.attributes.skating} delay={0} />
-            <SkillBar title="Мощность броска" value={DEMO_PLAYER.attributes.shot} delay={120} />
-            <SkillBar title="Hockey IQ" value={DEMO_PLAYER.attributes.hockeyIQ} delay={240} />
-            <SkillBar title="Дисциплина" value={DEMO_PLAYER.attributes.discipline} delay={360} />
-          </SectionCard>
-        </AnimatedReanimated.View>
+        {/* Skills — only for canonical demo player (API has no attributes) */}
+        {isDemoPlayer(selectedPlayer) && (
+          <AnimatedReanimated.View
+            entering={screenReveal(STAGGER * (showPlayerSwitcher ? 4 : 3))}
+          >
+            <SectionCard title="Навыки" style={styles.sectionCard}>
+              <SkillBar title="Скорость катания" value={DEMO_PLAYER.attributes.skating} delay={0} />
+              <SkillBar title="Мощность броска" value={DEMO_PLAYER.attributes.shot} delay={120} />
+              <SkillBar title="Hockey IQ" value={DEMO_PLAYER.attributes.hockeyIQ} delay={240} />
+              <SkillBar title="Дисциплина" value={DEMO_PLAYER.attributes.discipline} delay={360} />
+            </SectionCard>
+          </AnimatedReanimated.View>
+        )}
 
         {/* Training */}
         <AnimatedReanimated.View
           entering={screenReveal(STAGGER * (showPlayerSwitcher ? 5 : 4))}
         >
-          <SectionCard title="Ближайшая тренировка" style={styles.sectionCard}>
+          <SectionCard title="Ближайшая тренировка" variant="primary" style={styles.sectionCard}>
             <View style={styles.trainingTop}>
               <Image source={{ uri: display.coach }} style={styles.coach} />
               <View style={styles.trainingInfo}>
@@ -554,27 +602,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
 
-  errorContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: spacing.lg,
-  },
-  errorTitle: { ...typography.h2, color: colors.text, textAlign: "center" },
-  errorSub: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    textAlign: "center",
-    paddingHorizontal: spacing.xxl,
-    marginBottom: spacing.lg,
-  },
-  retryBtn: {
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xxl,
-    borderRadius: 14,
-  },
-  retryBtnText: { fontSize: 16, fontWeight: "600", color: colors.onAccent },
+  errorWrap: { flex: 1 },
 
   emptyContainer: {
     flex: 1,
@@ -602,6 +630,10 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textSecondary,
     textAlign: "center",
+    marginBottom: spacing.xl,
+  },
+  emptyCta: {
+    marginTop: spacing.lg,
   },
 
   playersSection: { marginBottom: spacing.lg },
@@ -646,16 +678,16 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
 
-  heroSection: { marginBottom: spacing.xl },
+  heroSection: { marginBottom: spacing.xxl },
   hero: {
-    height: 280,
+    height: 260,
     borderRadius: radius.lg,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: "rgba(255,255,255,0.12)",
     justifyContent: "flex-end",
-    padding: spacing.lg,
-    paddingTop: spacing.md,
+    padding: spacing.xl,
+    paddingTop: spacing.lg,
     ...shadows.level2,
   },
   heroTopHighlight: { pointerEvents: "none" as const },
@@ -667,73 +699,94 @@ const styles = StyleSheet.create({
     borderRadius: radius.capsule,
     overflow: "hidden" as const,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: "rgba(255,255,255,0.1)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
   heroBadgeWeb: {
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(255,255,255,0.08)",
   },
   heroBadgeText: {
-    color: colors.textPrimary,
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    color: colors.textSecondary,
+    fontSize: 9,
+    fontWeight: "700",
+    letterSpacing: 1,
   },
-  heroBottom: { marginTop: 0 },
-  heroIdentity: { marginBottom: spacing.sm },
+  heroContent: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: spacing.lg,
+  },
+  heroAvatarWrap: {
+    position: "relative",
+    width: 80,
+    height: 80,
+  },
+  heroAvatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.surfaceLevel2,
+  },
+  heroAvatarPlaceholder: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(59,130,246,0.2)",
+    borderWidth: 2,
+    borderColor: "rgba(59,130,246,0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroAvatarInitials: {
+    color: colors.accent,
+    fontSize: 28,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+  },
+  heroAvatarRing: {
+    position: "absolute" as const,
+    top: -2,
+    left: -2,
+    right: -2,
+    bottom: -2,
+    borderRadius: 44,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.22)",
+    pointerEvents: "none" as const,
+  },
+  heroIdentity: { flex: 1, minWidth: 0, paddingBottom: 2 },
+  heroNumberBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(59,130,246,0.25)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginBottom: spacing.sm,
+  },
   heroNumber: {
-    color: colors.textPrimary,
-    fontSize: 48,
-    fontWeight: "900",
-    letterSpacing: -1.5,
+    color: colors.accent,
+    fontSize: 18,
+    fontWeight: "800",
+    letterSpacing: 0.5,
   },
   heroName: {
     color: colors.textPrimary,
-    fontSize: 24,
-    fontWeight: "900",
-    letterSpacing: -0.5,
+    fontSize: 22,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+    marginBottom: 2,
   },
   heroMeta: {
     color: colors.textSecondary,
     fontSize: 13,
     fontWeight: "600",
-    marginTop: 2,
+    marginTop: 0,
   },
   heroMeta2: {
     color: colors.textMuted,
     fontSize: 12,
     marginTop: 1,
-  },
-  heroStats: {
-    flexDirection: "row",
-    position: "relative" as const,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    borderRadius: radius.sm,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    overflow: "hidden" as const,
-  },
-  heroStatsHighlight: {
-    position: "absolute" as const,
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 14,
-    pointerEvents: "none" as const,
-  },
-  heroStatItem: { flex: 1, alignItems: "center" as const },
-  heroStatValue: {
-    color: colors.textPrimary,
-    fontSize: 17,
-    fontWeight: "900",
-  },
-  heroStatLabel: {
-    color: colors.textSecondary,
-    fontSize: 10,
-    marginTop: 2,
   },
 
   sectionTitle: {
@@ -753,7 +806,7 @@ const styles = StyleSheet.create({
   quickStatsWrap: { marginBottom: spacing.lg },
   actionsBlock: { marginBottom: spacing.lg },
   sectionCard: {
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: colors.surfaceLevel1Border,
     ...shadows.level1,
     marginBottom: spacing.xl,
   },

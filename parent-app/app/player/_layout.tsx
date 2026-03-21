@@ -13,6 +13,13 @@ export default function PlayerLayout() {
       }}
     >
       <Stack.Screen name="[id]" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="add"
+        options={{
+          title: "Добавить игрока",
+          headerShown: true,
+        }}
+      />
     </Stack>
   );
 }

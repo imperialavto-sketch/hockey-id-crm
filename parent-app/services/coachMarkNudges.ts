@@ -29,8 +29,8 @@ export function computeCoachMarkNudges(input: CoachMarkNudgeInput): CoachMarkNud
   if (!input.playerId) {
     nudges.push({
       id: "nudge-player-context",
-      title: "Персональные советы",
-      description: "Откройте Coach Mark из профиля игрока для персональных советов",
+      title: "Советы под вашего игрока",
+      description: "Откройте Coach Mark из профиля игрока — он ответит с учётом возраста и уровня",
       action: "open_chat",
     });
   }
@@ -39,8 +39,8 @@ export function computeCoachMarkNudges(input: CoachMarkNudgeInput): CoachMarkNud
   if (input.notesCount === 0 && nudges.length < 3) {
     nudges.push({
       id: "nudge-first-note",
-      title: "Сохраните первую заметку",
-      description: "Сохраните ответ Coach Mark в заметки — long-press на сообщении",
+      title: "Сохраните совет в заметки",
+      description: "Долгое нажатие на ответ Coach Mark — сохранить в заметки для себя",
       action: input.playerId ? "open_player_chat" : "open_chat",
       playerId: input.playerId ?? undefined,
     });
@@ -50,8 +50,8 @@ export function computeCoachMarkNudges(input: CoachMarkNudgeInput): CoachMarkNud
   if (input.plansCount === 0 && nudges.length < 3) {
     nudges.push({
       id: "nudge-weekly-plan",
-      title: "Составьте недельный план",
-      description: "Получите план развития на неделю от Coach Mark",
+      title: "План на эту неделю",
+      description: "Составьте план на эту неделю — Coach Mark подскажет, на что сделать упор",
       action: input.playerId ? "open_player_chat" : "open_chat",
       playerId: input.playerId ?? undefined,
     });
@@ -61,8 +61,8 @@ export function computeCoachMarkNudges(input: CoachMarkNudgeInput): CoachMarkNud
   if (input.plansCount > 0 && input.calendarItemsCount === 0 && nudges.length < 3) {
     nudges.push({
       id: "nudge-calendar-handoff",
-      title: "Подготовьте план для календаря",
-      description: "Превратите недельный план в события для календаря",
+      title: "Экспорт в календарь",
+      description: "Перенесите план на эту неделю в календарь — в Hub нажмите «Подготовить для календаря»",
       action: input.playerId ? "open_player_chat" : "open_chat",
       playerId: input.playerId ?? undefined,
     });
@@ -72,8 +72,8 @@ export function computeCoachMarkNudges(input: CoachMarkNudgeInput): CoachMarkNud
   if (!input.hasRecentAIMessages && nudges.length < 3) {
     nudges.push({
       id: "nudge-ask-ai",
-      title: "Спросите Coach Mark",
-      description: "Узнайте о слабых сторонах и зонах роста игрока",
+      title: "Спросите о развитии",
+      description: "Задайте вопрос на этой неделе — Coach Mark подскажет следующий шаг",
       action: input.playerId ? "open_player_chat" : "open_chat",
       playerId: input.playerId ?? undefined,
     });

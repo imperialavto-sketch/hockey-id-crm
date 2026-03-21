@@ -64,6 +64,12 @@ export const overlay = {
   dark: "rgba(0,0,0,0.3)",
 } as const;
 
+// ==================== FEEDBACK (pressed states) ====================
+/** Standard pressed opacity for buttons/cards. Use for visual consistency. */
+export const feedback = {
+  pressedOpacity: 0.88,
+} as const;
+
 // ==================== RADIUS ====================
 export const radius = {
   sm: 14,
@@ -228,13 +234,57 @@ export const buttonStyles = {
     borderWidth: 0,
   },
   danger: {
-    height: 56,
-    radius: 20,
+    height: 48,
+    radius: 14,
+    paddingHorizontal: 20,
     borderWidth: 1,
     borderColor: colors.errorBorder,
     backgroundColor: colors.errorSoft,
   },
+  iconGap: 8,
 };
+
+// ==================== INPUT STYLES (unified) ====================
+export const inputStyles = {
+  height: 48,
+  minHeight: 48,
+  radius: 14,
+  paddingHorizontal: 16,
+  paddingVertical: 14,
+  backgroundColor: "rgba(10,20,40,0.65)",
+  borderWidth: 1,
+  borderColor: colors.borderSoft,
+  borderColorFocus: colors.accent,
+  borderColorError: colors.error,
+  fontSize: 16,
+  placeholderColor: colors.textMuted,
+  formFieldGap: 16,
+} as const;
+
+// ==================== ROW / LIST ITEM (unified) ====================
+export const rowStyles = {
+  minHeight: 44,
+  paddingVertical: 12,
+  paddingHorizontal: 16,
+  gap: 8,
+  titleSize: 16,
+  titleWeight: "600" as const,
+  subtitleSize: 13,
+  subtitleColor: "rgba(220,230,255,0.6)",
+} as const;
+
+// ==================== SCREEN HEADER ====================
+export const screenHeader = {
+  paddingTop: 16,
+  paddingBottom: 16,
+  paddingHorizontal: 16,
+  titleSize: 18,
+  titleWeight: "700" as const,
+  subtitleSize: 13,
+  buttonSize: 44,
+  iconSize: 24,
+  borderColor: colors.surfaceLevel1Border,
+} as const;
 
 // ==================== TAB BAR ====================
 export const tabBar = {
@@ -242,9 +292,9 @@ export const tabBar = {
   borderTop: "rgba(255,255,255,0.06)",
   active: "#3B82F6",
   activeGlow: "rgba(59,130,246,0.8)",
-  inactive: "rgba(255,255,255,0.5)",
+  inactive: "rgba(255,255,255,0.42)",
   labelSize: 11,
-  iconSize: 22,
+  iconSize: 24,
   height: 56,
 } as const;
 

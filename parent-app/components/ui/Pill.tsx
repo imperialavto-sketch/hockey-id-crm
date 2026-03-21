@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import { colors, spacing, typography, radii } from "@/constants/theme";
+import { colors, spacing, typography, radii, feedback } from "@/constants/theme";
 
 type Props = {
   label: string;
@@ -46,5 +46,5 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontWeight: "600",
   },
-  pressed: { opacity: 0.8 },
+  pressed: { opacity: feedback.pressedOpacity },
 });

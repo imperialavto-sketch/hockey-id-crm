@@ -15,11 +15,23 @@ const BASE_PLAYER: Player = {
   number: PLAYER_MARK_GOLYSH.profile.number,
   parentName: "Юрий Голыш",
   status: "active",
+  avatarUrl: PLAYER_MARK_GOLYSH.image,
 };
 
 export const demoPlayers: Player[] = [BASE_PLAYER];
 
+/** In-memory list of players added in demo mode. Resets on app restart. */
+const demoCreatedPlayers: Player[] = [];
+
+export function getDemoPlayers(): Player[] {
+  return [...demoPlayers, ...demoCreatedPlayers];
+}
+
+export function addDemoPlayer(player: Player): void {
+  demoCreatedPlayers.push(player);
+}
+
 export function getDemoPlayerById(id: string): Player | null {
-  return demoPlayers.find((p) => p.id === id) ?? null;
+  return getDemoPlayers().find((p) => p.id === id) ?? null;
 }
 

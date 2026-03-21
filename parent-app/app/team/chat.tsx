@@ -1,8 +1,14 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
-import { View, Text, FlatList, Pressable, StyleSheet, KeyboardAvoidingView, Platform } from "react-native";
+import React, { useState, useRef, useEffect, useCallback, useMemo, memo } from "react";
+import {
+  View,
+  FlatList,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Keyboard,
+  Platform,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
 import { getTeamMessages, sendTeamMessage } from "@/services/teamService";
 import { MOCK_TEAM_NAME } from "@/constants/mockTeamPosts";
@@ -11,12 +17,11 @@ import { MessageInput } from "@/components/team/MessageInput";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { ErrorStateView, EmptyStateView, SkeletonBlock } from "@/components/ui";
 import { triggerHaptic } from "@/lib/haptics";
-import { colors, spacing, typography, radius } from "@/constants/theme";
+import { ScreenHeader } from "@/components/navigation/ScreenHeader";
+import { spacing, radius } from "@/constants/theme";
 import type { TeamMessage } from "@/types/team";
 
-const PRESSED_OPACITY = 0.88;
-
-function ChatSkeleton() {
+const ChatSkeleton = memo(function ChatSkeleton() {
   return (
     <View style={styles.skeletonContent}>
       <SkeletonBlock height={56} style={styles.skeletonBubble} />
@@ -26,12 +31,12 @@ function ChatSkeleton() {
       <SkeletonBlock height={52} style={styles.skeletonBubble} />
     </View>
   );
-}
+});
 
 export default function TeamChatScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<TeamMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -55,37 +60,66 @@ export default function TeamChatScreen() {
     load();
   }, [load]);
 
-  const handleSend = async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    const sent = await sendTeamMessage(trimmed, user?.id);
-    if (sent) {
-      setMessages((prev) => [...prev, sent]);
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    }
-  };
+  const handleSend = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      const sent = await sendTeamMessage(trimmed, user?.id);
+      if (sent) {
+        setMessages((prev) => [...prev, sent]);
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      }
+    },
+    [user?.id]
+  );
 
-  const header = (
-    <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
-      <Pressable
-        style={({ pressed }) => [styles.backBtn, pressed && { opacity: PRESSED_OPACITY }]}
-        onPress={() => {
+  const header = useMemo(
+    () => (
+      <ScreenHeader
+        title={MOCK_TEAM_NAME}
+        subtitle="Командный чат"
+        onBack={() => {
           triggerHaptic();
           router.back();
         }}
-        accessibilityRole="button"
-        accessibilityLabel="Назад"
-      >
-        <Ionicons name="arrow-back" size={24} color="#ffffff" />
-      </Pressable>
-      <View style={styles.headerCenter}>
-        <Text style={styles.headerTitle}>{MOCK_TEAM_NAME}</Text>
-        <Text style={styles.headerSubtitle}>Командный чат</Text>
-      </View>
-    </View>
+      />
+    ),
+    [router]
   );
+
+  const keyExtractor = useCallback((item: TeamMessage) => item.id, []);
+
+  const listContentStyle = useMemo(
+    () =>
+      messages.length === 0
+        ? [styles.listContentEmpty, { paddingBottom: insets.bottom + spacing.xxl }]
+        : [styles.listContent, { paddingBottom: insets.bottom + 80 }],
+    [messages.length, insets.bottom]
+  );
+
+  const listEmptyComponent = useMemo(
+    () => (
+      <View style={styles.emptyWrap}>
+        <EmptyStateView
+          icon="chatbubbles-outline"
+          title="Командный чат"
+          subtitle="Напишите сообщение — оно появится здесь. Общайтесь с тренером и родителями команды."
+        />
+      </View>
+    ),
+    []
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: TeamMessage }) => (
+      <TeamChatMessage message={item} isCurrentUser={item.authorId === "me"} />
+    ),
+    []
+  );
+
+  const handleScrollBeginDrag = useCallback(() => Keyboard.dismiss(), []);
 
   if (loading) {
     return (
@@ -116,31 +150,19 @@ export default function TeamChatScreen() {
       <KeyboardAvoidingView
         style={styles.chatArea}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={90}
+        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 44 : 0}
       >
         <FlatList
           ref={flatListRef}
           data={messages}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={
-            messages.length === 0 ? styles.listContentEmpty : styles.listContent
-          }
+          keyExtractor={keyExtractor}
+          contentContainerStyle={listContentStyle}
           showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              <EmptyStateView
-                icon="chatbubbles-outline"
-                title="Командный чат"
-                subtitle="Напишите сообщение — оно появится здесь. Общайтесь с тренером и родителями команды."
-              />
-            </View>
-          }
-          renderItem={({ item }) => (
-            <TeamChatMessage
-              message={item}
-              isCurrentUser={item.authorId === "me"}
-            />
-          )}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          onScrollBeginDrag={handleScrollBeginDrag}
+          ListEmptyComponent={listEmptyComponent}
+          renderItem={renderItem}
         />
         <MessageInput onSend={handleSend} />
       </KeyboardAvoidingView>
@@ -149,39 +171,17 @@ export default function TeamChatScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: spacing.screenPadding,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.surfaceLevel1Border,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: -8,
-  },
-  headerCenter: { flex: 1, marginLeft: spacing.sm },
-  headerTitle: {
-    ...typography.sectionTitle,
-    color: colors.textPrimary,
-  },
-  headerSubtitle: {
-    ...typography.caption,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
   chatArea: { flex: 1 },
   listContent: {
-    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.screenPadding,
+    paddingTop: spacing.xl,
     paddingBottom: spacing.lg,
   },
   listContentEmpty: {
     flexGrow: 1,
-    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.screenPadding,
+    paddingTop: spacing.xl,
+    paddingVertical: spacing.xxl,
   },
   emptyWrap: {
     flex: 1,
@@ -195,7 +195,6 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   skeletonBubble: {
-    height: 56,
     borderRadius: radius.lg,
     maxWidth: "80%",
   },

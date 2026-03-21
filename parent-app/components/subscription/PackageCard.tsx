@@ -2,6 +2,7 @@ import React from "react";
 import { colors, radius, radii, spacing } from "@/constants/theme";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { triggerHaptic } from "@/lib/haptics";
+import { PrimaryButton } from "@/components/ui";
 import type { TrainingPackage } from "@/types/subscription";
 
 const PRESSED_OPACITY = 0.88;
@@ -41,12 +42,10 @@ export function PackageCard({ pkg, onSelect }: PackageCardProps) {
       </View>
       <Text style={styles.outcome}>{pkg.targetOutcome}</Text>
       <Text style={styles.suitable}>{pkg.suitableFor}</Text>
-      <Pressable
-        style={({ pressed }) => [styles.cta, pressed && { opacity: PRESSED_OPACITY }]}
+      <PrimaryButton
+        label="Купить пакет"
         onPress={handlePress}
-      >
-        <Text style={styles.ctaText}>Купить пакет</Text>
-      </Pressable>
+      />
     </Pressable>
   );
 }
@@ -113,16 +112,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textMuted,
     marginBottom: spacing.xl,
-  },
-  cta: {
-    backgroundColor: colors.accent,
-    borderRadius: radii.sm,
-    paddingVertical: spacing.lg,
-    alignItems: "center",
-  },
-  ctaText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: colors.bgDeep,
   },
 });

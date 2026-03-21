@@ -1,19 +1,20 @@
-import { useState } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
-  TextInput,
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
   Pressable,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, Redirect } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
-import { PrimaryButton } from "@/components/ui";
-import { colors, spacing, radii } from "@/constants/theme";
-import { getApiBase } from "@/lib/api";
+import { PrimaryButton, Input } from "@/components/ui";
+import { colors, spacing, inputStyles, typography, feedback } from "@/constants/theme";
+import { triggerHaptic } from "@/lib/haptics";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -23,95 +24,73 @@ export default function LoginScreen() {
   const [step, setStep] = useState<"phone" | "code">("phone");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [debugMessage, setDebugMessage] = useState("");
+  const mountedRef = useRef(true);
+
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
+  const handleRequestCode = useCallback(async () => {
+    const trimmedPhone = phone.trim();
+    if (mountedRef.current) setError("");
+    if (!trimmedPhone) {
+      if (mountedRef.current) setError("Введите номер телефона");
+      return;
+    }
+    if (mountedRef.current) setLoading(true);
+    try {
+      await requestCode(trimmedPhone);
+      if (mountedRef.current) setStep("code");
+    } catch (e) {
+      if (mountedRef.current) {
+        setError(e instanceof Error ? e.message : "Ошибка входа");
+      }
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, [phone, requestCode]);
+
+  const handleVerifyCode = useCallback(async () => {
+    const trimmedPhone = phone.trim();
+    const trimmedCode = code.trim();
+    if (mountedRef.current) setError("");
+    if (!trimmedPhone) {
+      if (mountedRef.current) setError("Введите номер телефона");
+      return;
+    }
+    if (!trimmedCode) {
+      if (mountedRef.current) setError("Введите код подтверждения");
+      return;
+    }
+    if (mountedRef.current) setLoading(true);
+    try {
+      await verifyCode(trimmedPhone, trimmedCode);
+      if (mountedRef.current) router.replace("/(tabs)");
+    } catch (e) {
+      if (mountedRef.current) {
+        setError(e instanceof Error ? e.message : "Ошибка входа");
+      }
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, [phone, code, verifyCode, router]);
+
+  const handleBackToPhone = useCallback(() => {
+    if (loading) return;
+    triggerHaptic();
+    setCode("");
+    setError("");
+    setStep("phone");
+  }, [loading]);
 
   if (authLoading) {
     return (
       <View style={styles.loading}>
-        <SafeAreaView style={styles.loadingSafe} edges={["top", "bottom"]} />
+        <SafeAreaView style={styles.loadingSafe} edges={["top", "bottom"]}>
+          <ActivityIndicator size="large" color={colors.accent} style={styles.loader} />
+        </SafeAreaView>
       </View>
     );
   }
   if (isAuthenticated) return <Redirect href="/(tabs)" />;
-
-  const handleRequestCode = async () => {
-    const trimmedPhone = phone.trim();
-    setError("");
-    if (__DEV__) {
-      setDebugMessage(`request:start step=${step} api=${getApiBase()}`);
-      console.log("[login] request-code submit", {
-        step,
-        phone: trimmedPhone,
-        apiBase: getApiBase(),
-      });
-    }
-    if (!trimmedPhone) {
-      setError("Введите номер телефона");
-      return;
-    }
-    setLoading(true);
-    try {
-      await requestCode(trimmedPhone);
-      setStep("code");
-      if (__DEV__) {
-        setDebugMessage(`request:success step=code api=${getApiBase()}`);
-        console.log("[login] request-code success", {
-          previousStep: step,
-          nextStep: "code",
-        });
-      }
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Ошибка входа";
-      if (__DEV__) {
-        setDebugMessage(`request:error ${message}`);
-        console.warn("[login] request-code error", { message, apiBase: getApiBase() });
-      }
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerifyCode = async () => {
-    const trimmedPhone = phone.trim();
-    const trimmedCode = code.trim();
-    setError("");
-    if (__DEV__) {
-      setDebugMessage(`verify:click step=${step} api=${getApiBase()}`);
-      console.log("VERIFY CLICK");
-      console.log("VERIFY PHONE:", trimmedPhone);
-      console.log("VERIFY CODE:", trimmedCode);
-      console.log("VERIFY REQUEST URL:", `${getApiBase()}/api/parent/mobile/auth/verify`);
-      console.log("VERIFY REQUEST METHOD:", "POST");
-      console.log("VERIFY REQUEST BODY:", JSON.stringify({ phone: trimmedPhone, code: trimmedCode }));
-    }
-    if (!trimmedPhone) {
-      setError("Введите номер телефона");
-      return;
-    }
-    if (!trimmedCode) {
-      setError("Введите код подтверждения");
-      return;
-    }
-    setLoading(true);
-    try {
-      await verifyCode(trimmedPhone, trimmedCode);
-      if (__DEV__) {
-        setDebugMessage(`verify:success step=${step} api=${getApiBase()}`);
-        console.log("VERIFY RESPONSE:", "success");
-      }
-      router.replace("/(tabs)");
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Ошибка входа";
-      if (__DEV__) {
-        setDebugMessage(`verify:error ${message}`);
-        console.warn("VERIFY ERROR:", message);
-      }
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <View style={styles.container}>
@@ -120,13 +99,16 @@ export default function LoginScreen() {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.keyboard}
         >
-          <View style={styles.content}>
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             <Text style={styles.title}>Вход</Text>
             <Text style={styles.subtitle}>Войдите как родитель хоккеиста</Text>
 
-            <TextInput
+            <Input
               placeholder="Номер телефона"
-              placeholderTextColor={colors.textMuted}
               value={phone}
               onChangeText={(t) => {
                 setPhone(t);
@@ -135,13 +117,12 @@ export default function LoginScreen() {
               keyboardType="phone-pad"
               autoCapitalize="none"
               editable={!loading}
-              style={[styles.input, error ? styles.inputError : null]}
+              error={!!error}
             />
 
             {step === "code" && (
-              <TextInput
+              <Input
                 placeholder="Код подтверждения"
-                placeholderTextColor={colors.textMuted}
                 value={code}
                 onChangeText={(t) => {
                   setCode(t);
@@ -150,7 +131,7 @@ export default function LoginScreen() {
                 keyboardType="number-pad"
                 autoCapitalize="none"
                 editable={!loading}
-                style={[styles.input, error ? styles.inputError : null]}
+                error={!!error}
               />
             )}
 
@@ -175,12 +156,9 @@ export default function LoginScreen() {
             {step === "code" && (
               <View style={styles.linkRow}>
                 <Pressable
-                  onPress={() => {
-                    setCode("");
-                    setError("");
-                    setStep("phone");
-                  }}
+                  onPress={handleBackToPhone}
                   disabled={loading}
+                  style={({ pressed }) => pressed && { opacity: feedback.pressedOpacity }}
                 >
                   <Text style={styles.linkSecondary}>Изменить номер</Text>
                 </Pressable>
@@ -188,6 +166,7 @@ export default function LoginScreen() {
                 <Pressable
                   onPress={handleRequestCode}
                   disabled={loading || !phone.trim()}
+                  style={({ pressed }) => pressed && { opacity: feedback.pressedOpacity }}
                 >
                   <Text style={styles.linkSecondary}>Отправить код ещё раз</Text>
                 </Pressable>
@@ -195,8 +174,17 @@ export default function LoginScreen() {
             )}
 
             {error ? <Text style={styles.error}>{error}</Text> : null}
-            {__DEV__ ? <Text style={styles.debug}>{debugMessage || `api=${getApiBase()} step=${step}`}</Text> : null}
-          </View>
+
+            <Pressable
+              style={({ pressed }) => [styles.linkWrap, pressed && { opacity: feedback.pressedOpacity }]}
+              onPress={() => {
+                triggerHaptic();
+                router.push("/(auth)/register");
+              }}
+            >
+              <Text style={styles.link}>Нет аккаунта? Регистрация</Text>
+            </Pressable>
+          </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
@@ -206,53 +194,43 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   loading: { flex: 1 },
-  loadingSafe: { flex: 1 },
+  loadingSafe: { flex: 1, justifyContent: "center", alignItems: "center" },
+  loader: { marginTop: spacing.xl },
   safe: { flex: 1 },
-  keyboard: { flex: 1, justifyContent: "center", padding: spacing[24] },
-  content: { gap: spacing[16] },
+  keyboard: { flex: 1 },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    padding: spacing.xxl,
+    gap: inputStyles.formFieldGap,
+  },
   title: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: colors.text,
-    marginBottom: 4,
+    ...typography.h1,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
   },
   subtitle: {
-    fontSize: 15,
+    ...typography.bodySmall,
     color: colors.textSecondary,
-    marginBottom: spacing[8],
+    marginBottom: spacing.lg,
   },
-  input: {
-    backgroundColor: "rgba(10,20,40,0.65)",
-    borderRadius: radii.md,
-    padding: spacing[16],
-    color: colors.text,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-  },
-  inputError: { borderColor: colors.error },
   error: {
-    fontSize: 14,
+    ...typography.captionSmall,
     color: colors.error,
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
-  debug: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 4,
-  },
-  linkWrap: { marginTop: spacing[8], alignSelf: "center" },
+  linkWrap: { marginTop: spacing.xl, alignSelf: "center" },
   link: {
     fontSize: 14,
     color: colors.accent,
-    fontWeight: "500",
+    fontWeight: "600",
   },
   linkRow: {
-    marginTop: spacing[8],
+    marginTop: spacing.lg,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: spacing[12],
+    gap: spacing.md,
   },
   linkSecondary: {
     fontSize: 14,

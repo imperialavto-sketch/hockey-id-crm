@@ -18,8 +18,8 @@ import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { SkeletonBlock } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
+import { ScreenHeader } from "@/components/navigation/ScreenHeader";
 import { colors, spacing } from "@/constants/theme";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PLAYER_MARK_GOLYSH } from "@/constants/mockPlayerMarkGolysh";
 
 function VideoAnalysisSkeleton() {
@@ -38,7 +38,6 @@ export default function VideoAnalysisListScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
-  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<VideoAnalysisRequest[]>([]);
   const [summaries, setSummaries] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -70,31 +69,29 @@ export default function VideoAnalysisListScreen() {
   }, [id, user?.id]);
 
   const header = (
-    <View style={[styles.customHeader, { paddingTop: insets.top + spacing.lg }]}>
-      <Pressable
-        style={({ pressed }) => [styles.backBtn, pressed && { opacity: PRESSED_OPACITY }]}
-        onPress={() => {
-          triggerHaptic();
-          router.back();
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Назад"
-      >
-        <Ionicons name="arrow-back" size={24} color="#ffffff" />
-      </Pressable>
-      <Text style={styles.headerTitle}>Видео анализы</Text>
-      <Pressable
-        style={({ pressed }) => [styles.addBtn, pressed && { opacity: PRESSED_OPACITY }]}
-        onPress={() => {
-          triggerHaptic();
-          id && router.push(`/player/${id}/video-analysis/upload`);
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Добавить видео для анализа"
-      >
-        <Ionicons name="add" size={26} color={colors.accent} />
-      </Pressable>
-    </View>
+    <ScreenHeader
+      title="Видео анализы"
+      onBack={() => {
+        triggerHaptic();
+        router.back();
+      }}
+      rightAction={
+        <Pressable
+          style={({ pressed }) => [
+            { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+            pressed && { opacity: PRESSED_OPACITY },
+          ]}
+          onPress={() => {
+            triggerHaptic();
+            id && router.push(`/player/${id}/video-analysis/upload`);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Добавить видео для анализа"
+        >
+          <Ionicons name="add" size={24} color={colors.accent} />
+        </Pressable>
+      }
+    />
   );
 
   const handleAddPress = () => {
@@ -142,34 +139,6 @@ export default function VideoAnalysisListScreen() {
 const PRESSED_OPACITY = 0.88;
 
 const styles = StyleSheet.create({
-  customHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.screenPadding,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: -8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    lineHeight: 22,
-    color: "#ffffff",
-  },
-  addBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   contentWrap: { gap: 0 },
   skeletonContent: { gap: spacing.xl },
   skeletonHeader: { borderRadius: 20, marginBottom: spacing.sm },
