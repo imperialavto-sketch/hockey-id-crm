@@ -141,6 +141,59 @@ model Team {
   players      Player[]
   users        User[]
   feedPosts    TeamFeedPost[]
+  groups       TeamGroup[]
+  trainingSessions TrainingSession[]
+}
+
+model TeamGroup {
+  id        String   @id @default(cuid())
+  teamId    String
+  name      String   // A, B, C или "Сильные"
+  level     Int      @default(1) // 1, 2, 3
+  sortOrder Int      @default(0) // для сортировки
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team               Team                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  assignments        PlayerGroupAssignment[]
+  trainingSessions   TrainingSession[]
+}
+
+model PlayerGroupAssignment {
+  id                 String   @id @default(cuid())
+  playerId           String
+  groupId            String
+  weekStartDate      DateTime // Monday 00:00 UTC
+  assignedByCoachId  String?
+  createdAt          DateTime @default(now())
+
+  player  Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  group   TeamGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  coach   Coach?    @relation(fields: [assignedByCoachId], references: [id], onDelete: SetNull)
+
+  @@unique([playerId, weekStartDate])
+}
+
+model TrainingSession {
+  id              String   @id @default(cuid())
+  teamId          String
+  groupId         String
+  coachId         String
+  type            String   // hockey | ofp | game | individual
+  startAt         DateTime
+  endAt           DateTime
+  locationName    String?
+  locationAddress String?
+  notes           String?
+  status          String   @default("scheduled") // scheduled | cancelled | moved
+  sessionStatus   String   @default("planned")   // planned | active | finished
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  team  Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  group TeamGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  coach Coach     @relation(fields: [coachId], references: [id], onDelete: Restrict)
 }
 
 model TeamFeedPost {
@@ -172,11 +225,13 @@ model Coach {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  teams            Team[]
-  coachRatings     CoachRating[]
-  trainingJournal  TrainingJournal[]
-  parentInvites    ParentInvite[]
-  chatConversations ChatConversation[]
+  teams                Team[]
+  coachRatings         CoachRating[]
+  trainingJournal      TrainingJournal[]
+  parentInvites        ParentInvite[]
+  chatConversations    ChatConversation[]
+  groupAssignments     PlayerGroupAssignment[]
+  trainingSessions     TrainingSession[]
 }
 
 model ChatConversation {
@@ -347,6 +402,7 @@ model Player {
   notifications Notification[]
   messages      Message[]
   aiAnalyses    AiAnalysis[]
+  groupAssignments PlayerGroupAssignment[]
 }
 
 model PlayerProgressSnapshot {
@@ -680,5 +736,58 @@ model SubscriptionBillingRecord {
   createdAt      DateTime @default(now())
 
   subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+}
+
+// Coach mobile app — session sync from Session Capture
+model CoachSession {
+  id          String    @id @default(cuid())
+  sessionId   String    @unique // Client or server: session_xxx / sess_xxx
+  title       String
+  startedAt   DateTime
+  endedAt     DateTime? // null = active session
+  teamId      String?   // For live session scoping
+  coachUserId String?   // From auth; may be demo user id
+  createdAt   DateTime  @default(now())
+
+  observations CoachSessionObservation[]
+  snapshots    CoachSessionPlayerSnapshot[]
+  parentDrafts CoachSessionParentDraft[]
+}
+
+model CoachSessionObservation {
+  id              String   @id @default(cuid())
+  coachSessionId  String
+  playerId        String
+  playerName      String
+  skillType       String
+  impact          String   // positive | neutral | negative
+  note            String?
+  createdAtTs     DateTime // From payload (ms) → DateTime
+
+  coachSession CoachSession @relation(fields: [coachSessionId], references: [id], onDelete: Cascade)
+}
+
+model CoachSessionPlayerSnapshot {
+  id              String    @id @default(cuid())
+  coachSessionId  String
+  playerId        String
+  skills          Json      // [{ skillType, score, trend, confidence }]
+  lastUpdatedAt   DateTime?
+
+  coachSession CoachSession @relation(fields: [coachSessionId], references: [id], onDelete: Cascade)
+}
+
+model CoachSessionParentDraft {
+  id               String   @id @default(cuid())
+  coachSessionId   String
+  playerId         String
+  playerName       String
+  headline         String
+  parentMessage    String
+  positives        Json     // string[]
+  improvementAreas Json     // string[]
+  focusSkills      Json     // string[]
+
+  coachSession CoachSession @relation(fields: [coachSessionId], references: [id], onDelete: Cascade)
 }
 

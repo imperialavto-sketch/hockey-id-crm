@@ -1,5 +1,5 @@
 import React from "react";
-import { colors, spacing, typography, radius } from "@/constants/theme";
+import { colors, spacing, typography, radius, shadows } from "@/constants/theme";
 import { View, Text, Image, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { triggerHaptic } from "@/lib/haptics";
@@ -75,7 +75,8 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: colors.surfaceLevel1,
     borderWidth: 1,
-    borderColor: colors.surfaceLevel1Border,
+    borderColor: colors.surfaceLevel2Border,
+    ...shadows.level2,
   },
   photoWrap: {
     height: 260,
@@ -102,10 +103,10 @@ const styles = StyleSheet.create({
     right: spacing.lg,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.6)",
     borderRadius: radius.sm,
   },
   verifiedText: {
@@ -120,7 +121,8 @@ const styles = StyleSheet.create({
   name: {
     ...typography.heroName,
     color: colors.text,
-    fontSize: 26,
+    fontSize: 28,
+    letterSpacing: -0.5,
   },
   specialization: {
     ...typography.bodySmall,
@@ -155,7 +157,7 @@ const styles = StyleSheet.create({
   },
   price: {
     ...typography.cardTitle,
-    fontSize: 20,
+    fontSize: 22,
     color: colors.accent,
   },
   priceUnit: {

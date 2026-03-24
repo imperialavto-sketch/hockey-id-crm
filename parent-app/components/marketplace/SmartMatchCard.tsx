@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, aiMatchBadge, spacing, typography } from "@/constants/theme";
+import { colors, aiMatchBadge, spacing, typography, shadows, radius } from "@/constants/theme";
 import type { MatchResult } from "@/lib/coach-matching";
 
 interface SmartMatchCardProps {
@@ -48,12 +48,13 @@ export function SmartMatchCard({ match, playerName }: SmartMatchCardProps) {
 
 const styles = StyleSheet.create({
   wrap: {
-    marginBottom: spacing.xxl,
+    marginBottom: spacing.sectionGap,
     padding: spacing.xl,
     backgroundColor: aiMatchBadge.backgroundColor,
-    borderRadius: 20,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: aiMatchBadge.borderColor,
+    ...shadows.level1,
   },
   header: {
     flexDirection: "row",

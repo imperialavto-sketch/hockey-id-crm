@@ -23,25 +23,11 @@ export interface ApiUser {
 /** Parent Mobile: header for identifying parent (when no session cookie). */
 export const PARENT_ID_HEADER = "x-parent-id";
 
-export async function getAuthFromRequest(
-  req: NextRequest
-): Promise<ApiUser | null> {
-  const parentIdHeader = req.headers.get(PARENT_ID_HEADER);
-  if (parentIdHeader?.trim()) {
-    return {
-      id: parentIdHeader.trim(),
-      role: "PARENT",
-      schoolId: null,
-      parentId: parentIdHeader.trim(),
-    };
-  }
-
-  const cookieStore = await cookies();
-  const raw = cookieStore.get(SESSION_COOKIE)?.value;
-  if (!raw) return null;
+function parseSessionToken(raw: string): ApiUser | null {
+  if (!raw?.trim()) return null;
   try {
     const data = JSON.parse(
-      Buffer.from(raw, "base64url").toString("utf-8")
+      Buffer.from(raw.trim(), "base64url").toString("utf-8")
     ) as ApiUser;
     if (!data?.id || !data?.role) return null;
     const validRoles: UserRole[] = [
@@ -56,6 +42,33 @@ export async function getAuthFromRequest(
   } catch {
     return null;
   }
+}
+
+export async function getAuthFromRequest(
+  req: NextRequest
+): Promise<ApiUser | null> {
+  const parentIdHeader = req.headers.get(PARENT_ID_HEADER);
+  if (parentIdHeader?.trim()) {
+    return {
+      id: parentIdHeader.trim(),
+      role: "PARENT",
+      schoolId: null,
+      parentId: parentIdHeader.trim(),
+    };
+  }
+
+  // Coach app / mobile: Bearer token (same format as cookie)
+  const authHeader = req.headers.get("authorization");
+  if (authHeader?.toLowerCase().startsWith("bearer ")) {
+    const token = authHeader.slice(7).trim();
+    const user = parseSessionToken(token);
+    if (user) return user;
+  }
+
+  const cookieStore = await cookies();
+  const raw = cookieStore.get(SESSION_COOKIE)?.value;
+  if (!raw) return null;
+  return parseSessionToken(raw);
 }
 
 export function setSessionCookie(user: ApiUser): string {

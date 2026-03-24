@@ -1,5 +1,5 @@
 import React from "react";
-import { colors, spacing, typography, radius } from "@/constants/theme";
+import { colors, spacing, typography, radius, shadows } from "@/constants/theme";
 import { View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { MockCoach } from "@/constants/mockCoaches";
@@ -76,12 +76,13 @@ export function CoachTrustSection({ coach }: CoachTrustSectionProps) {
 
 const styles = StyleSheet.create({
   wrap: {
-    marginBottom: spacing.xxl,
+    marginBottom: spacing.sectionGap,
     padding: spacing.xl,
     backgroundColor: colors.accentSoft,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "rgba(59,130,246,0.25)",
+    ...shadows.level1,
   },
   title: {
     ...typography.sectionTitle,

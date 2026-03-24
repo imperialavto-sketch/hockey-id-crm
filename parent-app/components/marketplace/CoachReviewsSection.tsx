@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { colors, spacing, typography, radius } from "@/constants/theme";
+import { colors, spacing, typography, radius, feedback } from "@/constants/theme";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { triggerHaptic } from "@/lib/haptics";
@@ -7,7 +7,7 @@ import { SectionCard } from "@/components/player-passport";
 import { CoachReviewCard } from "./CoachReviewCard";
 import type { CoachReview } from "@/types/review";
 
-const PRESSED_OPACITY = 0.88;
+const PRESSED_OPACITY = feedback.pressedOpacity;
 
 const REVIEW_FILTERS = [
   { key: "", label: "Все" },
@@ -118,7 +118,7 @@ export function CoachReviewsSection({
 
 const styles = StyleSheet.create({
   wrap: {
-    marginBottom: spacing.xxl,
+    marginBottom: spacing.sectionGap,
   },
   section: {
     marginBottom: 0,

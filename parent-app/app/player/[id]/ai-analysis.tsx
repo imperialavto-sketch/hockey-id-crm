@@ -14,10 +14,10 @@ import { SectionCard } from "@/components/player-passport";
 import { SkeletonBlock, ErrorStateView } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
-import { colors, spacing, radius, shadows } from "@/constants/theme";
+import { colors, spacing, radius, shadows, feedback, typography } from "@/constants/theme";
 import type { Player, PlayerAIAnalysis } from "@/types";
 
-const PRESSED_OPACITY = 0.88;
+const PRESSED_OPACITY = feedback.pressedOpacity;
 type ScreenErrorKind = "not_found" | "network";
 
 const SECTION_META = {
@@ -74,12 +74,13 @@ function getPreviewSummary(summary: string): string {
 function AIAnalysisSkeleton() {
   return (
     <View style={styles.skeletonContent}>
-      <SkeletonBlock height={148} style={styles.skeletonHero} />
+      <SkeletonBlock height={180} style={styles.skeletonHero} />
       <View style={styles.skeletonInsightCard}>
         <SkeletonBlock height={16} style={styles.skeletonInsightTitle} />
         <SkeletonBlock height={18} style={styles.skeletonInsightLine} />
         <SkeletonBlock height={18} style={styles.skeletonInsightLineWide} />
       </View>
+      <Text style={styles.skeletonHint}>Анализируем данные игрока…</Text>
       {[1, 2, 3].map((item) => (
         <View key={item} style={styles.skeletonSection}>
           <SkeletonBlock height={18} style={styles.skeletonSectionTitle} />
@@ -286,11 +287,15 @@ export default function PlayerAIAnalysisScreen() {
   if (isEmpty || !analysis) {
     return (
       <FlagshipScreen header={header} scroll={false}>
-        <View style={styles.emptyContainer}>
+        <Animated.View entering={screenReveal(0)} style={styles.emptyHero}>
           <View style={styles.emptyIconWrap}>
-            <Ionicons name="sparkles-outline" size={40} color={colors.textMuted} />
+            <Ionicons name="sparkles" size={36} color={colors.accent} />
           </View>
-          <Text style={styles.emptyTitle}>AI анализ пока недоступен</Text>
+          <Text style={styles.emptyHeroTitle}>AI Анализ</Text>
+          <Text style={styles.emptyHeroSub}>Персональный разбор прогресса игрока</Text>
+        </Animated.View>
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>Анализ пока формируется</Text>
           <Text style={styles.emptySub}>
             Как только появится достаточно данных и игровых наблюдений, здесь появятся сильные стороны,
             зоны роста и персональные рекомендации.
@@ -335,12 +340,12 @@ export default function PlayerAIAnalysisScreen() {
 
       {analysis.summary ? (
         <Animated.View entering={screenReveal(STAGGER)}>
-          <SectionCard title="Краткий вывод" style={styles.sectionCard}>
+          <SectionCard title="Ключевой инсайт" style={styles.sectionCard}>
             <View style={styles.summaryLead}>
               <View style={styles.summaryLeadIcon}>
                 <Ionicons name="bulb-outline" size={18} color={colors.accent} />
               </View>
-              <Text style={styles.summaryLeadText}>Главный инсайт по текущему состоянию игрока</Text>
+              <Text style={styles.summaryLeadText}>Главный вывод по текущему состоянию</Text>
             </View>
             <Text style={styles.summaryText}>
               {hasAiReportAccess ? analysis.summary : previewSummary}
@@ -401,7 +406,7 @@ export default function PlayerAIAnalysisScreen() {
         </>
       ) : (
         <Animated.View entering={screenReveal(STAGGER * 3)}>
-          <SectionCard title="Получите полный разбор" style={styles.paywallCard}>
+          <SectionCard title="Разблокируйте полный AI‑анализ" style={styles.paywallCard}>
             <View style={styles.paywallIconWrap}>
               <Ionicons name="lock-closed" size={18} color={colors.accent} />
             </View>
@@ -447,7 +452,7 @@ export default function PlayerAIAnalysisScreen() {
         </Pressable>
       </Animated.View>
 
-      <Animated.View entering={screenReveal(STAGGER * 7)}>
+      <Animated.View entering={screenReveal(STAGGER * 7)} style={{ paddingBottom: insets.bottom + spacing.xl }}>
         <Pressable
           style={({ pressed }) => [styles.refreshBtn, pressed && { opacity: PRESSED_OPACITY }]}
           onPress={() => {
@@ -499,6 +504,11 @@ const styles = StyleSheet.create({
   skeletonHero: {
     borderRadius: radius.lg,
   },
+  skeletonHint: {
+    ...typography.caption,
+    color: colors.textMuted,
+    textAlign: "center",
+  },
   skeletonInsightCard: {
     borderRadius: radius.lg,
     padding: spacing.lg,
@@ -547,13 +557,13 @@ const styles = StyleSheet.create({
   heroCard: {
     position: "relative",
     overflow: "hidden",
-    marginBottom: spacing.xl,
+    marginBottom: spacing.sectionGap,
     padding: spacing.xl,
     borderRadius: radius.lg,
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderColor: colors.surfaceLevel1Border,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderColor: colors.surfaceLevel2Border,
     borderWidth: 1,
-    ...shadows.level1,
+    ...shadows.level2,
   },
   heroGradient: {
     ...StyleSheet.absoluteFillObject,
@@ -566,18 +576,18 @@ const styles = StyleSheet.create({
   heroBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: colors.accentSoft,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(59,130,246,0.3)",
   },
   heroBadgeText: {
     fontSize: 12,
     fontWeight: "700",
-    color: colors.textSecondary,
+    color: colors.accent,
   },
   heroEyebrow: {
     fontSize: 11,
@@ -676,8 +686,10 @@ const styles = StyleSheet.create({
     color: colors.accent,
   },
   paywallCard: {
-    marginBottom: spacing.xl,
-    borderColor: colors.surfaceLevel1Border,
+    marginBottom: spacing.sectionGap,
+    borderColor: "rgba(59,130,246,0.25)",
+    borderWidth: 1,
+    backgroundColor: colors.accentSoft,
     ...shadows.level1,
   },
   paywallIconWrap: {
@@ -751,6 +763,11 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: colors.textPrimary,
   },
+  emptyHero: {
+    paddingHorizontal: spacing.screenPadding,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
+  },
   emptyContainer: {
     flex: 1,
     alignItems: "center",
@@ -758,13 +775,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     gap: spacing.lg,
   },
+  emptyHeroTitle: {
+    ...typography.sectionTitle,
+    fontSize: 22,
+    color: colors.text,
+    marginTop: spacing.md,
+  },
+  emptyHeroSub: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
   emptyIconWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.surfaceLevel1,
+    width: 64,
+    height: 64,
+    borderRadius: radius.lg,
+    backgroundColor: colors.accentSoft,
     borderWidth: 1,
-    borderColor: colors.surfaceLevel1Border,
+    borderColor: "rgba(59,130,246,0.25)",
     alignItems: "center",
     justifyContent: "center",
   },

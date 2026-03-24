@@ -8,7 +8,9 @@ import {
   Pressable,
   Share,
   Alert,
+  ActivityIndicator,
 } from "react-native";
+import Animated from "react-native-reanimated";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
@@ -51,16 +53,16 @@ import {
 } from "@/services/chatService";
 import { getPlayerContextForCoachMark } from "@/services/playerService";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
-import { ErrorStateView } from "@/components/ui";
+import { ErrorStateView, SkeletonBlock } from "@/components/ui";
 import { useSubscription } from "@/context/SubscriptionContext";
-import { colors, spacing, typography, radius } from "@/constants/theme";
+import { colors, spacing, typography, radius, shadows, feedback } from "@/constants/theme";
+import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
 import { trackCoachMarkEvent } from "@/lib/coachMarkAnalytics";
 import { COACH_MARK_ID } from "@/services/chatService";
 
-const PRESSED_OPACITY = 0.88;
-const SECTION_GAP_PRIMARY = 28;
-const SECTION_GAP_SECONDARY = 20;
+const PRESSED_OPACITY = feedback.pressedOpacity;
+const SECTION_GAP_PRIMARY = spacing.sectionGap;
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("ru-RU", {
@@ -89,7 +91,7 @@ function EmptySection({
   return (
     <View style={styles.emptySection}>
       <View style={styles.emptySectionIconWrap}>
-        <Ionicons name={icon} size={24} color={colors.textMuted} />
+        <Ionicons name={icon} size={28} color={colors.textMuted} />
       </View>
       <Text style={styles.emptyText}>{title}</Text>
       {onAction && (
@@ -291,9 +293,23 @@ export default function CoachMarkHubScreen() {
   if (!user?.id) {
     return (
       <FlagshipScreen scroll={false}>
-        <View style={styles.centered}>
-          <Text style={styles.centeredText}>Требуется вход</Text>
-        </View>
+        <Animated.View entering={screenReveal(0)} style={styles.unauthHero}>
+          <View style={styles.heroIconWrap}>
+            <Ionicons name="sparkles" size={32} color={colors.accent} />
+          </View>
+          <Text style={styles.heroTitle}>Coach Mark</Text>
+          <Text style={styles.heroSub}>Персональный AI-тренер для развития игрока</Text>
+        </Animated.View>
+        <Animated.View entering={screenReveal(STAGGER)} style={styles.centered}>
+          <ErrorStateView
+            variant="notFound"
+            title="Требуется вход"
+            subtitle="Авторизуйтесь, чтобы общаться с Coach Mark"
+            actionLabel="Войти"
+            onAction={() => router.replace("/(auth)/login")}
+            style={styles.errorWrap}
+          />
+        </Animated.View>
       </FlagshipScreen>
     );
   }
@@ -304,10 +320,11 @@ export default function CoachMarkHubScreen() {
     return (
       <FlagshipScreen scroll={false}>
         <View style={styles.hubSkeleton}>
-          <View style={styles.hubSkeletonCard} />
-          <View style={styles.hubSkeletonCard} />
-          <View style={styles.hubSkeletonCard} />
-          <Text style={styles.hubSkeletonText}>Подготовка…</Text>
+          <SkeletonBlock height={140} style={styles.hubSkeletonCard} />
+          <SkeletonBlock height={120} style={styles.hubSkeletonCard} />
+          <SkeletonBlock height={160} style={styles.hubSkeletonCard} />
+          <SkeletonBlock height={80} style={styles.hubSkeletonCard} />
+          <Text style={styles.hubSkeletonText}>Подготовка Coach Mark…</Text>
         </View>
       </FlagshipScreen>
     );
@@ -316,6 +333,12 @@ export default function CoachMarkHubScreen() {
   if (hubError && notes.length === 0 && plans.length === 0) {
     return (
       <FlagshipScreen scroll={false}>
+        <Animated.View entering={screenReveal(0)} style={styles.unauthHero}>
+          <View style={styles.heroIconWrap}>
+            <Ionicons name="sparkles" size={32} color={colors.accent} />
+          </View>
+          <Text style={styles.heroTitle}>Coach Mark</Text>
+        </Animated.View>
         <ErrorStateView
           variant="network"
           title="Не получилось загрузить"
@@ -349,15 +372,16 @@ export default function CoachMarkHubScreen() {
       >
         {/* Hero — для пользователей с контентом */}
         {!needsOnboarding && (
-          <View style={styles.heroBlock}>
-            <View style={styles.heroIconWrap}>
-              <Ionicons name="sparkles" size={28} color={colors.accent} />
-            </View>
-            <Text style={styles.heroTitle}>Coach Mark</Text>
-            <Text style={styles.heroSub}>
-              Ваш персональный AI-тренер. Советы под вашего игрока, планы на неделю, рекомендации. С Premium — еженедельные отчёты и фокус на прогрессе.
-            </Text>
-            <View style={styles.quickActionsRow}>
+          <Animated.View entering={screenReveal(0)}>
+            <View style={styles.heroBlock}>
+              <View style={styles.heroIconWrap}>
+                <Ionicons name="sparkles" size={32} color={colors.accent} />
+              </View>
+              <Text style={styles.heroTitle}>Coach Mark</Text>
+              <Text style={styles.heroSub}>
+                Ваш персональный AI-тренер. Советы под вашего игрока, планы на неделю, рекомендации. С Premium — еженедельные отчёты и фокус на прогрессе.
+              </Text>
+              <View style={styles.quickActionsRow}>
               <Pressable
                 style={({ pressed }) => [
                   styles.quickActionPrimary,
@@ -380,10 +404,12 @@ export default function CoachMarkHubScreen() {
               </Pressable>
             </View>
           </View>
+          </Animated.View>
         )}
 
         {/* Onboarding */}
         {needsOnboarding && (
+          <Animated.View entering={screenReveal(0)}>
           <View style={styles.onboardingBlock}>
             <View style={styles.onboardingIconWrap}>
               <Ionicons name="sparkles" size={32} color={colors.accent} />
@@ -426,10 +452,11 @@ export default function CoachMarkHubScreen() {
               </Pressable>
             </View>
           </View>
+          </Animated.View>
         )}
 
         {/* Nudges — primary */}
-        <View style={styles.sectionPrimary}>
+        <Animated.View entering={screenReveal(STAGGER)} style={styles.sectionPrimary}>
           <Text style={styles.sectionTitle}>Что можно спросить у Coach Mark</Text>
           {nudges.length === 0 ? (
             <View style={[styles.nudgeCard, styles.nudgeAllGoodCard]}>
@@ -456,10 +483,11 @@ export default function CoachMarkHubScreen() {
               </Pressable>
             ))
           )}
-        </View>
+        </Animated.View>
 
         {/* Premium Value */}
         {!hasProOrAbove && (
+          <Animated.View entering={screenReveal(STAGGER * 2)}>
           <View style={styles.premiumValueBlock}>
             <View style={styles.premiumValueIconWrap}>
               <Ionicons name="diamond-outline" size={24} color={colors.accent} />
@@ -483,10 +511,11 @@ export default function CoachMarkHubScreen() {
               <Ionicons name="chevron-forward" size={18} color={colors.onAccent} />
             </Pressable>
           </View>
+          </Animated.View>
         )}
 
         {/* Weekly Check-in — primary */}
-        <View style={styles.sectionPrimary}>
+        <Animated.View entering={screenReveal(STAGGER * 2)} style={styles.sectionPrimary}>
           {lastCheckin ? (
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>Проверка на эту неделю</Text>
@@ -543,10 +572,10 @@ export default function CoachMarkHubScreen() {
               <Text style={styles.cardMeta}>{formatDate(lastCheckin.createdAt)}</Text>
             </View>
           )}
-        </View>
+        </Animated.View>
 
         {/* Recommended Trainers — secondary */}
-        <View style={styles.sectionSecondary}>
+        <Animated.View entering={screenReveal(STAGGER * 3)} style={styles.sectionSecondary}>
           <Text style={styles.sectionTitleSecondary}>Подбор тренеров от Coach Mark</Text>
           {recommendedCoaches.length === 0 ? (
             <EmptySection
@@ -592,10 +621,10 @@ export default function CoachMarkHubScreen() {
                 </Pressable>
               ))
             )}
-        </View>
+        </Animated.View>
 
         {/* Memory — secondary */}
-        <View style={styles.sectionSecondary}>
+        <Animated.View entering={screenReveal(STAGGER * 4)} style={styles.sectionSecondary}>
           <View style={styles.sectionTitleRow}>
             <Text style={styles.sectionTitleSecondary}>Память Coach Mark о вашем игроке</Text>
             {memories.length > 0 && (
@@ -656,10 +685,10 @@ export default function CoachMarkHubScreen() {
               </View>
             ))
           )}
-        </View>
+        </Animated.View>
 
         {/* Notes — secondary */}
-        <View style={styles.sectionSecondary}>
+        <Animated.View entering={screenReveal(STAGGER * 5)} style={styles.sectionSecondary}>
           <Text style={styles.sectionTitleSecondary}>Заметки</Text>
           {notes.length === 0 ? (
             <EmptySection
@@ -677,10 +706,10 @@ export default function CoachMarkHubScreen() {
               </View>
             ))
           )}
-        </View>
+        </Animated.View>
 
         {/* Weekly Plans — secondary */}
-        <View style={styles.sectionSecondary}>
+        <Animated.View entering={screenReveal(STAGGER * 6)} style={styles.sectionSecondary}>
           <Text style={styles.sectionTitleSecondary}>Недельные планы</Text>
           {plans.length === 0 ? (
             <EmptySection
@@ -698,10 +727,10 @@ export default function CoachMarkHubScreen() {
               </View>
             ))
           )}
-        </View>
+        </Animated.View>
 
         {/* Calendar Items — secondary */}
-        <View style={styles.sectionSecondary}>
+        <Animated.View entering={screenReveal(STAGGER * 7)} style={styles.sectionSecondary}>
           <View style={[styles.sectionHeaderRow, styles.sectionHeaderRowSecondary]}>
             <Text style={styles.sectionTitleSecondary}>Подготовлено для календаря</Text>
             {calendarItems.length > 0 && (
@@ -713,8 +742,17 @@ export default function CoachMarkHubScreen() {
                 onPress={handleExportCalendar}
                 disabled={exportInProgress}
               >
-                <Ionicons name="share-outline" size={18} color={colors.accent} />
-                <Text style={styles.exportBtnText}>Экспортировать</Text>
+                {exportInProgress ? (
+                  <>
+                    <ActivityIndicator size="small" color={colors.accent} />
+                    <Text style={styles.exportBtnText}>Экспорт…</Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="share-outline" size={18} color={colors.accent} />
+                    <Text style={styles.exportBtnText}>Экспортировать</Text>
+                  </>
+                )}
               </Pressable>
             )}
           </View>
@@ -741,7 +779,7 @@ export default function CoachMarkHubScreen() {
               </View>
             ))
           )}
-        </View>
+        </Animated.View>
       </ScrollView>
     </FlagshipScreen>
   );
@@ -760,7 +798,7 @@ const styles = StyleSheet.create({
     marginBottom: SECTION_GAP_PRIMARY,
   },
   sectionSecondary: {
-    marginBottom: SECTION_GAP_SECONDARY,
+    marginBottom: spacing.sectionGap,
   },
   sectionTitleSecondary: {
     ...typography.sectionTitle,
@@ -769,32 +807,41 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.md,
   },
+  unauthHero: {
+    marginBottom: spacing.xl,
+    paddingHorizontal: spacing.screenPadding,
+    paddingTop: spacing.lg,
+  },
   heroBlock: {
     backgroundColor: colors.accentSoft,
     borderWidth: 1,
-    borderColor: "rgba(59,130,246,0.2)",
+    borderColor: "rgba(59,130,246,0.25)",
     borderRadius: radius.lg,
     padding: spacing.xl,
     marginBottom: SECTION_GAP_PRIMARY,
+    ...shadows.level1,
   },
   heroIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(59,130,246,0.15)",
+    width: 48,
+    height: 48,
+    borderRadius: radius.lg,
+    backgroundColor: "rgba(59,130,246,0.18)",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.md,
   },
   heroTitle: {
-    ...typography.h2,
+    ...typography.sectionTitle,
+    fontSize: 22,
+    fontWeight: "700",
     color: colors.text,
     marginBottom: spacing.xs,
+    letterSpacing: -0.3,
   },
   heroSub: {
     ...typography.bodySmall,
     color: colors.textSecondary,
-    lineHeight: 20,
+    lineHeight: 22,
     marginBottom: spacing.lg,
   },
   quickActionsRow: {
@@ -837,16 +884,17 @@ const styles = StyleSheet.create({
   onboardingBlock: {
     backgroundColor: colors.accentSoft,
     borderWidth: 1,
-    borderColor: "rgba(59,130,246,0.2)",
+    borderColor: "rgba(59,130,246,0.25)",
     borderRadius: radius.lg,
     padding: spacing.xl,
     marginBottom: SECTION_GAP_PRIMARY,
+    ...shadows.level1,
   },
   onboardingIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "rgba(59,130,246,0.15)",
+    width: 56,
+    height: 56,
+    borderRadius: radius.lg,
+    backgroundColor: "rgba(59,130,246,0.18)",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.md,
@@ -896,7 +944,7 @@ const styles = StyleSheet.create({
     borderColor: colors.surfaceLevel1Border,
     borderRadius: radius.lg,
     padding: spacing.lg,
-    marginBottom: SECTION_GAP_SECONDARY,
+    marginBottom: spacing.sectionGap,
   },
   premiumValueIconWrap: {
     width: 40,
@@ -967,7 +1015,7 @@ const styles = StyleSheet.create({
   exportBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: spacing.sm,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
   },
@@ -983,6 +1031,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: spacing.lg,
     marginBottom: spacing.md,
+    ...shadows.level1,
   },
   memoryCard: {
     flexDirection: "row",
@@ -1047,8 +1096,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.surfaceLevel1Border,
     borderRadius: radius.lg,
-    paddingVertical: spacing.xl,
-    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.xl,
     alignItems: "center",
     gap: spacing.md,
   },
@@ -1114,11 +1163,7 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   hubSkeletonCard: {
-    height: 120,
-    backgroundColor: colors.surfaceLevel1,
     borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.surfaceLevel1Border,
   },
   hubSkeletonText: {
     ...typography.bodySmall,

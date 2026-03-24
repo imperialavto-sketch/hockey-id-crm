@@ -27,9 +27,9 @@ import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { SectionCard } from "@/components/player-passport";
 import { triggerHaptic } from "@/lib/haptics";
 import { screenReveal, STAGGER } from "@/lib/animations";
-import { colors, spacing, radius } from "@/constants/theme";
+import { colors, spacing, radius, shadows, feedback } from "@/constants/theme";
 
-const PRESSED_OPACITY = 0.88;
+const PRESSED_OPACITY = feedback.pressedOpacity;
 
 const STRONGER_TEAM_LABELS: Record<string, string> = {
   low: "низкий",
@@ -57,6 +57,7 @@ function HeroSummaryCard() {
           <Text style={heroStyles.label}>Потенциал</Text>
         </View>
       </View>
+      <Text style={heroStyles.summaryLabel}>Главный инсайт</Text>
       <Text style={heroStyles.summary}>{hero.summary}</Text>
     </View>
   );
@@ -77,17 +78,18 @@ function HeroSummaryCard() {
 
 const heroStyles = StyleSheet.create({
   card: {
-    marginBottom: 24,
-    borderRadius: 24,
+    marginBottom: spacing.sectionGap,
+    borderRadius: radius.xl,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.surfaceLevel2Border,
+    ...shadows.level2,
   },
   cardWeb: {
     backgroundColor: colors.bgMid,
   },
   blur: {
-    borderRadius: 24,
+    borderRadius: radius.xl,
     overflow: "hidden",
   },
   content: {
@@ -126,6 +128,13 @@ const heroStyles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 12,
     fontWeight: "600",
+  },
+  summaryLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    color: colors.accent,
+    marginBottom: spacing.xs,
   },
   summary: {
     color: colors.textSecondary,
@@ -185,14 +194,20 @@ export default function AICoachReportScreen() {
     <FlagshipScreen header={header}>
       <Animated.View entering={screenReveal(0)}>
         <View style={styles.headerBlock}>
-            <Text style={styles.playerName}>{player.name}</Text>
-            <Text style={styles.subtitle}>AI Coach Report</Text>
-            <Text style={styles.desc}>Анализ прогресса, игровых качеств и зон роста</Text>
+          <View style={styles.headerIconWrap}>
+            <Ionicons name="sparkles" size={28} color={colors.accent} />
+          </View>
+          <Text style={styles.playerName}>{player.name}</Text>
+          <Text style={styles.subtitle}>Персональный AI‑отчёт</Text>
+          <Text style={styles.desc}>
+            Анализ прогресса, игровых качеств, зон роста и практических рекомендаций под вашего игрока
+          </Text>
         </View>
         <HeroSummaryCard />
       </Animated.View>
 
       {!hasAiReportAccess && (
+            <Animated.View entering={screenReveal(STAGGER * 0.5)}>
             <View style={styles.premiumCta}>
               <Text style={styles.premiumCtaLabel}>Preview</Text>
               <Text style={styles.premiumCtaTitle}>
@@ -216,10 +231,11 @@ export default function AICoachReportScreen() {
                 </Text>
               </Pressable>
             </View>
+            </Animated.View>
           )}
 
       <Animated.View entering={screenReveal(STAGGER)}>
-        <SectionCard title="Сильные стороны">
+        <SectionCard title="Ключевые сильные стороны">
           {(hasAiReportAccess ? strengths : strengths.slice(0, 2)).map((s) => (
             <StrengthWeaknessCard
               key={s.id}
@@ -232,8 +248,9 @@ export default function AICoachReportScreen() {
           ))}
           {!hasAiReportAccess && strengths.length > 2 && (
             <View style={styles.teaser}>
+              <Ionicons name="lock-open-outline" size={20} color={colors.textMuted} />
               <Text style={styles.teaserText}>
-                Ещё {strengths.length - 2} сильных сторон и полный разбор — в Pro
+                Ещё {strengths.length - 2} сильных сторон и детальный разбор — в Pro
               </Text>
             </View>
           )}
@@ -241,11 +258,12 @@ export default function AICoachReportScreen() {
       </Animated.View>
 
       <Animated.View entering={screenReveal(STAGGER * 2)}>
-        <SectionCard title="Зоны роста">
+        <SectionCard title="Зоны роста и потенциал">
           {!hasAiReportAccess ? (
             <View style={styles.teaser}>
+              <Ionicons name="lock-closed-outline" size={20} color={colors.textMuted} />
               <Text style={styles.teaserText}>
-                Детальный разбор слабых сторон, что делать и как расти — в Pro
+                Зоны роста, что делать и как расти — разблокируйте в Pro
               </Text>
             </View>
           ) : (
@@ -266,11 +284,12 @@ export default function AICoachReportScreen() {
       </Animated.View>
 
       <Animated.View entering={screenReveal(STAGGER * 3)}>
-        <SectionCard title="AI Рекомендации">
+        <SectionCard title="Что делать дальше">
           {!hasAiReportAccess ? (
             <View style={styles.teaser}>
+              <Ionicons name="lock-closed-outline" size={20} color={colors.textMuted} />
               <Text style={styles.teaserText}>
-                Персональные рекомендации по развитию игрока — в Pro
+                Что делать дальше — персональные шаги на ближайший цикл в Pro
               </Text>
             </View>
           ) : (
@@ -291,8 +310,9 @@ export default function AICoachReportScreen() {
         <SectionCard title="Прогноз развития">
           {!hasAiReportAccess ? (
             <View style={styles.teaser}>
+              <Ionicons name="lock-closed-outline" size={20} color={colors.textMuted} />
               <Text style={styles.teaserText}>
-                Прогноз роста и потенциала — в Pro
+                Прогноз роста и потенциала на сезон — в Pro
               </Text>
             </View>
           ) : (
@@ -318,11 +338,12 @@ export default function AICoachReportScreen() {
       </Animated.View>
 
       <Animated.View entering={screenReveal(STAGGER * 5)}>
-        <SectionCard title="Комментарий AI-тренера">
+        <SectionCard title="Итог от AI-тренера">
           {!hasAiReportAccess ? (
             <View style={styles.teaser}>
+              <Ionicons name="lock-closed-outline" size={20} color={colors.textMuted} />
               <Text style={styles.teaserText}>
-                Комментарий AI-тренера — в Pro
+                Итоговый комментарий AI-тренера под вашего игрока — в Pro
               </Text>
             </View>
           ) : (
@@ -335,8 +356,9 @@ export default function AICoachReportScreen() {
         <SectionCard title="Skill Overview">
           {!hasAiReportAccess ? (
             <View style={styles.teaser}>
+              <Ionicons name="lock-closed-outline" size={20} color={colors.textMuted} />
               <Text style={styles.teaserText}>
-                Детальная skill-карта — в Pro
+                Детальная skill-карта по всем показателям — в Pro
               </Text>
             </View>
           ) : (
@@ -349,7 +371,7 @@ export default function AICoachReportScreen() {
         </SectionCard>
       </Animated.View>
 
-      <Animated.View entering={screenReveal(STAGGER * 7)} style={styles.ctaWrap}>
+      <Animated.View entering={screenReveal(STAGGER * 7)} style={[styles.ctaWrap, { paddingBottom: insets.bottom + spacing.xl }]}>
         <PrimaryButton
           label="Подобрать тренера"
           onPress={() => {
@@ -416,7 +438,16 @@ const styles = StyleSheet.create({
     marginLeft: spacing.sm,
   },
   headerBlock: {
-    marginBottom: 24,
+    marginBottom: spacing.sectionGap,
+  },
+  headerIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.lg,
+    backgroundColor: colors.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.md,
   },
   playerName: {
     color: colors.text,
@@ -458,11 +489,13 @@ const styles = StyleSheet.create({
   },
   teaser: {
     padding: spacing.xl,
-    backgroundColor: colors.surfaceLightAlt,
+    backgroundColor: colors.surfaceLevel1,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: colors.borderSoft,
+    borderColor: colors.surfaceLevel1Border,
     marginBottom: spacing.lg,
+    alignItems: "center",
+    gap: spacing.md,
   },
   teaserText: {
     fontSize: 14,
@@ -471,25 +504,27 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   premiumCta: {
-    padding: 24,
+    padding: spacing.xl,
     backgroundColor: colors.accentSoft,
-    borderRadius: 24,
-    marginBottom: 24,
+    borderRadius: radius.xl,
+    marginBottom: spacing.sectionGap,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "rgba(59,130,246,0.3)",
+    ...shadows.level1,
   },
   premiumCtaLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
     color: colors.accent,
-    letterSpacing: 0.5,
-    marginBottom: 8,
+    letterSpacing: 1.2,
+    marginBottom: spacing.sm,
   },
   premiumCtaTitle: {
     fontSize: 18,
     fontWeight: "800",
     color: colors.text,
     marginBottom: spacing.sm,
+    lineHeight: 24,
   },
   premiumCtaSubtitle: {
     fontSize: 14,

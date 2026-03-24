@@ -34,7 +34,7 @@ export function CoachSpecializationTags({ coach }: CoachSpecializationTagsProps)
 
 const styles = StyleSheet.create({
   wrap: {
-    marginBottom: spacing.xxl,
+    marginBottom: spacing.sectionGap,
   },
   card: {
     marginBottom: 0,

@@ -20,7 +20,7 @@ export function CoachCredentialsCard({ coach }: CoachCredentialsCardProps) {
 
 const styles = StyleSheet.create({
   wrap: {
-    marginBottom: spacing.xxl,
+    marginBottom: spacing.sectionGap,
   },
   card: {
     marginBottom: 0,

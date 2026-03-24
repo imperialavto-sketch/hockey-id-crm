@@ -1,5 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
+import { shadows, radius } from "@/constants/theme";
 
 export interface StrengthWeaknessCardProps {
   type: "strength" | "weakness";
@@ -57,10 +58,11 @@ export function StrengthWeaknessCard({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 16,
+    borderRadius: radius.lg,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
+    ...shadows.level1,
   },
   cardStrength: {
     backgroundColor: "rgba(34,197,94,0.06)",

@@ -1,10 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback } from "react";
-import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-} from "react-native";
+import { View, StyleSheet } from "react-native";
 import Animated from "react-native-reanimated";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -25,22 +20,21 @@ import { CoachSpecializationTags } from "@/components/marketplace/CoachSpecializ
 import { CoachReviewsSection } from "@/components/marketplace/CoachReviewsSection";
 import { SmartMatchCard } from "@/components/marketplace/SmartMatchCard";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
-import { SkeletonBlock, GhostButton, PrimaryButton } from "@/components/ui";
+import { SkeletonBlock, GhostButton, PrimaryButton, ErrorStateView } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
 import { ScreenHeader } from "@/components/navigation/ScreenHeader";
 import { colors, spacing, typography, radius } from "@/constants/theme";
 
-const PRESSED_OPACITY = 0.88;
-
 function CoachDetailSkeleton() {
   return (
     <View style={styles.skeletonContent}>
       <SkeletonBlock height={340} style={styles.skeletonHero} />
-      <SkeletonBlock height={120} style={styles.skeletonCard} />
       <SkeletonBlock height={100} style={styles.skeletonCard} />
+      <SkeletonBlock height={96} style={styles.skeletonCard} />
       <SkeletonBlock height={140} style={styles.skeletonCard} />
-      <SkeletonBlock height={80} style={styles.skeletonCard} />
+      <SkeletonBlock height={100} style={styles.skeletonCard} />
+      <View style={styles.skeletonSpacer} />
       <SkeletonBlock height={56} style={styles.skeletonCta} />
     </View>
   );
@@ -133,20 +127,20 @@ export default function CoachDetailScreen() {
   if (error || !coach) {
     return (
       <FlagshipScreen header={header} scroll={false}>
-        <View style={styles.errorContainer}>
-          <Ionicons name="person-outline" size={48} color={colors.textMuted} />
-          <Text style={styles.errorTitle}>Тренер не найден</Text>
-          <Text style={styles.errorSub}>
-            Проверьте ссылку или вернитесь в каталог тренеров
-          </Text>
-          <GhostButton
-            label="Вернуться"
-            onPress={() => {
-              triggerHaptic();
-              router.back();
-            }}
-          />
-        </View>
+        <Animated.View entering={screenReveal(0)} style={styles.errorHero}>
+          <View style={styles.errorHeroIconWrap}>
+            <Ionicons name="person-outline" size={32} color={colors.accent} />
+          </View>
+          <Text style={styles.errorHeroTitle}>Тренер</Text>
+        </Animated.View>
+        <ErrorStateView
+          variant="notFound"
+          title="Тренер не найден"
+          subtitle="Проверьте ссылку или вернитесь в каталог тренеров"
+          actionLabel="Вернуться"
+          onAction={() => router.back()}
+          style={styles.errorWrap}
+        />
       </FlagshipScreen>
     );
   }
@@ -210,7 +204,10 @@ export default function CoachDetailScreen() {
         />
       </Animated.View>
 
-      <Animated.View entering={screenReveal(matchResult && matchResult.matchScore >= 60 ? STAGGER * 7 : STAGGER * 6)} style={styles.ctaWrap}>
+      <Animated.View
+        entering={screenReveal(matchResult && matchResult.matchScore >= 60 ? STAGGER * 7 : STAGGER * 6)}
+        style={[styles.ctaWrap, { paddingBottom: insets.bottom + spacing.xl }]}
+      >
         <PrimaryButton
           label="Записаться на тренировку"
           onPress={goToBooking}
@@ -226,27 +223,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.screenPadding,
     paddingTop: spacing.lg,
   },
-  skeletonContent: { gap: spacing.xl },
-  skeletonHero: { borderRadius: 20 },
+  skeletonContent: { gap: spacing.sectionGap },
+  skeletonHero: { borderRadius: radius.xl },
   skeletonCard: { borderRadius: radius.lg },
-  skeletonCta: { borderRadius: 14, marginTop: spacing.md },
+  skeletonSpacer: { height: spacing.lg },
+  skeletonCta: { borderRadius: radius.sm },
 
-  errorContainer: {
-    flex: 1,
-    justifyContent: "center",
+  errorHero: {
+    paddingHorizontal: spacing.screenPadding,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
+  },
+  errorHeroIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.lg,
+    backgroundColor: colors.accentSoft,
     alignItems: "center",
-    gap: spacing.lg,
+    justifyContent: "center",
+    marginBottom: spacing.md,
   },
-  errorTitle: { ...typography.h2, color: colors.text, textAlign: "center" },
-  errorSub: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    textAlign: "center",
-    paddingHorizontal: spacing.xxl,
-    marginBottom: spacing.lg,
+  errorHeroTitle: {
+    ...typography.sectionTitle,
+    fontSize: 22,
+    color: colors.text,
   },
-  spacer: { height: spacing.xxl },
+  errorWrap: { flex: 1 },
+
+  spacer: { height: spacing.sectionGap },
   ctaWrap: {
-    marginTop: spacing.xl,
+    marginTop: spacing.xxl,
   },
 });

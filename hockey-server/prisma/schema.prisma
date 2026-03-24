@@ -127,6 +127,7 @@ model Player {
   lastName  String
   birthYear Int
   position  String?
+  avatarUrl String?
   createdAt DateTime @default(now())
 
   parentId  Int

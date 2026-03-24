@@ -1,5 +1,5 @@
 import React from "react";
-import { colors } from "@/constants/theme";
+import { colors, shadows, radius } from "@/constants/theme";
 import { View, Text, StyleSheet } from "react-native";
 
 export interface InsightBlockProps {
@@ -24,13 +24,14 @@ export function InsightBlock({ title, items }: InsightBlockProps) {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 20,
+    borderRadius: radius.lg,
     padding: 20,
     backgroundColor: colors.accentSoft,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "rgba(59,130,246,0.25)",
     overflow: "hidden",
     position: "relative",
+    ...shadows.level1,
   },
   edgeGlow: {
     position: "absolute",

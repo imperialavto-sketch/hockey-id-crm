@@ -1,5 +1,5 @@
 import React from "react";
-import { colors } from "@/constants/theme";
+import { colors, shadows, radius } from "@/constants/theme";
 import { View, Text, StyleSheet } from "react-native";
 import type { RecommendationPriority } from "@/constants/mockAiReport";
 
@@ -44,10 +44,11 @@ export function RecommendationCard({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 18,
+    borderRadius: radius.lg,
     padding: 18,
     marginBottom: 12,
     borderWidth: 1,
+    ...shadows.level1,
   },
   cardHigh: {
     backgroundColor: colors.accentSoft,

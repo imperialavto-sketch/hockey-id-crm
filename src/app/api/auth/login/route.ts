@@ -110,7 +110,11 @@ export async function POST(req: NextRequest) {
       teamId,
       parentId,
     });
-    const res = NextResponse.json({ user: demo.user, role: demo.role });
+    const res = NextResponse.json({
+      user: demo.user,
+      role: demo.role,
+      mobileToken: sessionValue,
+    });
     res.cookies.set("hockey-crm-session", sessionValue, {
       path: "/",
       httpOnly: true,

@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { colors, spacing, typography, radius } from "@/constants/theme";
+import { colors, spacing, typography, radius, shadows } from "@/constants/theme";
 import type { MockCoach } from "@/constants/mockCoaches";
 
 interface CoachStatsRowProps {
@@ -32,12 +32,13 @@ const styles = StyleSheet.create({
   wrap: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: spacing.xxl,
+    marginBottom: spacing.sectionGap,
     padding: spacing.xl,
     backgroundColor: colors.surfaceLevel1,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.surfaceLevel1Border,
+    ...shadows.level1,
   },
   item: {
     alignItems: "center",
@@ -46,6 +47,7 @@ const styles = StyleSheet.create({
     ...typography.cardTitle,
     fontSize: 18,
     color: colors.text,
+    letterSpacing: -0.2,
   },
   label: {
     ...typography.captionSmall,

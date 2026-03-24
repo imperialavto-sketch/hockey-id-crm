@@ -31,7 +31,7 @@ function mapPlayerToContract(p) {
     teamId: p.teamId,
     age,
     birthYear,
-    avatar: null,
+    avatarUrl: p.avatarUrl ?? null,
     number: null,
     shoots: null,
     height: null,
@@ -81,6 +81,34 @@ router.get("/:id", parentAuth, async (req, res) => {
   } catch (err) {
     console.error("[me/players/:id] error:", err);
     res.status(500).json({ error: "Не удалось загрузить игрока" });
+  }
+});
+
+/** Create player for parent (POST /api/me/players). Uses parentId from token. */
+router.post("/", parentAuth, async (req, res) => {
+  try {
+    const parentId = req.parentId;
+    const { firstName, lastName, birthYear, position, teamId } = req.body || {};
+    if (!firstName || !lastName || birthYear == null) {
+      return res.status(400).json({
+        error: "firstName, lastName, birthYear are required",
+      });
+    }
+    const player = await prisma.player.create({
+      data: {
+        firstName: String(firstName).trim(),
+        lastName: String(lastName).trim(),
+        birthYear: parseInt(birthYear, 10),
+        position: position ? String(position).trim() : null,
+        parentId,
+        teamId: teamId != null ? parseInt(teamId, 10) : null,
+      },
+      include: { team: true, stats: true },
+    });
+    res.status(201).json(mapPlayerToContract(player));
+  } catch (err) {
+    console.error("[me/players] POST error:", err);
+    res.status(500).json({ error: "Не удалось добавить игрока" });
   }
 });
 
