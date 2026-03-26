@@ -1,15 +1,25 @@
 /**
- * POST /api/coach/schedule
- * Schedule MVP — create training session.
- * Auth: requireCrmRole. Coach can create only for accessible teams/groups.
+ * GET /api/coach/schedule?weekStartDate=YYYY-MM-DD&teamId=
+ * POST /api/coach/schedule — create TrainingSession
+ * Source of truth: TrainingSession (coach-app weekly flow).
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireCrmRole } from "@/lib/api-rbac";
 import { getAccessibleTeamIds } from "@/lib/data-scope";
+import { weekRangeFromParam } from "@/lib/schedule-week";
+import {
+  findTrainingSessionsForTeamWeek,
+  sessionWeekInclude,
+  toCoachTrainingSessionDto,
+  type TrainingSessionWeekRow,
+} from "@/lib/coach-training-session-dto";
 
-const TRAINING_TYPES = ["hockey", "ofp", "game", "individual"] as const;
+import {
+  normalizeTrainingSessionKind,
+  parseTrainingSessionSubType,
+} from "@/lib/training-session-helpers";
 
 function canAccessTeam(
   accessibleIds: string[] | null,
@@ -17,6 +27,59 @@ function canAccessTeam(
 ): boolean {
   if (accessibleIds === null) return true;
   return accessibleIds.includes(teamId);
+}
+
+export async function GET(req: NextRequest) {
+  const { user, res } = await requireCrmRole(req);
+  if (res) return res;
+
+  const weekStartStr = req.nextUrl.searchParams.get("weekStartDate")?.trim();
+  const teamIdParam = req.nextUrl.searchParams.get("teamId")?.trim();
+
+  if (!weekStartStr) {
+    return NextResponse.json(
+      { error: "weekStartDate обязателен (YYYY-MM-DD)" },
+      { status: 400 }
+    );
+  }
+
+  const range = weekRangeFromParam(weekStartStr);
+  if (!range) {
+    return NextResponse.json(
+      { error: "Неверный формат weekStartDate" },
+      { status: 400 }
+    );
+  }
+
+  const teamIds = await getAccessibleTeamIds(user!, prisma);
+  const teamId =
+    teamIdParam || (teamIds && teamIds.length === 1 ? teamIds[0] : null);
+
+  if (!teamId) {
+    return NextResponse.json(
+      { error: "teamId обязателен (или доступна ровно одна команда)" },
+      { status: 400 }
+    );
+  }
+
+  if (!canAccessTeam(teamIds, teamId)) {
+    return NextResponse.json({ error: "Нет доступа к команде" }, { status: 403 });
+  }
+
+  try {
+    const rows = await findTrainingSessionsForTeamWeek(
+      teamId,
+      range.rangeStart,
+      range.rangeEnd
+    );
+    return NextResponse.json(rows.map(toCoachTrainingSessionDto));
+  } catch (error) {
+    console.error("GET /api/coach/schedule failed:", error);
+    return NextResponse.json(
+      { error: "Ошибка загрузки расписания" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -50,12 +113,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!TRAINING_TYPES.includes(type as (typeof TRAINING_TYPES)[number])) {
+  const kind = normalizeTrainingSessionKind(type);
+  if (!kind) {
     return NextResponse.json(
-      { error: "type должен быть: hockey, ofp, game, individual" },
+      { error: "type: ice | ofp (допустимы legacy: hockey, ofp, game, individual)" },
       { status: 400 }
     );
   }
+  const subType = parseTrainingSessionSubType(o.subType);
 
   const startAt = startAtRaw instanceof Date ? startAtRaw : new Date(String(startAtRaw));
   const endAt = endAtRaw instanceof Date ? endAtRaw : new Date(String(endAtRaw));
@@ -108,12 +173,13 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const session = await prisma.trainingSession.create({
+    const created = await prisma.trainingSession.create({
       data: {
         teamId,
         groupId,
         coachId,
-        type,
+        type: kind,
+        subType,
         startAt,
         endAt,
         locationName,
@@ -122,28 +188,12 @@ export async function POST(req: NextRequest) {
         status: "scheduled",
         sessionStatus: "planned",
       },
-      include: {
-        group: { select: { id: true, name: true, level: true } },
-        coach: { select: { id: true, firstName: true, lastName: true } },
-      },
+      include: sessionWeekInclude,
     });
 
-    return NextResponse.json({
-      id: session.id,
-      teamId: session.teamId,
-      groupId: session.groupId,
-      group: session.group,
-      coachId: session.coachId,
-      coach: session.coach,
-      type: session.type,
-      startAt: session.startAt.toISOString(),
-      endAt: session.endAt.toISOString(),
-      locationName: session.locationName,
-      locationAddress: session.locationAddress,
-      notes: session.notes,
-      status: session.status,
-      sessionStatus: session.sessionStatus,
-    });
+    return NextResponse.json(
+      toCoachTrainingSessionDto(created as TrainingSessionWeekRow)
+    );
   } catch (error) {
     console.error("POST /api/coach/schedule failed:", error);
     return NextResponse.json(

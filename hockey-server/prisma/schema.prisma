@@ -7,232 +7,296 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model HealthcheckRecord {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model Parent {
-  id        Int      @id @default(autoincrement())
-  email     String?  @unique
-  password  String?
+  id        String   @id
   phone     String?  @unique
-  firstName String?
-  lastName  String?
+  name      String?
+  players   Player[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Player {
+  id        String   @id
+  parentId  String
+  parent    Parent   @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  name      String
+  position  String?
+  team      String?
+  age       Int?
+  avatarUrl String?
+  games     Int?
+  goals     Int?
+  assists   Int?
+  points    Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  playerSessionEvaluations PlayerSessionEvaluation[]
+
+  @@index([parentId])
+}
+
+model Subscription {
+  id                 String   @id @default(cuid())
+  parentId           String   @unique
+  planCode           String
+  status             String
+  billingInterval    String
+  currentPeriodStart String
+  currentPeriodEnd   String
+  cancelAtPeriodEnd  Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model SubscriptionBillingRecord {
+  id             String   @id @default(cuid())
+  parentId       String
+  subscriptionId String
+  amount         String
+  currency       String
+  status         String
+  billedAt       String
+  createdAt      DateTime @default(now())
+}
+
+model SubscriptionPlan {
+  id            String   @id
+  code          String   @unique
+  name          String
+  priceMonthly Int      @default(0)
+  priceYearly  Int      @default(0)
+  features      Json?
+  badge         String   @default("Demo")
+  popular       Boolean  @default(false)
+  createdAt     DateTime @default(now())
+}
+
+model ScheduleEvent {
+  id        String   @id
+  title     String?
+  startTime DateTime
+  location  String?
+  teamId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teamId])
+  @@index([startTime])
+}
+
+model TrainingEvent {
+  id        String   @id
+  title     String?
+  startTime DateTime
+  location  String?
+  teamId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teamId])
+  @@index([startTime])
+}
+
+model Coach {
+  id             String   @id
+  name           String
+  specialization String?
+  rating         Float?
+  priceFrom      Int?
+  city           String?
+  avatar         String?
+  description    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  slots            CoachSlot[]
+  bookingRequests  BookingRequest[]
+  trainingSessions TrainingSession[]
+}
+
+model TrainingSession {
+  id        String   @id @default(cuid())
+  coachId   String
+  coach     Coach    @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  teamId    String
+  status    String   @default("active")
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  observations             Observation[]
+  playerSessionEvaluations PlayerSessionEvaluation[]
+  report                   TrainingSessionReport?
+
+  @@index([coachId])
+  @@index([teamId])
+  @@index([status])
+}
+
+model TrainingSessionReport {
+  id            String   @id @default(cuid())
+  trainingId    String   @unique
+  summary       String?  @db.VarChar(1000)
+  focusAreas    String?  @db.VarChar(1000)
+  coachNote     String?  @db.VarChar(1000)
+  parentMessage String?  @db.VarChar(1000)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  training TrainingSession @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+}
+
+model PlayerSessionEvaluation {
+  id         String   @id @default(cuid())
+  trainingId String
+  playerId   String
+  effort     Int?
+  focus      Int?
+  discipline Int?
+  note       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  training TrainingSession @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  player   Player          @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([trainingId, playerId])
+  @@index([trainingId])
+  @@index([playerId])
+}
+
+model Observation {
+  id        String   @id @default(cuid())
+  sessionId String
+  session   TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  coachId   String
+  teamId    String
+  playerId  String
+  skillKey  String?
+  noteType  String?
+  score     Int?
+  noteText  String?
   createdAt DateTime @default(now())
 
-  players                Player[]
-  authCodes              ParentAuthCode[]
-  subscriptions          Subscription[]
-  billingRecords         SubscriptionBillingRecord[]
-  bookingRequests        BookingRequest[]
-  coachMarkConversation  CoachMarkConversation?
+  @@index([sessionId])
+  @@index([coachId])
+  @@index([playerId])
+}
+
+model CoachSlot {
+  id        String   @id @default(cuid())
+  coachId   String
+  coach     Coach    @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  time      String
+  available Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([coachId])
+}
+
+model BookingRequest {
+  id        String   @id
+  coachId   String
+  coach     Coach    @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([coachId])
 }
 
 model ParentAuthCode {
-  id        Int      @id @default(autoincrement())
+  id        String   @id @default(cuid())
   phone     String
   code      String
   expiresAt DateTime
   createdAt DateTime @default(now())
 
-  parentId Int?
-  parent   Parent? @relation(fields: [parentId], references: [id], onDelete: SetNull)
+  @@index([phone, code])
 }
 
-model Coach {
-  id        Int      @id @default(autoincrement())
-  name      String
-  email     String?  @unique
-  createdAt DateTime @default(now())
-
-  teams     Team[]
-}
-
-model CoachProfile {
-  id               Int      @id @default(autoincrement())
-  fullName         String
-  slug             String   @unique
-  city             String
-  bio              String?
-  specialization   String?
-  specialties      Json?    // string[]
-  experienceYears  Int      @default(0)
-  priceFrom        Int      @default(0)
-  rating           Float?
-  photoUrl         String?
-  avatar           String?
-  description      String?
-  isPublished      Boolean  @default(false)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  services   CoachService[]
-  slots       CoachSlot[]
-  bookings   BookingRequest[]
-}
-
-model CoachService {
-  id              Int      @id @default(autoincrement())
-  coachId         Int
-  title           String
-  category        String
-  durationMinutes Int      @default(60)
-  price           Int      @default(0)
-  format          String
-  createdAt       DateTime @default(now())
-
-  coach CoachProfile @relation(fields: [coachId], references: [id], onDelete: Cascade)
-}
-
-model CoachSlot {
-  id         Int      @id @default(autoincrement())
-  coachId    Int
-  startTime  DateTime
-  endTime    DateTime
-  available  Boolean  @default(true)
-  createdAt  DateTime @default(now())
-
-  coach CoachProfile @relation(fields: [coachId], references: [id], onDelete: Cascade)
-}
-
-model BookingRequest {
-  id            Int      @id @default(autoincrement())
-  coachId       Int
-  parentId      Int?
-  parentName    String?
-  parentPhone   String?
-  playerId      Int?
-  message       String?
-  preferredDate DateTime?
-  status        String   @default("new")
+model FeedPost {
+  id            String   @id
+  teamId        String?
+  teamName      String?
+  authorId      String?
+  authorName    String?
+  authorRole    String?
+  type          String?
+  title         String?
+  body          String?
+  imageUrl      String?
+  isPinned      Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  publishedAt   DateTime?
 
-  coach CoachProfile @relation(fields: [coachId], references: [id], onDelete: Cascade)
-  parent Parent?      @relation(fields: [parentId], references: [id], onDelete: SetNull)
+  @@index([isPinned, createdAt])
 }
 
-model Team {
-  id        Int      @id @default(autoincrement())
-  name      String
-  ageGroup  String?
-  createdAt DateTime @default(now())
+model ChatConversation {
+  id           String   @id
+  playerId     String
+  playerName   String
+  coachId      String
+  coachName    String
+  parentId     String
+  lastMessage  String?
+  updatedAt    DateTime @updatedAt
 
-  coachId   Int?
-  coach     Coach?   @relation(fields: [coachId], references: [id])
+  messages ChatMessage[]
 
-  players   Player[]
-  schedules Schedule[]
+  @@unique([parentId, playerId])
+  @@index([parentId])
 }
 
-model Player {
-  id        Int      @id @default(autoincrement())
-  firstName String
-  lastName  String
-  birthYear Int
-  position  String?
-  avatarUrl String?
-  createdAt DateTime @default(now())
+model ChatMessage {
+  id             String   @id
+  conversationId String
+  senderType    String
+  senderId      String
+  text          String
+  createdAt     DateTime @default(now())
+  readAt        DateTime?
 
-  parentId  Int
-  parent    Parent   @relation(fields: [parentId], references: [id])
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
-  teamId    Int?
-  team      Team?    @relation(fields: [teamId], references: [id])
-
-  stats         PlayerStats[]
-  videoAnalyses VideoAnalysis[]
-  aiAnalyses    AIAnalysis[]
-}
-
-model PlayerStats {
-  id        Int      @id @default(autoincrement())
-  goals     Int      @default(0)
-  assists   Int      @default(0)
-  games     Int      @default(0)
-  createdAt DateTime @default(now())
-
-  playerId  Int
-  player    Player   @relation(fields: [playerId], references: [id])
-}
-
-model Schedule {
-  id        Int      @id @default(autoincrement())
-  title     String
-  date      DateTime
-  location  String?
-  createdAt DateTime @default(now())
-
-  teamId    Int
-  team      Team     @relation(fields: [teamId], references: [id])
-}
-
-model VideoAnalysis {
-  id        Int      @id @default(autoincrement())
-  videoUrl  String
-  result    Json?
-  createdAt DateTime @default(now())
-
-  playerId  Int
-  player    Player   @relation(fields: [playerId], references: [id])
-}
-
-model AIAnalysis {
-  id        Int      @id @default(autoincrement())
-  report    String
-  score     Float?
-  createdAt DateTime @default(now())
-
-  playerId  Int
-  player    Player   @relation(fields: [playerId], references: [id])
-}
-
-model Subscription {
-  id                 Int      @id @default(autoincrement())
-  parentId           Int      @unique
-  planCode           String
-  status             String
-  billingInterval    String
-  currentPeriodStart DateTime
-  currentPeriodEnd   DateTime
-  cancelAtPeriodEnd  Boolean  @default(false)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-  parent  Parent   @relation(fields: [parentId], references: [id], onDelete: Cascade)
-  records SubscriptionBillingRecord[]
-}
-
-model SubscriptionBillingRecord {
-  id             Int      @id @default(autoincrement())
-  parentId       Int
-  subscriptionId Int?
-  date           DateTime
-  productName    String
-  amount         Int
-  currency       String
-  status         String
-  type           String
-  createdAt      DateTime @default(now())
-
-  parent       Parent        @relation(fields: [parentId], references: [id], onDelete: Cascade)
-  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  @@index([conversationId])
+  @@index([conversationId, createdAt])
 }
 
 model CoachMarkConversation {
-  id        Int      @id @default(autoincrement())
-  parentId  Int      @unique
+  id        String   @id @default(cuid())
+  parentId  String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  parent   Parent              @relation(fields: [parentId], references: [id], onDelete: Cascade)
   messages CoachMarkMessage[]
+
+  @@index([parentId])
 }
 
 model CoachMarkMessage {
-  id             Int      @id @default(autoincrement())
-  conversationId Int
+  id             String   @id @default(cuid())
+  conversationId String
   senderType     String
-  senderId       String
-  text           String   @db.Text
-  isAI           Boolean  @default(false)
+  senderId       String?
+  text           String
   createdAt      DateTime @default(now())
 
   conversation CoachMarkConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([conversationId, createdAt])
 }

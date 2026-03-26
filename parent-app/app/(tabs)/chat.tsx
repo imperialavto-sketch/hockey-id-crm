@@ -12,10 +12,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
-import {
-  getConversations,
-  COACH_MARK_ID,
-} from "@/services/chatService";
+import { getConversations, COACH_MARK_ID } from "@/services/chatService";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { SkeletonBlock, ErrorStateView, EmptyStateView } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
@@ -23,24 +20,16 @@ import { triggerHaptic } from "@/lib/haptics";
 import { trackCoachMarkEvent } from "@/lib/coachMarkAnalytics";
 import { colors, spacing, typography, radius } from "@/constants/theme";
 import type { ConversationItem } from "@/types/chat";
+import {
+  CHAT_INBOX_COPY,
+  formatConversationListTime,
+  conversationPreviewLine,
+  isCoachMarkInboxItem,
+} from "@/lib/parentChatInboxUi";
+import { PARENT_FLAGSHIP } from "@/lib/parentFlagshipShared";
 
 const PRESSED_OPACITY = 0.88;
 const PRESSED_STYLE = { opacity: PRESSED_OPACITY } as const;
-
-function formatTime(iso: string): string {
-  if (!iso || iso.trim() === "") return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  const now = new Date();
-  const sameDay =
-    d.getDate() === now.getDate() &&
-    d.getMonth() === now.getMonth() &&
-    d.getFullYear() === now.getFullYear();
-  if (sameDay) {
-    return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-  }
-  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-}
 
 const ChatListSkeleton = memo(function ChatListSkeleton() {
   return (
@@ -64,7 +53,9 @@ export default function ChatTabScreen() {
   const [loadError, setLoadError] = useState(false);
   const mountedRef = useRef(true);
 
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => () => {
+    mountedRef.current = false;
+  }, []);
 
   const load = useCallback(async () => {
     if (!user?.id) return;
@@ -107,6 +98,11 @@ export default function ChatTabScreen() {
     load();
   }, [load]);
 
+  const handleRetry = useCallback(() => {
+    setLoading(true);
+    load();
+  }, [load]);
+
   const goToThread = useCallback(
     (item: ConversationItem) => {
       if (!item?.id) return;
@@ -119,21 +115,16 @@ export default function ChatTabScreen() {
     [router]
   );
 
-  const handleRetry = useCallback(() => {
-    setLoading(true);
-    load();
-  }, [load]);
-
   const listBottomPadding = spacing.xxl + insets.bottom + 60;
 
   const header = useMemo(
     () => (
       <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
         <View style={styles.heroIconWrap}>
-          <Ionicons name="chatbubbles-outline" size={28} color={colors.accent} />
+          <Ionicons name="chatbubbles-outline" size={26} color={colors.accent} />
         </View>
-        <Text style={styles.heroTitle}>Чаты</Text>
-        <Text style={styles.heroSub}>Coach Mark и диалоги с тренерами</Text>
+        <Text style={styles.heroTitle}>{CHAT_INBOX_COPY.heroTitle}</Text>
+        <Text style={styles.heroSub}>{CHAT_INBOX_COPY.heroSub}</Text>
       </View>
     ),
     [insets.top]
@@ -157,8 +148,8 @@ export default function ChatTabScreen() {
     () => (
       <EmptyStateView
         icon="chatbubbles-outline"
-        title="Чатов пока нет"
-        subtitle="Начните с Coach Mark — задайте вопрос о развитии, упражнениях или советах"
+        title={CHAT_INBOX_COPY.emptyTitle}
+        subtitle={CHAT_INBOX_COPY.emptySubtitle}
         style={styles.emptyWrap}
       />
     ),
@@ -167,67 +158,82 @@ export default function ChatTabScreen() {
 
   const renderItem = useCallback(
     ({ item, index }: { item: ConversationItem; index: number }) => {
-          const isCoachMark = item.id === COACH_MARK_ID;
-          return (
-            <Animated.View entering={screenReveal(STAGGER + index * 30)}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.row,
-                  isCoachMark && styles.rowCoachMark,
-                  pressed && PRESSED_STYLE,
-                ]}
-                onPress={() => goToThread(item)}
-              >
-                <View style={[styles.avatarWrap, isCoachMark && styles.avatarCoachMark]}>
-                  <Ionicons
-                    name={isCoachMark ? "sparkles" : "person"}
-                    size={24}
-                    color={colors.accent}
-                  />
-                </View>
-                <View style={styles.rowContent}>
+      const isCoachMark = isCoachMarkInboxItem(item);
+      const timeStr = formatConversationListTime(item?.updatedAt ?? "");
+      const preview = conversationPreviewLine(item, isCoachMark);
+      const contextLine = isCoachMark
+        ? CHAT_INBOX_COPY.coachMarkContextLine
+        : item?.playerName ?? "—";
+
+      return (
+        <Animated.View entering={screenReveal(STAGGER + index * 30)}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.row,
+              isCoachMark ? styles.rowCoachMark : undefined,
+              pressed ? PRESSED_STYLE : undefined,
+            ]}
+            onPress={() => goToThread(item)}
+          >
+            <View style={[styles.avatarWrap, isCoachMark ? styles.avatarCoachMark : undefined]}>
+              <Ionicons
+                name={isCoachMark ? "sparkles" : "person"}
+                size={22}
+                color={colors.accent}
+              />
+            </View>
+            <View style={styles.rowContent}>
+              <View style={styles.rowTopLine}>
+                <View style={styles.rowTitleBlock}>
                   <View style={styles.rowTitleRow}>
-                    <Text style={[styles.coachName, isCoachMark && styles.coachNameCoachMark]}>
+                    <Text
+                      style={[styles.coachName, isCoachMark ? styles.coachNameCoachMark : undefined]}
+                      numberOfLines={1}
+                    >
                       {item?.coachName ?? "—"}
                     </Text>
-                    {isCoachMark && (
+                    {isCoachMark ? (
                       <View style={styles.aiBadge}>
                         <Text style={styles.aiBadgeText}>AI</Text>
                       </View>
-                    )}
+                    ) : null}
                   </View>
-                  <Text style={styles.playerName}>
-                    {isCoachMark ? "Персональный хоккейный тренер" : (item?.playerName ?? "—")}
-                  </Text>
-                  {item.lastMessage ? (
-                    <Text style={styles.preview} numberOfLines={1}>
-                      {item.lastMessage}
-                    </Text>
-                  ) : null}
                 </View>
-                <Text style={styles.time}>{formatTime(item?.updatedAt ?? "")}</Text>
-                <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-              </Pressable>
-            </Animated.View>
-          );
+                <Text style={styles.time}>{timeStr}</Text>
+              </View>
+              <Text style={styles.contextLine} numberOfLines={1}>
+                {contextLine}
+              </Text>
+              <Text style={styles.preview} numberOfLines={2}>
+                {preview}
+              </Text>
+            </View>
+            <Ionicons
+            name="chevron-forward"
+            size={20}
+            color={PARENT_FLAGSHIP.chevronMutedIcon}
+          />
+          </Pressable>
+        </Animated.View>
+      );
     },
     [goToThread]
   );
 
   if (!user?.id) {
     return (
-      <FlagshipScreen scroll={false}>
-        <View style={styles.heroSection}>
+      <FlagshipScreen scroll={false} safeAreaEdges={["top", "bottom"]}>
+        <View style={styles.authGate}>
           <View style={styles.heroIconWrap}>
-            <Ionicons name="chatbubbles-outline" size={28} color={colors.accent} />
+            <Ionicons name="chatbubbles-outline" size={26} color={colors.accent} />
           </View>
-          <Text style={styles.heroTitle}>Чаты</Text>
-          <Text style={styles.heroSub}>Coach Mark и диалоги с тренерами</Text>
+          <Text style={styles.heroTitle}>{CHAT_INBOX_COPY.heroTitle}</Text>
+          <Text style={styles.heroSub}>{CHAT_INBOX_COPY.heroSub}</Text>
         </View>
         <EmptyStateView
           icon="person-outline"
-          title="Требуется вход"
-          subtitle="Авторизуйтесь, чтобы общаться с тренером"
+          title={CHAT_INBOX_COPY.authTitle}
+          subtitle={CHAT_INBOX_COPY.authSubtitle}
           style={styles.emptyWrap}
         />
       </FlagshipScreen>
@@ -238,6 +244,7 @@ export default function ChatTabScreen() {
     return (
       <FlagshipScreen header={header} scroll={false}>
         <View style={styles.paddedContent}>
+          <Text style={styles.loadingHint}>{CHAT_INBOX_COPY.loadingHint}</Text>
           <ChatListSkeleton />
         </View>
       </FlagshipScreen>
@@ -250,8 +257,8 @@ export default function ChatTabScreen() {
         <View style={styles.errorWrap}>
           <ErrorStateView
             variant="network"
-            title="Не получилось загрузить чаты"
-            subtitle="Проверьте подключение и попробуйте снова"
+            title={CHAT_INBOX_COPY.loadErrorTitle}
+            subtitle={CHAT_INBOX_COPY.loadErrorSubtitle}
             onAction={handleRetry}
           />
         </View>
@@ -285,19 +292,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.screenPadding,
     paddingVertical: spacing.lg,
     paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.surfaceLevel1Border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255,255,255,0.08)",
   },
-  heroSection: {
+  authGate: {
     paddingHorizontal: spacing.screenPadding,
     paddingTop: spacing.xl,
     paddingBottom: spacing.lg,
+    alignItems: "flex-start",
   },
   heroIconWrap: {
     width: 48,
     height: 48,
-    borderRadius: radius.sm,
+    borderRadius: radius.md,
     backgroundColor: colors.accentSoft,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(59,130,246,0.22)",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.md,
@@ -306,21 +316,36 @@ const styles = StyleSheet.create({
     ...typography.sectionTitle,
     color: colors.text,
     marginBottom: spacing.xs,
+    letterSpacing: -0.2,
   },
   heroSub: {
     ...typography.caption,
+    fontSize: 14,
+    lineHeight: 20,
     color: colors.textSecondary,
+    maxWidth: 320,
   },
 
   paddedContent: {
     flex: 1,
     paddingHorizontal: spacing.screenPadding,
-    paddingTop: spacing.xl,
+    paddingTop: spacing.lg,
   },
-  skeletonContent: { gap: spacing.lg },
+  loadingHint: {
+    ...typography.captionSmall,
+    fontSize: 13,
+    color: colors.textMuted,
+    marginBottom: spacing.lg,
+    letterSpacing: 0.15,
+  },
+  skeletonContent: { gap: spacing.md },
   skeletonRow: { borderRadius: radius.lg },
 
-  errorWrap: { flex: 1 },
+  errorWrap: {
+    flex: 1,
+    width: "100%",
+    justifyContent: "center",
+  },
   list: {
     paddingHorizontal: spacing.screenPadding,
     paddingTop: spacing.md,
@@ -329,12 +354,12 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm + 2,
     backgroundColor: colors.surfaceLevel1,
     borderRadius: radius.lg,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.surfaceLevel1Border,
   },
   rowCoachMark: {
@@ -344,62 +369,81 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.accent,
   },
   avatarWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: colors.accentSoft,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(59,130,246,0.15)",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: spacing.lg,
+    marginRight: spacing.md,
+    alignSelf: "center",
   },
   avatarCoachMark: {
-    backgroundColor: "rgba(59,130,246,0.22)",
+    backgroundColor: "rgba(59,130,246,0.18)",
+    borderColor: "rgba(59,130,246,0.28)",
   },
   rowContent: { flex: 1, minWidth: 0 },
+  rowTopLine: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  rowTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
   rowTitleRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    flexWrap: "wrap",
+    flexWrap: "nowrap",
   },
   coachName: {
     ...typography.cardTitle,
     fontSize: 17,
+    fontWeight: "700",
     color: colors.text,
+    flexShrink: 1,
   },
   coachNameCoachMark: {
     color: colors.accentBright,
   },
   aiBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
     borderRadius: 6,
-    backgroundColor: "rgba(59,130,246,0.2)",
+    backgroundColor: "rgba(59,130,246,0.22)",
+    flexShrink: 0,
   },
   aiBadgeText: {
     fontSize: 10,
     fontWeight: "700",
     color: colors.accentBright,
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
   },
-  playerName: {
+  contextLine: {
     ...typography.caption,
     fontSize: 13,
     color: colors.textSecondary,
-    marginTop: spacing.xs,
+    marginTop: 4,
   },
   preview: {
     ...typography.bodySmall,
     fontSize: 14,
     color: colors.textMuted,
-    marginTop: spacing.xs + 2,
+    marginTop: 6,
     lineHeight: 20,
   },
   time: {
     ...typography.caption,
     fontSize: 12,
     color: colors.textMuted,
-    marginRight: spacing.sm,
+    marginTop: 2,
+    flexShrink: 0,
+    opacity: 0.92,
   },
 
   emptyWrap: { flex: 1, justifyContent: "center" },

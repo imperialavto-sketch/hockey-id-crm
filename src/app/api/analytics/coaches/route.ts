@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
     const teamId = searchParams.get("teamId");
 
     const coaches = await prisma.coach.findMany({
+      where: { isMarketplaceIndependent: false },
       include: {
         teams: {
           where: teamId ? { id: teamId } : undefined,

@@ -3,13 +3,9 @@
  * Live: prefers API (GET /api/coach/reports/weekly). Falls back to [] on error.
  */
 
-import { getCoachWeeklyReports } from "@/services/coachReportsService";
+import { getCoachWeeklyReports, type WeeklyReportItem } from "@/services/coachReportsService";
 
-export interface WeeklyReportItem {
-  playerId: string;
-  playerName: string;
-  summary: string;
-}
+export type { WeeklyReportItem };
 
 /**
  * Get all players with ready Weekly Reports.

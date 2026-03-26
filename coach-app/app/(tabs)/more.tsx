@@ -1,7 +1,11 @@
 import React from 'react';
 import { StyleSheet, Text, View, Pressable } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
+import {
+  SymbolViewMaterial,
+  type MaterialIconName,
+} from '@/components/SymbolViewMaterial';
+import type { SFSymbol } from 'expo-symbols';
 import { ScreenContainer } from '@/components/layout/ScreenContainer';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { HeroTitle } from '@/components/ui/HeroTitle';
@@ -10,19 +14,33 @@ import { theme } from '@/constants/theme';
 
 const MENU_ITEMS: Array<{
   label: string;
-  ios: string;
-  android: string;
+  ios: SFSymbol;
+  material: MaterialIconName;
   isDestructive?: boolean;
   action?: 'logout';
   route?: string;
   module?: string;
 }> = [
-  { label: 'Расписание', ios: 'calendar', android: 'event', route: '/schedule' },
-  { label: 'Запись сессии', ios: 'plus.circle.fill', android: 'add_circle', route: '/dev/coach-input' },
-  { label: 'Настройки', ios: 'gearshape.fill', android: 'settings', route: '/unavailable', module: 'settings' },
-  { label: 'Уведомления', ios: 'bell.fill', android: 'notifications', route: '/unavailable', module: 'notifications' },
-  { label: 'Поддержка', ios: 'questionmark.circle.fill', android: 'help', route: '/unavailable', module: 'support' },
-  { label: 'Выйти', ios: 'rectangle.portrait.and.arrow.right', android: 'logout', isDestructive: true, action: 'logout' },
+  { label: 'Расписание', ios: 'calendar', material: 'event', route: '/schedule' },
+  {
+    label: 'Маркетплейс · брони',
+    ios: 'calendar',
+    material: 'event',
+    route: '/marketplace-bookings',
+  },
+  {
+    label: 'Маркетплейс · слоты',
+    ios: 'calendar',
+    material: 'event',
+    route: '/marketplace-availability',
+  },
+  { label: 'Запись сессии', ios: 'plus.circle.fill', material: 'add-circle', route: '/dev/coach-input' },
+  { label: 'Голосовая заметка', ios: 'mic.fill', material: 'mic', route: '/voice-note' },
+  { label: 'Мои материалы', ios: 'tray.full.fill', material: 'inventory-2', route: '/created' },
+  { label: 'Настройки', ios: 'gearshape.fill', material: 'settings', route: '/unavailable', module: 'settings' },
+  { label: 'Уведомления', ios: 'bell.fill', material: 'notifications', route: '/unavailable', module: 'notifications' },
+  { label: 'Поддержка', ios: 'questionmark.circle.fill', material: 'help', route: '/unavailable', module: 'support' },
+  { label: 'Выйти', ios: 'rectangle.portrait.and.arrow.right', material: 'logout', isDestructive: true, action: 'logout' },
 ];
 
 export default function MoreScreen() {
@@ -31,11 +49,14 @@ export default function MoreScreen() {
 
   const handlePress = async (item: (typeof MENU_ITEMS)[number]) => {
     if (item.route) {
-      router.push(
-        item.module
-          ? { pathname: item.route, params: { module: item.module } }
-          : (item.route as Href)
-      );
+      if (item.module) {
+        router.push({
+          pathname: item.route,
+          params: { module: item.module },
+        } as Href);
+      } else {
+        router.push(item.route as Href);
+      }
       return;
     }
     if (item.action === 'logout') {
@@ -59,12 +80,10 @@ export default function MoreScreen() {
               pressed && styles.menuItemPressed,
             ]}
           >
-            <SymbolView
-              name={
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                { ios: item.ios, android: item.android, web: item.android } as any
-              }
-              tintColor={item.isDestructive ? theme.colors.error : theme.colors.textSecondary}
+            <SymbolViewMaterial
+              sfName={item.ios}
+              materialName={item.material}
+              color={item.isDestructive ? theme.colors.error : theme.colors.textSecondary}
               size={22}
             />
             <Text
@@ -75,9 +94,10 @@ export default function MoreScreen() {
             >
               {item.label}
             </Text>
-            <SymbolView
-              name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
-              tintColor={theme.colors.textMuted}
+            <SymbolViewMaterial
+              sfName="chevron.right"
+              materialName="chevron-right"
+              color={theme.colors.textMuted}
               size={16}
             />
           </Pressable>

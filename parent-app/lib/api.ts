@@ -32,12 +32,36 @@ export interface ApiError {
 
 export class ApiRequestError extends Error {
   status: number;
+  /** Machine code from API when present (e.g. SLOT_ALREADY_BOOKED). */
+  code?: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.name = "ApiRequestError";
     this.status = status;
+    this.code = code;
   }
+}
+
+function extractApiErrorMessageAndCode(data: unknown): { message: string; code?: string } {
+  if (!data || typeof data !== "object") {
+    return { message: "Ошибка запроса" };
+  }
+  const d = data as Record<string, unknown>;
+  const err = d.error;
+  if (typeof err === "string") {
+    return { message: err };
+  }
+  if (err && typeof err === "object") {
+    const e = err as Record<string, unknown>;
+    const msg = typeof e.message === "string" ? e.message : "Ошибка запроса";
+    const code = typeof e.code === "string" ? e.code : undefined;
+    return { message: msg, code };
+  }
+  if (typeof d.message === "string") {
+    return { message: d.message };
+  }
+  return { message: "Ошибка запроса" };
 }
 
 export function getApiBase(): string {
@@ -71,18 +95,8 @@ async function doFetch<T>(url: string, init: RequestInit, timeoutMs: number): Pr
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const start = Date.now();
   const method = init.method ?? "GET";
-  const requestBody =
-    typeof init.body === "string"
-      ? init.body
-      : init.body
-        ? "[non-string body]"
-        : undefined;
 
-  if (__DEV__) {
-    console.log("API REQUEST URL:", url);
-    console.log("API REQUEST METHOD:", method);
-    console.log("API REQUEST BODY:", requestBody ?? null);
-  }
+  if (__DEV__) console.log("[api]", method, url);
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -110,9 +124,7 @@ async function doFetch<T>(url: string, init: RequestInit, timeoutMs: number): Pr
 
   clearTimeout(timeout);
 
-  if (__DEV__) {
-    console.log("[API] RESPONSE", url, `${Date.now() - start}ms`, res.status);
-  }
+  if (__DEV__) console.log("[api]", res.status, url, `${Date.now() - start}ms`);
 
   const text = await res.text();
   let data: unknown;
@@ -139,8 +151,8 @@ async function doFetch<T>(url: string, init: RequestInit, timeoutMs: number): Pr
     } else if (res.status === 401 && authToken && __DEV__) {
       console.log("[api] 401 on Coach Mark/chat — NOT logging out", url);
     }
-    const err = data as ApiError;
-    throw new ApiRequestError(err?.error ?? `Ошибка ${res.status}`, res.status);
+    const { message, code } = extractApiErrorMessageAndCode(data);
+    throw new ApiRequestError(message || `Ошибка ${res.status}`, res.status, code);
   }
 
   return data as T;

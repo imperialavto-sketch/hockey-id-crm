@@ -17,7 +17,33 @@ import { getDemoPlayers, getDemoPlayerById, addDemoPlayer } from "@/demo/demoPla
 
 const PARENT_ID_HEADER = "x-parent-id";
 
-/** Backend (hockey-server) player response shape */
+/** Оценка с последней тренировки (GET /api/me/players/:id). */
+export type LatestSessionEvaluation = {
+  effort?: number;
+  focus?: number;
+  discipline?: number;
+  note?: string;
+};
+
+/** Средние оценки за период (GET /api/me/players/:id, обычно 90 дней). */
+export type EvaluationSummary = {
+  totalEvaluations: number;
+  avgEffort: number | null;
+  avgFocus: number | null;
+  avgDiscipline: number | null;
+};
+
+/** Текстовый отчёт тренера по последней тренировке (GET /api/me/players/:id). */
+export type LatestSessionReport = {
+  trainingId?: string;
+  summary?: string | null;
+  focusAreas?: string | null;
+  coachNote?: string | null;
+  parentMessage?: string | null;
+  updatedAt?: string | null;
+};
+
+/** Backend (hockey-server / CRM) player response shape */
 interface BackendPlayer {
   id: number | string;
   firstName?: string | null;
@@ -43,6 +69,21 @@ interface BackendPlayer {
     points?: number | null;
     pim?: number | null;
   } | null;
+  latestSessionEvaluation?: LatestSessionEvaluation | null;
+  evaluationSummary?: {
+    totalEvaluations?: number | null;
+    avgEffort?: number | null;
+    avgFocus?: number | null;
+    avgDiscipline?: number | null;
+  } | null;
+  latestSessionReport?: {
+    trainingId?: string | null;
+    summary?: string | null;
+    focusAreas?: string | null;
+    coachNote?: string | null;
+    parentMessage?: string | null;
+    updatedAt?: string | null;
+  } | null;
 }
 
 /** Backend playerStat row shape from GET /api/players/:id/stats */
@@ -52,6 +93,116 @@ interface BackendPlayerStat {
   assists?: number | null;
   points?: number | null;
   pim?: number | null;
+}
+
+function normalizeLatestSessionEvaluation(
+  raw: BackendPlayer["latestSessionEvaluation"]
+): LatestSessionEvaluation | null {
+  if (raw == null || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const num = (v: unknown): number | undefined =>
+    typeof v === "number" && v >= 1 && v <= 5 ? v : undefined;
+  const effort = num(r.effort);
+  const focus = num(r.focus);
+  const discipline = num(r.discipline);
+  const noteRaw = r.note;
+  const note =
+    typeof noteRaw === "string" && noteRaw.trim() ? noteRaw.trim() : undefined;
+  if (
+    effort == null &&
+    focus == null &&
+    discipline == null &&
+    note == null
+  ) {
+    return null;
+  }
+  const out: LatestSessionEvaluation = {};
+  if (effort != null) out.effort = effort;
+  if (focus != null) out.focus = focus;
+  if (discipline != null) out.discipline = discipline;
+  if (note != null) out.note = note;
+  return out;
+}
+
+const EMPTY_EVALUATION_SUMMARY: EvaluationSummary = {
+  totalEvaluations: 0,
+  avgEffort: null,
+  avgFocus: null,
+  avgDiscipline: null,
+};
+
+function normalizeEvaluationSummary(
+  raw: BackendPlayer["evaluationSummary"]
+): EvaluationSummary {
+  if (raw == null || typeof raw !== "object") {
+    return { ...EMPTY_EVALUATION_SUMMARY };
+  }
+  const r = raw as Record<string, unknown>;
+  const totalRaw = Number(r.totalEvaluations);
+  const total =
+    Number.isFinite(totalRaw) && totalRaw >= 0
+      ? Math.floor(totalRaw)
+      : 0;
+  const numOrNull = (v: unknown): number | null => {
+    if (typeof v !== "number" || !Number.isFinite(v)) return null;
+    return Math.round(v * 10) / 10;
+  };
+  return {
+    totalEvaluations: total,
+    avgEffort: numOrNull(r.avgEffort),
+    avgFocus: numOrNull(r.avgFocus),
+    avgDiscipline: numOrNull(r.avgDiscipline),
+  };
+}
+
+function strOrNull(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t ? t : null;
+}
+
+function normalizeLatestSessionReport(
+  raw: BackendPlayer["latestSessionReport"]
+): LatestSessionReport | null {
+  if (raw == null || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+
+  const trainingIdRaw = r.trainingId;
+  const trainingId =
+    typeof trainingIdRaw === "string"
+      ? strOrNull(trainingIdRaw) ?? undefined
+      : typeof trainingIdRaw === "number" && Number.isFinite(trainingIdRaw)
+        ? String(trainingIdRaw)
+        : undefined;
+
+  const summary = strOrNull(r.summary);
+  const focusAreas = strOrNull(r.focusAreas);
+  const coachNote = strOrNull(r.coachNote);
+  const parentMessage = strOrNull(r.parentMessage);
+
+  const updatedAtRaw = r.updatedAt;
+  const updatedAt =
+    typeof updatedAtRaw === "string" && updatedAtRaw.trim()
+      ? updatedAtRaw.trim()
+      : null;
+
+  if (
+    summary == null &&
+    focusAreas == null &&
+    coachNote == null &&
+    parentMessage == null
+  ) {
+    return null;
+  }
+
+  const out: LatestSessionReport = {};
+  if (trainingId != null) out.trainingId = trainingId;
+  if (summary != null) out.summary = summary;
+  if (focusAreas != null) out.focusAreas = focusAreas;
+  if (coachNote != null) out.coachNote = coachNote;
+  if (parentMessage != null) out.parentMessage = parentMessage;
+  if (updatedAt != null) out.updatedAt = updatedAt;
+  return out;
 }
 
 function getStatsFallbackFromBackendPlayer(player: BackendPlayer): PlayerStats | null {
@@ -77,7 +228,13 @@ function getStatsFallbackFromBackendPlayer(player: BackendPlayer): PlayerStats |
 
 async function getBasePlayerProfile(
   id: string
-): Promise<{ player: Player | null; statsFallback: PlayerStats | null }> {
+): Promise<{
+  player: Player | null;
+  statsFallback: PlayerStats | null;
+  latestSessionEvaluation: LatestSessionEvaluation | null;
+  evaluationSummary: EvaluationSummary;
+  latestSessionReport: LatestSessionReport | null;
+}> {
   let data: BackendPlayer | null;
   try {
     data = await apiFetch<BackendPlayer>(`/api/me/players/${encodeURIComponent(id)}`, {
@@ -88,6 +245,9 @@ async function getBasePlayerProfile(
       return {
         player: null,
         statsFallback: null,
+        latestSessionEvaluation: null,
+        evaluationSummary: { ...EMPTY_EVALUATION_SUMMARY },
+        latestSessionReport: null,
       };
     }
     throw error;
@@ -97,12 +257,20 @@ async function getBasePlayerProfile(
     return {
       player: mapApiPlayerToPlayer(mapBackendPlayerToApiPlayer(data)),
       statsFallback: getStatsFallbackFromBackendPlayer(data),
+      latestSessionEvaluation: normalizeLatestSessionEvaluation(
+        data.latestSessionEvaluation
+      ),
+      evaluationSummary: normalizeEvaluationSummary(data.evaluationSummary),
+      latestSessionReport: normalizeLatestSessionReport(data.latestSessionReport),
     };
   }
 
   return {
     player: null,
     statsFallback: null,
+    latestSessionEvaluation: null,
+    evaluationSummary: { ...EMPTY_EVALUATION_SUMMARY },
+    latestSessionReport: null,
   };
 }
 
@@ -140,6 +308,9 @@ export interface FullPlayerProfile {
   progressHistory: PlayerProgressSnapshot[];
   achievements: AchievementsResponse | null;
   videoAnalyses: PlayerVideoAnalysis[];
+  latestSessionEvaluation: LatestSessionEvaluation | null;
+  evaluationSummary: EvaluationSummary;
+  latestSessionReport: LatestSessionReport | null;
 }
 
 const MOCK_FULL_PROFILE: FullPlayerProfile = {
@@ -150,6 +321,20 @@ const MOCK_FULL_PROFILE: FullPlayerProfile = {
   progressHistory: [],
   achievements: { unlocked: [], locked: [] },
   videoAnalyses: [],
+  latestSessionEvaluation: null,
+  evaluationSummary: {
+    totalEvaluations: 12,
+    avgEffort: 4.3,
+    avgFocus: 3.8,
+    avgDiscipline: 4.7,
+  },
+  latestSessionReport: {
+    trainingId: "demo-training",
+    parentMessage:
+      "Стабильная игра в средней зоне. Продолжаем работать над скоростью первых шагов.",
+    focusAreas: "катание с шайбой, выход из угла",
+    updatedAt: new Date().toISOString(),
+  },
 };
 
 async function getDemoFullProfile(playerId: string): Promise<FullPlayerProfile | null> {
@@ -164,6 +349,9 @@ async function getDemoFullProfile(playerId: string): Promise<FullPlayerProfile |
     progressHistory: MOCK_FULL_PROFILE.progressHistory,
     achievements: MOCK_FULL_PROFILE.achievements,
     videoAnalyses: MOCK_FULL_PROFILE.videoAnalyses,
+    latestSessionEvaluation: MOCK_FULL_PROFILE.latestSessionEvaluation,
+    evaluationSummary: MOCK_FULL_PROFILE.evaluationSummary,
+    latestSessionReport: MOCK_FULL_PROFILE.latestSessionReport,
   };
 }
 
@@ -188,7 +376,13 @@ export async function getFullPlayerProfile(
     throw playerResult.reason;
   }
 
-  const { player, statsFallback } = playerResult.value;
+  const {
+    player,
+    statsFallback,
+    latestSessionEvaluation,
+    evaluationSummary,
+    latestSessionReport,
+  } = playerResult.value;
   if (!player) return null;
 
   return {
@@ -202,6 +396,9 @@ export async function getFullPlayerProfile(
     progressHistory: [],
     achievements: { unlocked: [], locked: [] },
     videoAnalyses: [],
+    latestSessionEvaluation,
+    evaluationSummary,
+    latestSessionReport,
   };
 }
 
@@ -261,9 +458,6 @@ export async function getPlayers(_parentId: string): Promise<Player[]> {
   const data = await apiFetch<BackendPlayer[]>("/api/me/players", {
     timeoutMs: 6000,
   });
-  if (__DEV__) {
-    console.log("PLAYERS API RESULT", data);
-  }
   if (!Array.isArray(data)) {
     throw new Error("Invalid players response");
   }
@@ -346,6 +540,50 @@ export async function createPlayerForParent(data: {
   return mapApiPlayerToPlayer(mapBackendPlayerToApiPlayer(created));
 }
 
+/** Сводка посещаемости по TrainingSession (GET /api/players/:id/attendance-summary). */
+export interface PlayerAttendanceSummary {
+  totalSessions: number;
+  presentCount: number;
+  absentCount: number;
+  attendanceRate: number;
+}
+
+function attendanceSummaryRangeDays(days: number): { fromDate: string; toDate: string } {
+  const to = new Date();
+  const from = new Date(to);
+  from.setUTCDate(from.getUTCDate() - days);
+  const ymd = (d: Date) =>
+    `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+  return { fromDate: ymd(from), toDate: ymd(to) };
+}
+
+/** Период по умолчанию: последние 90 дней (UTC). */
+export async function getPlayerAttendanceSummary(
+  playerId: string,
+  _parentId: string
+): Promise<PlayerAttendanceSummary | null> {
+  if (isDemoMode) {
+    return {
+      totalSessions: 10,
+      presentCount: 8,
+      absentCount: 2,
+      attendanceRate: 80,
+    };
+  }
+
+  try {
+    const { fromDate, toDate } = attendanceSummaryRangeDays(90);
+    const qs = new URLSearchParams({ fromDate, toDate });
+    return await apiFetch<PlayerAttendanceSummary>(
+      `/api/players/${encodeURIComponent(playerId)}/attendance-summary?${qs.toString()}`,
+      { timeoutMs: 8000 }
+    );
+  } catch (err) {
+    logApiError("playerService.getPlayerAttendanceSummary", err);
+    return null;
+  }
+}
+
 /** Fetch player stats. Requires parentId for auth. */
 export async function getPlayerStats(
   playerId: string,
@@ -403,6 +641,340 @@ export async function getCoachRecommendations(
     return [];
   } catch (err) {
     logApiError("playerService.getCoachRecommendations", err);
+    throw err;
+  }
+}
+
+/** GET /api/parent/mobile/player/:id/materials — отчёты, задачи и черновики тренера для игрока. */
+export type ParentCoachMaterialReport = {
+  id: string;
+  playerId: string | null;
+  title: string;
+  contentPreview: string;
+  createdAt: string;
+  voiceNoteId: string | null;
+};
+
+export type ParentCoachMaterialAction = {
+  id: string;
+  playerId: string | null;
+  title: string;
+  descriptionPreview: string;
+  status: string;
+  createdAt: string;
+  voiceNoteId: string | null;
+};
+
+export type ParentCoachMaterialDraft = {
+  id: string;
+  playerId: string | null;
+  textPreview: string;
+  createdAt: string;
+  voiceNoteId: string | null;
+};
+
+export type ParentPlayerCoachMaterials = {
+  reports: ParentCoachMaterialReport[];
+  actions: ParentCoachMaterialAction[];
+  parentDrafts: ParentCoachMaterialDraft[];
+};
+
+function parseCoachMaterialReport(x: unknown): ParentCoachMaterialReport | null {
+  if (!x || typeof x !== "object") return null;
+  const r = x as Record<string, unknown>;
+  const id = typeof r.id === "string" ? r.id.trim() : "";
+  if (!id) return null;
+  return {
+    id,
+    playerId: typeof r.playerId === "string" ? r.playerId : null,
+    title: typeof r.title === "string" ? r.title : "",
+    contentPreview: typeof r.contentPreview === "string" ? r.contentPreview : "",
+    createdAt: typeof r.createdAt === "string" ? r.createdAt : "",
+    voiceNoteId:
+      typeof r.voiceNoteId === "string"
+        ? r.voiceNoteId
+        : r.voiceNoteId === null
+          ? null
+          : null,
+  };
+}
+
+function parseCoachMaterialAction(x: unknown): ParentCoachMaterialAction | null {
+  if (!x || typeof x !== "object") return null;
+  const r = x as Record<string, unknown>;
+  const id = typeof r.id === "string" ? r.id.trim() : "";
+  if (!id) return null;
+  return {
+    id,
+    playerId: typeof r.playerId === "string" ? r.playerId : null,
+    title: typeof r.title === "string" ? r.title : "",
+    descriptionPreview:
+      typeof r.descriptionPreview === "string" ? r.descriptionPreview : "",
+    status: typeof r.status === "string" ? r.status : "open",
+    createdAt: typeof r.createdAt === "string" ? r.createdAt : "",
+    voiceNoteId:
+      typeof r.voiceNoteId === "string"
+        ? r.voiceNoteId
+        : r.voiceNoteId === null
+          ? null
+          : null,
+  };
+}
+
+function parseCoachMaterialDraft(x: unknown): ParentCoachMaterialDraft | null {
+  if (!x || typeof x !== "object") return null;
+  const r = x as Record<string, unknown>;
+  const id = typeof r.id === "string" ? r.id.trim() : "";
+  if (!id) return null;
+  return {
+    id,
+    playerId: typeof r.playerId === "string" ? r.playerId : null,
+    textPreview: typeof r.textPreview === "string" ? r.textPreview : "",
+    createdAt: typeof r.createdAt === "string" ? r.createdAt : "",
+    voiceNoteId:
+      typeof r.voiceNoteId === "string"
+        ? r.voiceNoteId
+        : r.voiceNoteId === null
+          ? null
+          : null,
+  };
+}
+
+function normalizeParentCoachMaterials(raw: unknown): ParentPlayerCoachMaterials {
+  if (!raw || typeof raw !== "object") {
+    return { reports: [], actions: [], parentDrafts: [] };
+  }
+  const o = raw as Record<string, unknown>;
+  const reports = Array.isArray(o.reports)
+    ? o.reports.map(parseCoachMaterialReport).filter((x): x is ParentCoachMaterialReport => x != null)
+    : [];
+  const actions = Array.isArray(o.actions)
+    ? o.actions.map(parseCoachMaterialAction).filter((x): x is ParentCoachMaterialAction => x != null)
+    : [];
+  const parentDrafts = Array.isArray(o.parentDrafts)
+    ? o.parentDrafts
+        .map(parseCoachMaterialDraft)
+        .filter((x): x is ParentCoachMaterialDraft => x != null)
+    : [];
+  return { reports, actions, parentDrafts };
+}
+
+/** Материалы тренера из CRM (Report / ActionItem / ParentDraft). В demo — пусто. */
+export async function getPlayerCoachMaterials(
+  playerId: string,
+  _parentId: string
+): Promise<ParentPlayerCoachMaterials> {
+  if (isDemoMode) {
+    return { reports: [], actions: [], parentDrafts: [] };
+  }
+
+  try {
+    const data = await apiFetch<unknown>(
+      `/api/parent/mobile/player/${encodeURIComponent(playerId)}/materials`
+    );
+    return normalizeParentCoachMaterials(data);
+  } catch (err) {
+    logApiError("playerService.getPlayerCoachMaterials", err);
+    throw err;
+  }
+}
+
+/** Полный отчёт тренера (CRM Report) для родителя. */
+export type ParentCoachReportDetail = {
+  id: string;
+  playerId: string | null;
+  title: string;
+  content: string;
+  createdAt: string;
+  voiceNoteId: string | null;
+};
+
+function parseCoachReportDetail(raw: unknown): ParentCoachReportDetail | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const id = typeof r.id === "string" ? r.id.trim() : "";
+  if (!id) return null;
+  const title = typeof r.title === "string" ? r.title : "";
+  const content = typeof r.content === "string" ? r.content : "";
+  const createdAt = typeof r.createdAt === "string" ? r.createdAt : "";
+  return {
+    id,
+    playerId: typeof r.playerId === "string" ? r.playerId : null,
+    title,
+    content,
+    createdAt,
+    voiceNoteId:
+      typeof r.voiceNoteId === "string"
+        ? r.voiceNoteId
+        : r.voiceNoteId === null
+          ? null
+          : null,
+  };
+}
+
+export async function getPlayerCoachReportDetail(
+  playerId: string,
+  reportId: string,
+  _parentId: string
+): Promise<ParentCoachReportDetail | null> {
+  if (isDemoMode) {
+    return null;
+  }
+
+  try {
+    const data = await apiFetch<unknown>(
+      `/api/parent/mobile/player/${encodeURIComponent(playerId)}/reports/${encodeURIComponent(reportId)}`
+    );
+    return parseCoachReportDetail(data);
+  } catch (err) {
+    if (err instanceof ApiRequestError && err.status === 404) {
+      return null;
+    }
+    logApiError("playerService.getPlayerCoachReportDetail", err);
+    throw err;
+  }
+}
+
+/** Полная задача тренера (CRM ActionItem) для родителя. */
+export type ParentActionItemDetail = {
+  id: string;
+  playerId: string | null;
+  title: string;
+  description: string;
+  status: string;
+  dueDate: string | null;
+  createdAt: string;
+  voiceNoteId: string | null;
+};
+
+function parseActionItemDetail(raw: unknown): ParentActionItemDetail | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const id = typeof r.id === "string" ? r.id.trim() : "";
+  if (!id) return null;
+  const title = typeof r.title === "string" ? r.title : "";
+  const description = typeof r.description === "string" ? r.description : "";
+  const status = typeof r.status === "string" ? r.status : "";
+  const createdAt = typeof r.createdAt === "string" ? r.createdAt : "";
+  let dueDate: string | null = null;
+  if (typeof r.dueDate === "string" && r.dueDate.trim()) {
+    dueDate = r.dueDate.trim();
+  } else if (r.dueDate === null) {
+    dueDate = null;
+  }
+  return {
+    id,
+    playerId: typeof r.playerId === "string" ? r.playerId : null,
+    title,
+    description,
+    status,
+    dueDate,
+    createdAt,
+    voiceNoteId:
+      typeof r.voiceNoteId === "string"
+        ? r.voiceNoteId
+        : r.voiceNoteId === null
+          ? null
+          : null,
+  };
+}
+
+export async function getPlayerActionItemDetail(
+  playerId: string,
+  actionItemId: string,
+  _parentId: string
+): Promise<ParentActionItemDetail | null> {
+  if (isDemoMode) {
+    return null;
+  }
+
+  try {
+    const data = await apiFetch<unknown>(
+      `/api/parent/mobile/player/${encodeURIComponent(playerId)}/action-items/${encodeURIComponent(actionItemId)}`
+    );
+    return parseActionItemDetail(data);
+  } catch (err) {
+    if (err instanceof ApiRequestError && err.status === 404) {
+      return null;
+    }
+    logApiError("playerService.getPlayerActionItemDetail", err);
+    throw err;
+  }
+}
+
+/** Полный черновик сообщения тренера для родителя (standalone ParentDraft). */
+export type ParentDraftDetail = {
+  id: string;
+  playerId: string | null;
+  title: string | null;
+  content: string;
+  status: string | null;
+  createdAt: string;
+  updatedAt: string | null;
+  voiceNoteId: string | null;
+};
+
+function parseParentDraftDetail(raw: unknown): ParentDraftDetail | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const id = typeof r.id === "string" ? r.id.trim() : "";
+  if (!id) return null;
+  const content = typeof r.content === "string" ? r.content : "";
+  const createdAt = typeof r.createdAt === "string" ? r.createdAt : "";
+  const title =
+    typeof r.title === "string"
+      ? r.title.trim() || null
+      : r.title === null
+        ? null
+        : null;
+  const status =
+    typeof r.status === "string"
+      ? r.status.trim() || null
+      : r.status === null
+        ? null
+        : null;
+  let updatedAt: string | null = null;
+  if (typeof r.updatedAt === "string" && r.updatedAt.trim()) {
+    updatedAt = r.updatedAt.trim();
+  } else if (r.updatedAt === null) {
+    updatedAt = null;
+  }
+  return {
+    id,
+    playerId: typeof r.playerId === "string" ? r.playerId : null,
+    title,
+    content,
+    status,
+    createdAt,
+    updatedAt,
+    voiceNoteId:
+      typeof r.voiceNoteId === "string"
+        ? r.voiceNoteId
+        : r.voiceNoteId === null
+          ? null
+          : null,
+  };
+}
+
+export async function getPlayerParentDraftDetail(
+  playerId: string,
+  draftId: string,
+  _parentId: string
+): Promise<ParentDraftDetail | null> {
+  if (isDemoMode) {
+    return null;
+  }
+
+  try {
+    const data = await apiFetch<unknown>(
+      `/api/parent/mobile/player/${encodeURIComponent(playerId)}/parent-drafts/${encodeURIComponent(draftId)}`
+    );
+    return parseParentDraftDetail(data);
+  } catch (err) {
+    if (err instanceof ApiRequestError && err.status === 404) {
+      return null;
+    }
+    logApiError("playerService.getPlayerParentDraftDetail", err);
     throw err;
   }
 }

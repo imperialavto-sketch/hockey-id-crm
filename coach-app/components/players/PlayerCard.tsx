@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View, Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SectionCard } from '@/components/ui/SectionCard';
-import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { theme } from '@/constants/theme';
 
 export type PlayerCardData = {
@@ -58,14 +58,19 @@ function statusLabel(v: PlayerCardData['statusChip']): string | null {
 export function PlayerCard({
   player,
   onPress,
-  onOpenNotes,
-  onViewProfile,
+  onOpenNotes: _onOpenNotes,
+  onViewProfile: _onViewProfile,
 }: PlayerCardProps) {
   const statusLabelText = statusLabel(player.statusChip);
+
+  const metaLine =
+    [player.position, player.teamAgeGroup, player.team].filter(Boolean).join(' · ') || '—';
 
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${player.name}, открыть карточку`}
       style={({ pressed }) => [pressed && styles.pressed]}
     >
       <SectionCard elevated style={styles.card}>
@@ -75,15 +80,18 @@ export function PlayerCard({
           </View>
           <View style={styles.info}>
             <View style={styles.nameRow}>
-              <Text style={styles.name}>{player.name}</Text>
+              <Text style={styles.name} numberOfLines={2}>
+                {player.name}
+              </Text>
               {player.onWatchlist ? (
                 <Chip label="В наблюдении" variant="muted" />
               ) : null}
             </View>
-            <Text style={styles.meta}>
-              {player.position} · {player.team}
+            <Text style={styles.meta} numberOfLines={2}>
+              {metaLine}
             </Text>
           </View>
+          <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
         </View>
 
         {player.attendance ? (
@@ -108,21 +116,6 @@ export function PlayerCard({
             <Chip label={statusLabelText} variant={player.statusChip!} />
           </View>
         ) : null}
-
-        <View style={styles.actions}>
-          <PrimaryButton
-            title="Заметки"
-            variant="primary"
-            onPress={onOpenNotes ?? onPress}
-            style={styles.actionBtn}
-          />
-          <PrimaryButton
-            title="Профиль"
-            variant="outline"
-            onPress={onViewProfile ?? onPress}
-            style={styles.actionBtn}
-          />
-        </View>
       </SectionCard>
     </Pressable>
   );
@@ -131,6 +124,8 @@ export function PlayerCard({
 const styles = StyleSheet.create({
   card: {
     marginBottom: theme.spacing.lg,
+    borderLeftWidth: 4,
+    borderLeftColor: theme.colors.primary,
   },
   pressed: {
     opacity: 0.92,
@@ -139,7 +134,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.spacing.md,
-    marginBottom: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
   },
   avatar: {
     width: 48,
@@ -213,13 +208,6 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.sm,
   },
   statusRow: {
-    marginBottom: theme.spacing.md,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-  },
-  actionBtn: {
-    flex: 1,
+    marginBottom: theme.spacing.sm,
   },
 });

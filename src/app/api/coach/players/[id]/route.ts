@@ -34,7 +34,7 @@ export async function GET(
   }
 
   const accessibleIds = await getAccessiblePlayerIds(user!, prisma);
-  if (!accessibleIds.includes(id)) {
+  if (accessibleIds !== null && !accessibleIds.includes(id)) {
     return NextResponse.json({ error: "Нет доступа к игроку" }, { status: 403 });
   }
 

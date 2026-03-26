@@ -1,10 +1,10 @@
-/**
- * GET /api/marketplace/coaches/[id] — full coach profile + services.
- * Returns 404 for unpublished coaches.
- */
-
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { apiError } from "@/lib/api-error";
+import {
+  coachToMarketplacePublic,
+  serializeMarketplaceCoachResponse,
+} from "@/lib/independent-coach";
 
 export async function GET(
   req: NextRequest,
@@ -13,54 +13,24 @@ export async function GET(
   try {
     const { id } = await params;
 
-    const coach = await prisma.coachProfile.findFirst({
-      where: { id, isPublished: true },
-      include: { services: true },
+    const coach = await prisma.coach.findFirst({
+      where: { id, isMarketplaceIndependent: true },
     });
 
-    if (!coach) {
+    if (!coach || !(coach.displayName ?? "").trim()) {
       return NextResponse.json(
         { error: "Тренер не найден" },
         { status: 404 }
       );
     }
 
-    const specialties = (coach.specialties as string[]) ?? [];
-    const formats = (coach.trainingFormats as string[]) ?? [];
-
-    const mapped = {
-      id: coach.id,
-      fullName: coach.fullName,
-      slug: coach.slug,
-      city: coach.city,
-      bio: coach.bio ?? "",
-      specialties,
-      experienceYears: coach.experienceYears,
-      priceFrom: coach.priceFrom,
-      rating: coach.rating,
-      trainingFormats: formats,
-      photoUrl: coach.photoUrl,
-      services: coach.services.map((s) => ({
-        id: s.id,
-        coachId: s.coachId,
-        title: s.title,
-        category: s.category,
-        description: s.description ?? "",
-        durationMinutes: s.durationMinutes,
-        price: s.price,
-        format: s.format,
-      })),
-    };
-
-    return NextResponse.json(mapped);
+    const pub = coachToMarketplacePublic(coach);
+    return NextResponse.json({
+      ...serializeMarketplaceCoachResponse(pub),
+      services: [],
+    });
   } catch (error) {
     console.error("GET /api/marketplace/coaches/[id] failed:", error);
-    return NextResponse.json(
-      {
-        error: "Ошибка загрузки профиля",
-        details: error instanceof Error ? error.message : "",
-      },
-      { status: 500 }
-    );
+    return apiError("INTERNAL_ERROR", "Internal server error", 500);
   }
 }

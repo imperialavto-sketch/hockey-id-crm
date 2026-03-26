@@ -5,6 +5,8 @@ import { theme } from '@/constants/theme';
 type MessagesHeroProps = {
   totalCount: number;
   unreadCount: number;
+  awaitingReplyCount?: number;
+  needsReactionCount?: number;
   dateLabel?: string;
 };
 
@@ -20,6 +22,8 @@ function formatContextDate() {
 export function MessagesHero({
   totalCount,
   unreadCount,
+  awaitingReplyCount = 0,
+  needsReactionCount = 0,
   dateLabel = formatContextDate(),
 }: MessagesHeroProps) {
   const countLabel =
@@ -43,6 +47,26 @@ export function MessagesHero({
             </Text>
           </>
         )}
+        {awaitingReplyCount > 0 && (
+          <>
+            <View style={styles.dot} />
+            <Text style={styles.summaryMuted}>
+              {awaitingReplyCount === 1
+                ? 'Нет ответа в одном диалоге'
+                : `Нет ответа в ${awaitingReplyCount} диалогах`}
+            </Text>
+          </>
+        )}
+        {needsReactionCount > 0 && (
+          <>
+            <View style={styles.dot} />
+            <Text style={styles.summaryPrimary}>
+              {needsReactionCount === 1
+                ? 'Есть 1 диалог с ответом родителя'
+                : `Есть ${needsReactionCount} диалогов с ответом родителей`}
+            </Text>
+          </>
+        )}
       </View>
     </View>
   );
@@ -50,22 +74,16 @@ export function MessagesHero({
 
 const styles = StyleSheet.create({
   hero: {
-    marginBottom: theme.spacing.xl,
+    marginBottom: theme.layout.heroBottom,
   },
   eyebrow: {
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    color: theme.colors.textMuted,
-    textTransform: 'uppercase',
+    ...theme.typography.heroEyebrow,
+    color: theme.colors.primary,
     marginBottom: theme.spacing.xs,
   },
   title: {
-    fontSize: 28,
-    fontWeight: '700',
-    letterSpacing: -0.5,
+    ...theme.typography.hero,
     color: theme.colors.text,
-    lineHeight: 34,
     marginBottom: theme.spacing.sm,
   },
   context: {
@@ -82,10 +100,19 @@ const styles = StyleSheet.create({
     color: theme.colors.accent,
     fontWeight: '600',
   },
+  summaryMuted: {
+    ...theme.typography.body,
+    color: theme.colors.textMuted,
+  },
+  summaryPrimary: {
+    ...theme.typography.body,
+    color: theme.colors.primary,
+    fontWeight: '600',
+  },
   dot: {
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: theme.colors.textMuted,
+    backgroundColor: theme.colors.border,
   },
 });

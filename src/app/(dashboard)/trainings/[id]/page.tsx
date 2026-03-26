@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeft,
   Calendar,
@@ -15,10 +16,15 @@ import {
   HeartPulse,
   Loader2,
   User,
+  ChevronRight,
 } from "lucide-react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { usePermissions } from "@/hooks/usePermissions";
+import { cn } from "@/lib/utils";
+import { CRM_TRAINING_DETAIL_COPY } from "@/lib/crmTrainingDetailCopy";
+import { CRM_PLAYER_DETAIL_COPY } from "@/lib/crmPlayerDetailCopy";
+import { CRM_TEAMS_LIST_COPY } from "@/lib/crmTeamsListCopy";
 
 type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE" | "EXCUSED";
 
@@ -75,6 +81,38 @@ const STATUS_CONFIG: Record<AttendanceStatus, { label: string; icon: typeof Chec
 
 const QUICK_STATUSES: AttendanceStatus[] = ["PRESENT", "ABSENT", "EXCUSED"];
 
+function DetailSectionCard({
+  kicker,
+  title,
+  icon: Icon,
+  iconClassName,
+  action,
+  children,
+}: {
+  kicker: string;
+  title: string;
+  icon: LucideIcon;
+  iconClassName: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <Card className="overflow-hidden border-white/[0.1] p-0">
+      <div className="flex flex-col gap-3 border-b border-white/[0.08] bg-white/[0.02] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div className="flex items-start gap-3">
+          <Icon className={cn("mt-0.5 h-5 w-5 shrink-0", iconClassName)} aria-hidden />
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{kicker}</p>
+            <h2 className="font-display text-base font-semibold tracking-tight text-white sm:text-lg">{title}</h2>
+          </div>
+        </div>
+        {action ? <div className="shrink-0 sm:pl-4">{action}</div> : null}
+      </div>
+      <div className="p-0">{children}</div>
+    </Card>
+  );
+}
+
 export default function TrainingDetailPage() {
   const params = useParams();
   const id = (params?.id as string) ?? "";
@@ -88,19 +126,32 @@ export default function TrainingDetailPage() {
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!id) {
       setLoading(false);
+      setTraining(null);
+      setPlayers([]);
+      setAttendances([]);
+      setFetchError(false);
       return;
     }
+    setLoading(true);
+    setFetchError(false);
     fetch(`/api/trainings/${id}`)
-      .then((r) => r.json())
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error("fetch failed");
+        return data;
+      })
       .then((data) => {
         if (data?.error || !data?.id) {
           setTraining(null);
           setPlayers([]);
           setAttendances([]);
+          setFetchError(false);
           return;
         }
         setTraining(data);
@@ -136,12 +187,13 @@ export default function TrainingDetailPage() {
         }
       })
       .catch(() => {
+        setFetchError(true);
         setTraining(null);
         setPlayers([]);
         setAttendances([]);
       })
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, reloadKey]);
 
   const getStatusForPlayer = (playerId: string): AttendanceStatus | "" => {
     const a = attendances.find((x) => String(x.playerId) === String(playerId));
@@ -190,7 +242,6 @@ export default function TrainingDetailPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const count = data?.updated ?? players.length;
         setAttendances((prev) => {
           const byPlayer = new Map(prev.map((a) => [String(a.playerId), a]));
           players.forEach((p) => byPlayer.set(p.id, { playerId: p.id, status: "PRESENT" as const, player: null }));
@@ -241,249 +292,342 @@ export default function TrainingDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-neon-blue border-t-transparent" />
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-4">
+        <Loader2 className="h-10 w-10 animate-spin text-neon-blue" aria-hidden />
+        <div className="text-center">
+          <p className="font-display text-base font-semibold text-white">{CRM_TRAINING_DETAIL_COPY.loadingTitle}</p>
+          <p className="mt-1 text-sm text-slate-500">{CRM_TRAINING_DETAIL_COPY.loadingHint}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className="overflow-x-hidden px-4 py-6 sm:px-6 md:px-8">
+        <div className="mx-auto max-w-7xl space-y-6">
+          <Link
+            href="/schedule"
+            className="inline-flex items-center gap-2 text-sm text-slate-400 transition-colors hover:text-neon-blue"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+            {CRM_TRAINING_DETAIL_COPY.backSchedule}
+          </Link>
+          <div
+            className="flex flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"
+            role="alert"
+          >
+            <div>
+              <p className="font-medium text-amber-100">{CRM_TRAINING_DETAIL_COPY.errorTitle}</p>
+              <p className="mt-0.5 text-sm text-amber-200/80">{CRM_TRAINING_DETAIL_COPY.errorHint}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setReloadKey((k) => k + 1)}
+              className="shrink-0 rounded-xl border border-amber-400/40 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/15"
+            >
+              {CRM_TRAINING_DETAIL_COPY.retryCta}
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (!training) {
     return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 p-8">
-        <p className="text-slate-400">Тренировка не найдена</p>
-        <Link href="/trainings" className="text-sm text-neon-blue hover:text-neon-blue/80">
-          ← Назад к тренировкам
-        </Link>
+      <div className="overflow-x-hidden px-4 py-6 sm:px-6 md:px-8">
+        <div className="mx-auto max-w-2xl">
+          <Card className="border-white/[0.1] p-8 text-center">
+            <p className="font-display text-lg font-semibold text-white">{CRM_TRAINING_DETAIL_COPY.notFoundTitle}</p>
+            <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500">{CRM_TRAINING_DETAIL_COPY.notFoundHint}</p>
+            <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+              <Link
+                href="/schedule"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-medium text-neon-blue transition-colors hover:border-neon-blue/40 hover:bg-neon-blue/10 sm:w-auto"
+              >
+                <ArrowLeft className="h-4 w-4" aria-hidden />
+                {CRM_TRAINING_DETAIL_COPY.backToScheduleCta}
+              </Link>
+              <Link
+                href="/trainings"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:border-white/25 hover:text-white sm:w-auto"
+              >
+                {CRM_TRAINING_DETAIL_COPY.backTrainingsCta}
+                <ChevronRight className="h-4 w-4 opacity-60" aria-hidden />
+              </Link>
+            </div>
+          </Card>
+        </div>
       </div>
     );
   }
 
   const safePlayers = Array.isArray(players) ? players : [];
+  const teamLabel = training.team?.name ?? CRM_PLAYER_DETAIL_COPY.noTeam;
+  const agePart = training.team?.ageGroup ? ` · ${training.team.ageGroup}` : "";
 
   return (
-    <div className="p-6 sm:p-8">
-      <Link
-        href="/schedule"
-        className="mb-6 inline-flex items-center gap-2 text-sm text-slate-400 transition-colors hover:text-neon-blue"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Назад к расписанию
-      </Link>
-
-      <Card className="mb-8 border-neon-blue/20">
-        <div className="space-y-4">
-          <h1 className="font-display text-2xl font-bold text-white sm:text-3xl">
-            {training.title}
-          </h1>
-          <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-400">
-            <span className="flex items-center gap-1.5">
-              <Users className="h-4 w-4 shrink-0" />
-              {training.team?.name ?? "—"} ({training.team?.ageGroup ?? ""})
-            </span>
-            {coachName && (
-              <span className="flex items-center gap-1.5">
-                <User className="h-4 w-4 shrink-0" />
-                {coachName}
-              </span>
-            )}
-            <span className="flex items-center gap-1.5">
-              <Calendar className="h-4 w-4 shrink-0" />
-              {training.startTime
-                ? new Date(training.startTime).toLocaleDateString("ru-RU", {
-                    weekday: "short",
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric",
-                  })
-                : "—"}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Clock className="h-4 w-4 shrink-0" />
-              {training.startTime
-                ? new Date(training.startTime).toLocaleTimeString("ru-RU", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : "—"}
-              —
-              {training.endTime
-                ? new Date(training.endTime).toLocaleTimeString("ru-RU", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : "—"}
-              {duration != null && ` (${duration} мин)`}
-            </span>
-            {training.location && (
-              <span className="flex items-center gap-1.5">
-                <MapPin className="h-4 w-4 shrink-0" />
-                {training.location}
-              </span>
-            )}
-          </div>
-          {training.notes && (
-            <p className="text-sm text-slate-500">{training.notes}</p>
-          )}
-        </div>
-      </Card>
-
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
-        <h2 className="font-display text-lg font-semibold text-white">
-          Посещаемость и оценки
-        </h2>
-        {canEditTraining && safePlayers.length > 0 && (
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={markAllPresent}
-            disabled={saving === "bulk"}
-            className="gap-2"
+    <div className="overflow-x-hidden px-4 py-6 sm:px-6 md:px-8">
+      <div className="mx-auto max-w-7xl space-y-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <Link
+            href="/schedule"
+            className="inline-flex items-center gap-2 text-sm text-slate-400 transition-colors hover:text-neon-blue"
           >
-            {saving === "bulk" ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Check className="h-4 w-4" />
-            )}
-            Отметить всех присутствующими
-          </Button>
-        )}
-      </div>
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+            {CRM_TRAINING_DETAIL_COPY.backSchedule}
+          </Link>
+          <Link
+            href="/trainings"
+            className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 transition-colors hover:text-neon-blue"
+          >
+            {CRM_TRAINING_DETAIL_COPY.backTrainingsCta}
+            <ChevronRight className="h-4 w-4 opacity-60" aria-hidden />
+          </Link>
+        </div>
 
-      <Card className="border-neon-blue/20 overflow-x-auto">
-        {safePlayers.length === 0 ? (
-          <p className="p-6 text-slate-400">В команде пока нет игроков</p>
-        ) : (
-          <table className="w-full min-w-[640px]">
-            <thead>
-              <tr className="border-b border-white/10 text-left text-sm text-slate-400">
-                <th className="p-4 font-medium">Игрок</th>
-                <th className="p-4 font-medium">Статус</th>
-                <th className="p-4 font-medium">Оценка</th>
-                <th className="p-4 font-medium">Комментарий</th>
-              </tr>
-            </thead>
-            <tbody>
-              {safePlayers.map((p) => {
-                const current = getStatusForPlayer(p.id);
-                const rating = ratings[p.id] ?? 0;
-                const isSaving =
-                  saving === p.id || saving === `rating-${p.id}`;
+        <Card className="overflow-hidden rounded-2xl border-white/[0.1] bg-gradient-to-br from-white/[0.06] to-transparent shadow-[0_0_32px_rgba(0,212,255,0.08)]">
+          <div className="relative flex flex-col gap-5 p-5 sm:p-6">
+            <div
+              className="pointer-events-none absolute left-0 top-0 h-full w-1 rounded-l-2xl bg-gradient-to-b from-neon-blue via-neon-cyan/80 to-neon-pink/60"
+              aria-hidden
+            />
+            <div className="pl-1 sm:pl-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-neon-blue/90">
+                {CRM_TRAINING_DETAIL_COPY.heroEyebrow}
+              </p>
+              <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">{training.title}</h1>
+              <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-400">
+                <span className="inline-flex items-center gap-1.5">
+                  <Users className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
+                  {training.team?.id ? (
+                    <Link
+                      href={`/teams/${training.team.id}`}
+                      className="group inline-flex max-w-full items-center gap-1 font-medium text-white transition-colors hover:text-neon-blue"
+                    >
+                      <span className="truncate">
+                        {teamLabel}
+                        {agePart}
+                      </span>
+                      <ChevronRight className="h-4 w-4 shrink-0 opacity-50 transition-opacity group-hover:opacity-100" aria-hidden />
+                    </Link>
+                  ) : (
+                    <span>
+                      {teamLabel}
+                      {agePart}
+                    </span>
+                  )}
+                </span>
+                {coachName ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <User className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
+                    {CRM_TEAMS_LIST_COPY.coachPrefix}: {coachName}
+                  </span>
+                ) : null}
+                <span className="inline-flex items-center gap-1.5">
+                  <Calendar className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
+                  {training.startTime
+                    ? new Date(training.startTime).toLocaleDateString("ru-RU", {
+                        weekday: "short",
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })
+                    : "—"}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
+                  {training.startTime
+                    ? new Date(training.startTime).toLocaleTimeString("ru-RU", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "—"}
+                  —
+                  {training.endTime
+                    ? new Date(training.endTime).toLocaleTimeString("ru-RU", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "—"}
+                  {duration != null ? ` (${duration} ${CRM_TRAINING_DETAIL_COPY.minutesShort})` : ""}
+                </span>
+                {training.location ? (
+                  <span className="inline-flex min-w-0 items-center gap-1.5">
+                    <MapPin className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
+                    <span className="truncate">{training.location}</span>
+                  </span>
+                ) : null}
+              </div>
+              {training.notes ? <p className="mt-4 border-t border-white/[0.08] pt-4 text-sm leading-relaxed text-slate-500">{training.notes}</p> : null}
+            </div>
+          </div>
+        </Card>
 
-                return (
-                  <tr
-                    key={p.id}
-                    className="border-b border-white/5 transition-colors hover:bg-white/5"
-                  >
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neon-blue/20">
-                          <UserCircle className="h-4 w-4 text-neon-blue" />
-                        </div>
-                        <span className="font-medium text-white">
-                          {p.firstName} {p.lastName}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      {canEditTraining ? (
-                        <div className="flex flex-wrap gap-1">
-                          {QUICK_STATUSES.map((status) => {
-                            const cfg = STATUS_CONFIG[status];
-                            const Icon = cfg.icon;
-                            return (
-                              <button
-                                key={status}
-                                type="button"
-                                onClick={() =>
-                                  updateAttendance(p.id, status, comments[p.id])
-                                }
-                                disabled={isSaving}
-                                className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium transition-all disabled:opacity-50 ${cfg.className} ${
-                                  current === status ? "ring-1 ring-offset-1 ring-offset-dark-900" : "opacity-80"
-                                }`}
-                                title={cfg.label}
-                              >
-                                <Icon className="h-3.5 w-3.5" />
-                                {status === "PRESENT" ? "✓" : status === "ABSENT" ? "✕" : "🩹"}
-                              </button>
-                            );
-                          })}
-                          {current && (
-                            <span className="ml-1 text-xs text-slate-500">
-                              {STATUS_CONFIG[current]?.label ?? current}
+        <DetailSectionCard
+          kicker={CRM_TRAINING_DETAIL_COPY.attendanceKicker}
+          title={CRM_TRAINING_DETAIL_COPY.attendanceTitle}
+          icon={Users}
+          iconClassName="text-neon-blue"
+          action={
+            canEditTraining && safePlayers.length > 0 ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={markAllPresent}
+                disabled={saving === "bulk"}
+                className="gap-2"
+              >
+                {saving === "bulk" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                ) : (
+                  <Check className="h-4 w-4" aria-hidden />
+                )}
+                {CRM_TRAINING_DETAIL_COPY.markAllPresent}
+              </Button>
+            ) : undefined
+          }
+        >
+          {safePlayers.length === 0 ? (
+            <p className="px-5 py-8 text-center text-sm text-slate-500 sm:px-6">{CRM_TRAINING_DETAIL_COPY.emptyRoster}</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-sm">
+                <thead>
+                  <tr className="border-b border-white/[0.08] bg-white/[0.02] text-left text-slate-500">
+                    <th scope="col" className="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider sm:px-5">
+                      {CRM_TRAINING_DETAIL_COPY.colPlayer}
+                    </th>
+                    <th scope="col" className="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider sm:px-5">
+                      {CRM_TRAINING_DETAIL_COPY.colStatus}
+                    </th>
+                    <th scope="col" className="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider sm:px-5">
+                      {CRM_TRAINING_DETAIL_COPY.colRating}
+                    </th>
+                    <th scope="col" className="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider sm:px-5">
+                      {CRM_TRAINING_DETAIL_COPY.colComment}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {safePlayers.map((p) => {
+                    const current = getStatusForPlayer(p.id);
+                    const rating = ratings[p.id] ?? 0;
+                    const isSaving = saving === p.id || saving === `rating-${p.id}`;
+
+                    return (
+                      <tr
+                        key={p.id}
+                        className="border-b border-white/[0.05] transition-colors hover:bg-white/[0.03]"
+                      >
+                        <td className="px-4 py-3.5 sm:px-5">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-neon-blue/15">
+                              <UserCircle className="h-4 w-4 text-neon-blue" aria-hidden />
+                            </div>
+                            <span className="font-medium text-white">
+                              {p.firstName} {p.lastName}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5 sm:px-5">
+                          {canEditTraining ? (
+                            <div className="flex flex-wrap items-center gap-1">
+                              {QUICK_STATUSES.map((status) => {
+                                const cfg = STATUS_CONFIG[status];
+                                const Icon = cfg.icon;
+                                return (
+                                  <button
+                                    key={status}
+                                    type="button"
+                                    onClick={() => updateAttendance(p.id, status, comments[p.id])}
+                                    disabled={isSaving}
+                                    className={cn(
+                                      "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium transition-all disabled:opacity-50",
+                                      cfg.className,
+                                      current === status ? "ring-2 ring-white/30" : "opacity-80"
+                                    )}
+                                    title={cfg.label}
+                                  >
+                                    <Icon className="h-3.5 w-3.5" aria-hidden />
+                                    {status === "PRESENT" ? "✓" : status === "ABSENT" ? "✕" : "🩹"}
+                                  </button>
+                                );
+                              })}
+                              {current ? (
+                                <span className="ml-1 text-xs text-slate-500">
+                                  {STATUS_CONFIG[current]?.label ?? current}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">
+                              {current ? STATUS_CONFIG[current]?.label ?? current : "—"}
                             </span>
                           )}
-                        </div>
-                      ) : (
-                        <span className="text-slate-400">
-                          {current ? STATUS_CONFIG[current]?.label ?? current : "—"}
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4">
-                      {training.team?.coach?.id && (
-                        canEditTraining ? (
-                          <select
-                            value={rating || ""}
-                            onChange={(e) => {
-                              const v = parseInt(e.target.value, 10);
-                              if (!isNaN(v) && v >= 1 && v <= 5) {
-                                setRatings((prev) => ({ ...prev, [p.id]: v }));
-                                saveRating(p.id, v);
+                        </td>
+                        <td className="px-4 py-3.5 sm:px-5">
+                          {training.team?.coach?.id ? (
+                            canEditTraining ? (
+                              <select
+                                value={rating || ""}
+                                onChange={(e) => {
+                                  const v = parseInt(e.target.value, 10);
+                                  if (!isNaN(v) && v >= 1 && v <= 5) {
+                                    setRatings((prev) => ({ ...prev, [p.id]: v }));
+                                    saveRating(p.id, v);
+                                  }
+                                }}
+                                disabled={isSaving}
+                                className="rounded-xl border border-white/[0.12] bg-white/[0.05] px-2 py-1.5 text-sm text-white focus:border-neon-blue focus:outline-none focus:ring-1 focus:ring-neon-blue disabled:opacity-50"
+                              >
+                                <option value="">—</option>
+                                {[1, 2, 3, 4, 5].map((n) => (
+                                  <option key={n} value={n}>
+                                    {n} ★
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="text-slate-400">{rating ? `${rating} ★` : "—"}</span>
+                            )
+                          ) : (
+                            <span className="text-xs text-slate-500">{CRM_TRAINING_DETAIL_COPY.noCoachRating}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5 sm:px-5">
+                          {canEditTraining ? (
+                            <input
+                              type="text"
+                              placeholder={CRM_TRAINING_DETAIL_COPY.commentPlaceholder}
+                              value={comments[p.id] ?? ""}
+                              onChange={(e) =>
+                                setComments((prev) => ({ ...prev, [p.id]: e.target.value }))
                               }
-                            }}
-                            disabled={isSaving}
-                            className="rounded-lg border border-white/20 bg-white/5 px-2 py-1.5 text-sm text-white focus:border-neon-blue focus:outline-none disabled:opacity-50"
-                          >
-                            <option value="">—</option>
-                            {[1, 2, 3, 4, 5].map((n) => (
-                              <option key={n} value={n}>
-                                {n} ★
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span className="text-slate-400">
-                            {rating ? `${rating} ★` : "—"}
-                          </span>
-                        )
-                      )}
-                      {!training.team?.coach?.id && (
-                        <span className="text-slate-500 text-xs">Нет тренера</span>
-                      )}
-                    </td>
-                    <td className="p-4">
-                      {canEditTraining ? (
-                        <input
-                          type="text"
-                          placeholder="Комментарий"
-                          value={comments[p.id] ?? ""}
-                          onChange={(e) =>
-                            setComments((prev) => ({ ...prev, [p.id]: e.target.value }))
-                          }
-                          onBlur={() => {
-                            if (current) {
-                              updateAttendance(p.id, current, comments[p.id]);
-                            }
-                            if (rating && training.team?.coach?.id) {
-                              saveRating(p.id, rating, comments[p.id]);
-                            }
-                          }}
-                          className="min-w-[140px] max-w-[220px] rounded-lg border border-white/20 bg-white/5 px-3 py-1.5 text-sm text-white placeholder-slate-500 focus:border-neon-blue focus:outline-none"
-                        />
-                      ) : (
-                        <span className="text-slate-400 text-sm">
-                          {comments[p.id] || "—"}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </Card>
+                              onBlur={() => {
+                                if (current) {
+                                  updateAttendance(p.id, current, comments[p.id]);
+                                }
+                                if (rating && training.team?.coach?.id) {
+                                  saveRating(p.id, rating, comments[p.id]);
+                                }
+                              }}
+                              className="min-w-[140px] max-w-[220px] rounded-xl border border-white/[0.12] bg-white/[0.05] px-3 py-1.5 text-sm text-white placeholder:text-slate-500 focus:border-neon-blue focus:outline-none focus:ring-1 focus:ring-neon-blue"
+                            />
+                          ) : (
+                            <span className="text-sm text-slate-400">{comments[p.id] || "—"}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </DetailSectionCard>
+      </div>
     </div>
   );
 }

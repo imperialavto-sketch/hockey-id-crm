@@ -10,7 +10,13 @@ type SectionCardProps = {
 
 export function SectionCard({ children, style, elevated }: SectionCardProps) {
   return (
-    <View style={[styles.card, elevated && theme.shadow.card, style]}>
+    <View
+      style={[
+        styles.card,
+        elevated ? theme.shadow.card : theme.shadow.cardSubtle,
+        style,
+      ]}
+    >
       {children}
     </View>
   );
@@ -24,5 +30,6 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.md,
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
+    overflow: 'hidden',
   },
 });

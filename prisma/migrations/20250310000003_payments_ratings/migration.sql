@@ -33,8 +33,8 @@ CREATE UNIQUE INDEX "CoachRating_coachId_playerId_key" ON "CoachRating"("coachId
 -- AddForeignKey
 ALTER TABLE "PlayerPayment" ADD CONSTRAINT "PlayerPayment_playerId_fkey" FOREIGN KEY ("playerId") REFERENCES "Player"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- AddForeignKey
-ALTER TABLE "CoachRating" ADD CONSTRAINT "CoachRating_coachId_fkey" FOREIGN KEY ("coachId") REFERENCES "Coach"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- CoachRating_coachId_fkey omitted: Coach table is created in 20250311000000_add_coach_model.
+-- Add CoachRating -> Coach FK in a later migration if needed (e.g. after add_coach_model).
 
 -- AddForeignKey
 ALTER TABLE "CoachRating" ADD CONSTRAINT "CoachRating_playerId_fkey" FOREIGN KEY ("playerId") REFERENCES "Player"("id") ON DELETE CASCADE ON UPDATE CASCADE;

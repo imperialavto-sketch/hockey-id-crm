@@ -1,5 +1,5 @@
 import type { CoachProfileItem } from "@/types/marketplace";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, ApiRequestError } from "@/lib/api";
 import { logApiError } from "@/lib/apiErrors";
 import { apiCoachToMockCoach } from "@/mappers/coachMapper";
 import type { MockCoach } from "@/constants/mockCoaches";
@@ -20,6 +20,7 @@ type RawCoachService = {
 
 type RawCoach = {
   id?: unknown;
+  displayName?: unknown;
   fullName?: unknown;
   name?: unknown;
   slug?: unknown;
@@ -35,6 +36,7 @@ type RawCoach = {
   price?: unknown;
   rating?: unknown;
   trainingFormats?: unknown;
+  formats?: unknown;
   photoUrl?: unknown;
   avatarUrl?: unknown;
   avatar?: unknown;
@@ -67,9 +69,14 @@ function normalizeSpecialties(raw: RawCoach): string[] {
 }
 
 function normalizeTrainingFormats(raw: RawCoach): string[] {
-  return Array.isArray(raw.trainingFormats)
+  const fromTraining = Array.isArray(raw.trainingFormats)
     ? raw.trainingFormats.map((item) => toStringOrEmpty(item).trim()).filter(Boolean)
     : [];
+  if (fromTraining.length > 0) return fromTraining;
+  if (Array.isArray(raw.formats)) {
+    return raw.formats.map((item) => toStringOrEmpty(item).trim().toLowerCase()).filter(Boolean);
+  }
+  return [];
 }
 
 function normalizeCoachServices(rawServices: unknown): CoachDetailWithServices["services"] {
@@ -93,7 +100,9 @@ function normalizeCoachServices(rawServices: unknown): CoachDetailWithServices["
 function normalizeCoachListItem(item: unknown): CoachProfileItem {
   const raw = (item ?? {}) as RawCoach;
   const id = toStringOrEmpty(raw.id);
-  const fullName = toStringOrEmpty(raw.fullName || raw.name);
+  const fullName = toStringOrEmpty(
+    raw.displayName || raw.fullName || raw.name
+  );
   const specialties = normalizeSpecialties(raw);
   const trainingFormats = normalizeTrainingFormats(raw);
 
@@ -215,21 +224,197 @@ export async function getCoachForUI(
   return data ? apiCoachToMockCoach(data) : null;
 }
 
+export interface MarketplaceAvailabilitySlot {
+  id: string;
+  coachId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  price: number;
+  type: string;
+  isBooked: boolean;
+}
+
+function normalizeAvailabilitySlot(raw: unknown): MarketplaceAvailabilitySlot | null {
+  const o = raw as Record<string, unknown>;
+  const id = toStringOrEmpty(o.id);
+  if (!id) return null;
+  const dateRaw = toStringOrEmpty(o.date);
+  const date =
+    dateRaw.length >= 10
+      ? dateRaw.slice(0, 10)
+      : dateRaw
+        ? new Date(dateRaw).toISOString().slice(0, 10)
+        : "";
+  return {
+    id,
+    coachId: toStringOrEmpty(o.coachId),
+    date,
+    startTime: toStringOrEmpty(o.startTime),
+    endTime: toStringOrEmpty(o.endTime),
+    price: toNumberOr(o.price, 0),
+    type: toStringOrEmpty(o.type),
+    isBooked: o.isBooked === true,
+  };
+}
+
+/** GET /api/marketplace/coaches/[id]/slots — free slots for independent coach. */
+export async function getMarketplaceCoachSlots(
+  coachId: string
+): Promise<MarketplaceAvailabilitySlot[]> {
+  const data = await apiFetch<{ slots?: unknown }>(
+    `/api/marketplace/coaches/${coachId}/slots`
+  );
+  const slots = data?.slots;
+  if (!Array.isArray(slots)) return [];
+  return slots
+    .map(normalizeAvailabilitySlot)
+    .filter((s): s is MarketplaceAvailabilitySlot => s != null && !s.isBooked);
+}
+
 /**
- * Get coach time slots for booking.
- * Returns TimeSlot[] { time, available }.
- * Propagates API errors for honest integration testing.
+ * Legacy shape for old pickers; prefer getMarketplaceCoachSlots + slot id for booking.
  */
 export async function getCoachTimeSlots(
   coachId: string,
-  date?: string
+  _date?: string
 ): Promise<TimeSlot[]> {
-  const params = date ? `?date=${encodeURIComponent(date)}` : "";
-  const data = await apiFetch<{ time: string; available: boolean }[]>(
-    `/api/marketplace/coaches/${coachId}/slots${params}`
-  );
-  if (!Array.isArray(data)) return [];
-  return data.map((s) => ({ time: s.time, available: s.available ?? false }));
+  const rows = await getMarketplaceCoachSlots(coachId);
+  return rows.map((s) => ({
+    time: `${s.startTime}–${s.endTime}`,
+    available: true,
+  }));
+}
+
+export interface MarketplaceSlotBookingRow {
+  id: string;
+  slotId: string;
+  coachId: string;
+  status: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  price: number;
+  type: string;
+  paymentStatus: string;
+  paidAt: string | null;
+  amountSnapshot: number;
+  paymentMethod: string | null;
+}
+
+function normalizeSlotBookingRow(raw: unknown): MarketplaceSlotBookingRow | null {
+  const o = raw as Record<string, unknown>;
+  const id = toStringOrEmpty(o.id);
+  if (!id) return null;
+  const price = toNumberOr(o.price, 0);
+  let amountSnapshot = Math.max(0, Math.floor(Number.isFinite(price) ? price : 0));
+  if (typeof o.amountSnapshot === "number" && Number.isFinite(o.amountSnapshot)) {
+    amountSnapshot = Math.max(0, Math.floor(o.amountSnapshot));
+  }
+  const pmRaw = typeof o.paymentMethod === "string" ? o.paymentMethod.trim() : "";
+  return {
+    id,
+    slotId: toStringOrEmpty(o.slotId),
+    coachId: toStringOrEmpty(o.coachId),
+    status: toStringOrEmpty(o.status) || "pending",
+    date: toStringOrEmpty(o.date).slice(0, 10),
+    startTime: toStringOrEmpty(o.startTime),
+    endTime: toStringOrEmpty(o.endTime),
+    price,
+    type: toStringOrEmpty(o.type),
+    paymentStatus: toStringOrEmpty(o.paymentStatus) || "unpaid",
+    paidAt: typeof o.paidAt === "string" && o.paidAt.trim() ? o.paidAt.trim() : null,
+    amountSnapshot,
+    paymentMethod: pmRaw.length > 0 ? pmRaw : null,
+  };
+}
+
+/** GET /api/marketplace/bookings/me — Bearer auth. */
+export async function getMarketplaceSlotBookingsMe(): Promise<MarketplaceSlotBookingRow[]> {
+  try {
+    const data = await apiFetch<unknown[]>("/api/marketplace/bookings/me");
+    if (!Array.isArray(data)) return [];
+    return data
+      .map(normalizeSlotBookingRow)
+      .filter((r): r is MarketplaceSlotBookingRow => r != null);
+  } catch (err) {
+    logApiError("marketplaceService.getMarketplaceSlotBookingsMe", err);
+    throw err;
+  }
+}
+
+export interface PostMarketplaceSlotBookingPayload {
+  slotId: string;
+  coachId?: string;
+  parentName: string;
+  parentPhone: string;
+  playerId?: string | null;
+  message?: string | null;
+}
+
+export type PostMarketplaceSlotBookingResult =
+  | { ok: true; booking: MarketplaceSlotBookingRow }
+  | { ok: false; error: string; status?: number; code?: string };
+
+/** POST /api/marketplace/bookings — Bearer auth, role PARENT. */
+export async function postMarketplaceSlotBooking(
+  payload: PostMarketplaceSlotBookingPayload
+): Promise<PostMarketplaceSlotBookingResult> {
+  try {
+    const data = await apiFetch<unknown>("/api/marketplace/bookings", {
+      method: "POST",
+      body: JSON.stringify({
+        slotId: payload.slotId,
+        coachId: payload.coachId,
+        parentName: payload.parentName,
+        parentPhone: payload.parentPhone,
+        playerId: payload.playerId ?? undefined,
+        message: payload.message ?? undefined,
+      }),
+    });
+    const row = normalizeSlotBookingRow(data);
+    if (!row) {
+      return { ok: false, error: "Некорректный ответ сервера" };
+    }
+    return { ok: true, booking: row };
+  } catch (err) {
+    if (err instanceof ApiRequestError) {
+      return {
+        ok: false,
+        error: err.message,
+        status: err.status,
+        code: err.code,
+      };
+    }
+    const msg = err instanceof Error ? err.message : "Не удалось забронировать";
+    return { ok: false, error: msg };
+  }
+}
+
+export async function cancelMarketplaceSlotBooking(
+  bookingId: string
+): Promise<
+  | { ok: true }
+  | { ok: false; error: string; status?: number; code?: string }
+> {
+  try {
+    await apiFetch<unknown>(`/api/marketplace/bookings/${bookingId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "cancelled" }),
+    });
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof ApiRequestError) {
+      return {
+        ok: false,
+        error: err.message,
+        status: err.status,
+        code: err.code,
+      };
+    }
+    const msg = err instanceof Error ? err.message : "Не удалось отменить";
+    return { ok: false, error: msg };
+  }
 }
 
 export interface BookingRequestPayload {

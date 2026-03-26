@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Repeat } from "lucide-react";
+import { ArrowLeft, Repeat, Loader2 } from "lucide-react";
 import { Button } from "@/components/Button";
+import { Card } from "@/components/Card";
+import { cn } from "@/lib/utils";
+import { CRM_TRAINING_CREATE_COPY } from "@/lib/crmTrainingCreateCopy";
 
 interface Team {
   id: string;
@@ -13,13 +16,79 @@ interface Team {
 }
 
 const INPUT_CLASS =
-  "mt-1.5 w-full rounded-xl border border-white/20 bg-white/5 px-4 py-2.5 text-white placeholder-slate-500 focus:border-neon-blue focus:outline-none focus:ring-1 focus:ring-neon-blue";
+  "mt-1.5 w-full rounded-xl border border-white/[0.12] bg-white/[0.05] px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-neon-blue focus:outline-none focus:ring-1 focus:ring-neon-blue";
+
+const LABEL_CLASS = "text-sm font-medium text-slate-400";
+
+const WEEKDAY_SHORT = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"] as const;
+
+function FormSection({
+  kicker,
+  title,
+  hint,
+  children,
+}: {
+  kicker: string;
+  title: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <Card className="overflow-hidden border-white/[0.1] p-0">
+      <div className="border-b border-white/[0.08] bg-white/[0.02] px-5 py-4 sm:px-6">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{kicker}</p>
+        <h2 className="font-display text-base font-semibold tracking-tight text-white sm:text-lg">{title}</h2>
+        {hint ? <p className="mt-1 text-xs leading-relaxed text-slate-600">{hint}</p> : null}
+      </div>
+      <div className="space-y-5 p-5 sm:p-6">{children}</div>
+    </Card>
+  );
+}
+
+function TrainingCreateNav() {
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <Link
+        href="/trainings"
+        className="inline-flex items-center gap-2 text-sm text-slate-400 transition-colors hover:text-neon-blue"
+      >
+        <ArrowLeft className="h-4 w-4" aria-hidden />
+        {CRM_TRAINING_CREATE_COPY.backTrainings}
+      </Link>
+      <Link
+        href="/schedule"
+        className="text-sm font-medium text-slate-500 transition-colors hover:text-neon-blue"
+      >
+        {CRM_TRAINING_CREATE_COPY.backSchedule}
+      </Link>
+    </div>
+  );
+}
+
+function TrainingCreateHero() {
+  return (
+    <div>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-neon-blue/90">
+        {CRM_TRAINING_CREATE_COPY.heroEyebrow}
+      </p>
+      <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-white sm:text-3xl lg:text-4xl">
+        {CRM_TRAINING_CREATE_COPY.heroTitle}
+      </h1>
+      <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-400 sm:text-base">
+        {CRM_TRAINING_CREATE_COPY.heroSubtitle}
+      </p>
+    </div>
+  );
+}
 
 export default function NewTrainingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const teamIdFromUrl = searchParams.get("teamId") ?? "";
   const [teams, setTeams] = useState<Team[]>([]);
+  const [teamsLoading, setTeamsLoading] = useState(true);
+  const [teamsFetchError, setTeamsFetchError] = useState(false);
+  const [teamsRetryTick, setTeamsRetryTick] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [recurring, setRecurring] = useState(false);
@@ -41,17 +110,24 @@ export default function NewTrainingPage() {
   }, [teamIdFromUrl]);
 
   useEffect(() => {
+    setTeamsLoading(true);
+    setTeamsFetchError(false);
     fetch("/api/teams")
-      .then((r) => r.json())
-      .then((data) => {
+      .then(async (r) => {
+        const data = await r.json().catch(() => null);
+        if (!r.ok) throw new Error("fetch failed");
         if (Array.isArray(data)) return data;
         if (data && Array.isArray(data.data)) return data.data;
         if (data && Array.isArray(data.teams)) return data.teams;
         return [];
       })
       .then(setTeams)
-      .catch(() => setTeams([]));
-  }, []);
+      .catch(() => {
+        setTeamsFetchError(true);
+        setTeams([]);
+      })
+      .finally(() => setTeamsLoading(false));
+  }, [teamsRetryTick]);
 
   const safeTeams = Array.isArray(teams) ? teams : [];
 
@@ -120,44 +196,111 @@ export default function NewTrainingPage() {
     }
   };
 
+  if (teamsLoading) {
+    return (
+      <div className="overflow-x-hidden px-4 py-6 sm:px-6 md:px-8">
+        <div className="mx-auto max-w-7xl space-y-8">
+          <TrainingCreateNav />
+          <TrainingCreateHero />
+          <Card className="mx-auto max-w-3xl border-white/[0.1]">
+            <div className="flex flex-col items-center justify-center gap-4 py-16">
+              <Loader2 className="h-10 w-10 animate-spin text-neon-blue" aria-hidden />
+              <div className="text-center">
+                <p className="font-display text-base font-semibold text-white">
+                  {CRM_TRAINING_CREATE_COPY.teamsLoadingTitle}
+                </p>
+                <p className="mt-1 text-sm text-slate-500">{CRM_TRAINING_CREATE_COPY.teamsLoadingHint}</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  if (teamsFetchError) {
+    return (
+      <div className="overflow-x-hidden px-4 py-6 sm:px-6 md:px-8">
+        <div className="mx-auto max-w-7xl space-y-8">
+          <TrainingCreateNav />
+          <TrainingCreateHero />
+          <div
+            className="mx-auto flex max-w-3xl flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"
+            role="alert"
+          >
+            <div>
+              <p className="font-medium text-amber-100">{CRM_TRAINING_CREATE_COPY.teamsErrorTitle}</p>
+              <p className="mt-0.5 text-sm text-amber-200/80">{CRM_TRAINING_CREATE_COPY.teamsErrorHint}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTeamsRetryTick((x) => x + 1)}
+              className="shrink-0 rounded-xl border border-amber-400/40 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/15"
+            >
+              {CRM_TRAINING_CREATE_COPY.retryCta}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (safeTeams.length === 0) {
+    return (
+      <div className="overflow-x-hidden px-4 py-6 sm:px-6 md:px-8">
+        <div className="mx-auto max-w-7xl space-y-8">
+          <TrainingCreateNav />
+          <TrainingCreateHero />
+          <div className="mx-auto max-w-3xl rounded-2xl border border-white/[0.1] bg-white/[0.04] px-6 py-16 text-center sm:px-10">
+            <p className="text-lg font-semibold text-slate-200">{CRM_TRAINING_CREATE_COPY.emptyTeamsTitle}</p>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500">
+              {CRM_TRAINING_CREATE_COPY.emptyTeamsHint}
+            </p>
+            <Link href="/teams" className="mt-8 inline-block">
+              <Button className="gap-2">{CRM_TRAINING_CREATE_COPY.emptyTeamsCta}</Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-6 sm:p-8">
-      <Link
-        href="/trainings"
-        className="mb-6 inline-flex items-center gap-2 text-sm text-slate-400 transition-colors hover:text-white"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Назад
-      </Link>
+    <div className="overflow-x-hidden px-4 py-6 sm:px-6 md:px-8">
+      <div className="mx-auto max-w-7xl space-y-8">
+        <TrainingCreateNav />
+        <TrainingCreateHero />
+        <div className="max-w-3xl">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {error ? (
+            <div
+              role="alert"
+              className="rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+            >
+              {error}
+            </div>
+          ) : null}
 
-      <div className="mb-8">
-        <h1 className="font-display text-2xl font-bold text-white sm:text-3xl">
-          Добавить тренировку
-        </h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Создание новой тренировки
-        </p>
-      </div>
-
-      <form onSubmit={handleSubmit}>
-        <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-[0_0_30px_rgba(0,212,255,0.08)]">
-          <div className="space-y-6 p-6 sm:p-8">
-            {error && (
-              <p className="rounded-lg border border-neon-pink/40 bg-neon-pink/10 px-4 py-2 text-sm text-neon-pink">
-                {error}
-              </p>
-            )}
-
+          <FormSection
+            kicker={CRM_TRAINING_CREATE_COPY.sectionMainKicker}
+            title={CRM_TRAINING_CREATE_COPY.sectionMainTitle}
+            hint={CRM_TRAINING_CREATE_COPY.sectionMainHint}
+          >
             <div>
-              <label className="block text-sm font-medium text-slate-400">Команда *</label>
+              <label htmlFor="training-team" className={LABEL_CLASS}>
+                {CRM_TRAINING_CREATE_COPY.labelTeam}{" "}
+                <span className="text-neon-blue/90" aria-hidden>
+                  *
+                </span>
+              </label>
               <select
+                id="training-team"
                 value={form.teamId}
                 onChange={(e) => setForm({ ...form, teamId: e.target.value })}
                 className={INPUT_CLASS}
                 required
               >
-                <option value="">Выберите команду</option>
+                <option value="">{CRM_TRAINING_CREATE_COPY.selectTeamPlaceholder}</option>
                 {safeTeams.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name} ({t.ageGroup})
@@ -167,37 +310,58 @@ export default function NewTrainingPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-400">Название *</label>
+              <label htmlFor="training-title" className={LABEL_CLASS}>
+                {CRM_TRAINING_CREATE_COPY.labelTitle}{" "}
+                <span className="text-neon-blue/90" aria-hidden>
+                  *
+                </span>
+              </label>
               <input
+                id="training-title"
                 type="text"
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 className={INPUT_CLASS}
-                placeholder="Тренировка"
+                placeholder={CRM_TRAINING_CREATE_COPY.placeholderTitle}
                 required
               />
             </div>
 
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="recurring"
-                checked={recurring}
-                onChange={(e) => setRecurring(e.target.checked)}
-                className="rounded border-white/20 bg-white/5"
-              />
-              <label htmlFor="recurring" className="flex items-center gap-2 text-sm text-slate-400">
-                <Repeat className="h-4 w-4 text-neon-blue" />
-                Регулярное расписание (серия на месяц)
-              </label>
+            <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="recurring"
+                  checked={recurring}
+                  onChange={(e) => setRecurring(e.target.checked)}
+                  className="mt-1 rounded border-white/[0.2] bg-white/[0.05] text-neon-blue focus:ring-neon-blue"
+                />
+                <div className="min-w-0">
+                  <label htmlFor="recurring" className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-300">
+                    <Repeat className="h-4 w-4 shrink-0 text-neon-blue/90" aria-hidden />
+                    {CRM_TRAINING_CREATE_COPY.recurringLabel}
+                  </label>
+                  <p className="mt-1 text-xs text-slate-600">{CRM_TRAINING_CREATE_COPY.recurringHelper}</p>
+                </div>
+              </div>
             </div>
+          </FormSection>
 
-            <div className="grid gap-6 sm:grid-cols-2">
+          <FormSection
+            kicker={CRM_TRAINING_CREATE_COPY.sectionTimeKicker}
+            title={CRM_TRAINING_CREATE_COPY.sectionTimeTitle}
+            hint={CRM_TRAINING_CREATE_COPY.sectionTimeHint}
+          >
+            <div className="grid gap-5 sm:grid-cols-2">
               <div>
-                <label className="block text-sm font-medium text-slate-400">
-                  {recurring ? "Дата начала *" : "Дата *"}
+                <label htmlFor="training-date" className={LABEL_CLASS}>
+                  {recurring ? CRM_TRAINING_CREATE_COPY.labelDateRecurring : CRM_TRAINING_CREATE_COPY.labelDate}{" "}
+                  <span className="text-neon-blue/90" aria-hidden>
+                    *
+                  </span>
                 </label>
                 <input
+                  id="training-date"
                   type="date"
                   value={form.startDate}
                   onChange={(e) => setForm({ ...form, startDate: e.target.value })}
@@ -207,10 +371,14 @@ export default function NewTrainingPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-400">
-                  Время начала *
+                <label htmlFor="training-time" className={LABEL_CLASS}>
+                  {CRM_TRAINING_CREATE_COPY.labelTime}{" "}
+                  <span className="text-neon-blue/90" aria-hidden>
+                    *
+                  </span>
                 </label>
                 <input
+                  id="training-time"
                   type="time"
                   value={form.startTime}
                   onChange={(e) => setForm({ ...form, startTime: e.target.value })}
@@ -220,10 +388,14 @@ export default function NewTrainingPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-400">
-                Длительность (мин) *
+              <label htmlFor="training-duration" className={LABEL_CLASS}>
+                {CRM_TRAINING_CREATE_COPY.labelDuration}{" "}
+                <span className="text-neon-blue/90" aria-hidden>
+                  *
+                </span>
               </label>
               <input
+                id="training-duration"
                 type="number"
                 min={30}
                 max={180}
@@ -231,27 +403,26 @@ export default function NewTrainingPage() {
                 onChange={(e) =>
                   setForm({ ...form, durationMinutes: parseInt(e.target.value, 10) || 90 })
                 }
-                className={`${INPUT_CLASS} max-w-[120px]`}
+                className={cn(INPUT_CLASS, "max-w-[140px]")}
               />
             </div>
 
-            {recurring && (
+            {recurring ? (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-slate-400">
-                    Дни недели (0=Вс, 1=Пн, ... 6=Сб)
-                  </label>
+                  <span className={LABEL_CLASS}>{CRM_TRAINING_CREATE_COPY.labelWeekdays}</span>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {[0, 1, 2, 3, 4, 5, 6].map((d) => {
                       const checked = form.weekdays.includes(d);
                       return (
                         <label
                           key={d}
-                          className={`cursor-pointer rounded-lg border px-3 py-2 text-sm transition-colors ${
+                          className={cn(
+                            "cursor-pointer rounded-xl border px-3 py-2 text-sm font-medium transition-colors",
                             checked
-                              ? "border-neon-blue bg-neon-blue/20 text-neon-blue"
-                              : "border-white/20 bg-white/5 text-slate-400 hover:border-white/40"
-                          }`}
+                              ? "border-neon-blue/40 bg-neon-blue/15 text-neon-blue"
+                              : "border-white/[0.08] bg-white/[0.04] text-slate-400 hover:border-white/[0.12]"
+                          )}
                         >
                           <input
                             type="checkbox"
@@ -271,17 +442,18 @@ export default function NewTrainingPage() {
                             }}
                             className="sr-only"
                           />
-                          {["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"][d]}
+                          {WEEKDAY_SHORT[d]}
                         </label>
                       );
                     })}
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-400">
-                    Количество недель
+                  <label htmlFor="training-weeks" className={LABEL_CLASS}>
+                    {CRM_TRAINING_CREATE_COPY.labelWeeks}
                   </label>
                   <input
+                    id="training-weeks"
                     type="number"
                     min={1}
                     max={12}
@@ -289,47 +461,72 @@ export default function NewTrainingPage() {
                     onChange={(e) =>
                       setForm({ ...form, weeks: parseInt(e.target.value, 10) || 4 })
                     }
-                    className={`${INPUT_CLASS} max-w-[100px]`}
+                    className={cn(INPUT_CLASS, "max-w-[120px]")}
                   />
                 </div>
               </>
-            )}
+            ) : null}
+          </FormSection>
 
+          <FormSection
+            kicker={CRM_TRAINING_CREATE_COPY.sectionDetailsKicker}
+            title={CRM_TRAINING_CREATE_COPY.sectionDetailsTitle}
+            hint={CRM_TRAINING_CREATE_COPY.sectionDetailsHint}
+          >
             <div>
-              <label className="block text-sm font-medium text-slate-400">Место</label>
+              <label htmlFor="training-location" className={LABEL_CLASS}>
+                {CRM_TRAINING_CREATE_COPY.labelLocation}{" "}
+                <span className="text-xs font-normal text-slate-600">({CRM_TRAINING_CREATE_COPY.optional})</span>
+              </label>
               <input
+                id="training-location"
                 type="text"
                 value={form.location}
                 onChange={(e) => setForm({ ...form, location: e.target.value })}
                 className={INPUT_CLASS}
-                placeholder="Ледовая арена"
+                placeholder={CRM_TRAINING_CREATE_COPY.placeholderLocation}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-400">Заметки</label>
+              <label htmlFor="training-notes" className={LABEL_CLASS}>
+                {CRM_TRAINING_CREATE_COPY.labelNotes}{" "}
+                <span className="text-xs font-normal text-slate-600">({CRM_TRAINING_CREATE_COPY.optional})</span>
+              </label>
               <textarea
+                id="training-notes"
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                rows={3}
+                rows={4}
                 className={INPUT_CLASS}
-                placeholder="Заметки к тренировке..."
+                placeholder={CRM_TRAINING_CREATE_COPY.placeholderNotes}
               />
             </div>
-          </div>
+          </FormSection>
 
-          <div className="flex flex-col gap-3 border-t border-white/10 bg-white/5 px-6 py-4 sm:flex-row sm:items-center">
-            <Button type="submit" disabled={loading}>
-              {loading ? "Сохранение…" : recurring ? "Создать серию тренировок" : "Сохранить тренировку"}
-            </Button>
-            <Link href="/trainings">
-              <Button type="button" variant="secondary">
-                Отмена
+          <div className="flex flex-col gap-4 rounded-2xl border border-white/[0.1] bg-white/[0.03] px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Button type="submit" disabled={loading} className="gap-2 sm:min-w-[200px]">
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+                {loading
+                  ? CRM_TRAINING_CREATE_COPY.submitting
+                  : recurring
+                    ? CRM_TRAINING_CREATE_COPY.submitRecurring
+                    : CRM_TRAINING_CREATE_COPY.submitSingle}
               </Button>
-            </Link>
+              <Link href="/trainings">
+                <Button type="button" variant="secondary">
+                  {CRM_TRAINING_CREATE_COPY.cancel}
+                </Button>
+              </Link>
+            </div>
+            <p className="text-xs leading-relaxed text-slate-600 sm:max-w-[220px] sm:text-right">
+              {recurring ? CRM_TRAINING_CREATE_COPY.footerHintRecurring : CRM_TRAINING_CREATE_COPY.footerHintSingle}
+            </p>
           </div>
+        </form>
         </div>
-      </form>
+      </div>
     </div>
   );
 }

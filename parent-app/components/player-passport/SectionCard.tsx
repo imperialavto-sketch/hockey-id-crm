@@ -5,17 +5,34 @@ type SectionCardVariant = "default" | "primary";
 
 interface SectionCardProps {
   title: string;
+  /** Optional muted line under the title (context / intro). */
+  subtitle?: string;
   children: React.ReactNode;
   style?: ViewStyle;
   /** Primary variant: stronger surface/border for hero sections */
   variant?: SectionCardVariant;
 }
 
-export function SectionCard({ title, children, style, variant = "default" }: SectionCardProps) {
+export function SectionCard({
+  title,
+  subtitle,
+  children,
+  style,
+  variant = "default",
+}: SectionCardProps) {
   const isPrimary = variant === "primary";
   return (
     <View style={[styles.card, isPrimary && styles.cardPrimary, style]}>
-      <Text style={[styles.title, isPrimary && styles.titlePrimary]}>{title}</Text>
+      <Text
+        style={[
+          styles.title,
+          isPrimary && styles.titlePrimary,
+          subtitle ? styles.titleWithSubtitle : styles.titleMarginBottomLg,
+        ]}
+      >
+        {title}
+      </Text>
+      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       {children}
     </View>
   );
@@ -38,10 +55,22 @@ const styles = StyleSheet.create({
     ...typography.sectionTitle,
     fontSize: 17,
     color: colors.text,
-    marginBottom: spacing.lg,
     letterSpacing: -0.3,
+  },
+  titleMarginBottomLg: {
+    marginBottom: spacing.lg,
+  },
+  titleWithSubtitle: {
+    marginBottom: 0,
   },
   titlePrimary: {
     fontWeight: "700",
+  },
+  subtitle: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.textMuted,
+    marginBottom: spacing.lg,
+    marginTop: 2,
   },
 });

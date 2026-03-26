@@ -29,7 +29,7 @@ const HUB_ITEMS: { label: string; path: string; icon: keyof typeof Ionicons.glyp
   { label: "Тренеры", path: "/(tabs)/marketplace", icon: "fitness-outline", description: "Найти тренера и забронировать" },
   { label: "Уведомления", path: "/notifications", icon: "notifications-outline", description: "Сообщения и активность" },
   { label: "Подписка и оплаты", path: "/profile/billing", icon: "card-outline", description: "Тариф и способ оплаты" },
-  { label: "Мои бронирования", path: "/bookings", icon: "calendar-outline", description: "Занятия с тренерами" },
+  { label: "Мои бронирования", path: "/bookings", icon: "calendar-outline", description: "Слоты частных тренеров (маркетплейс)" },
   { label: "Все настройки", path: "/profile/settings", icon: "settings-outline", description: "Подробные настройки приложения" },
 ];
 

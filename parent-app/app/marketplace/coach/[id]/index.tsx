@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback } from "react";
-import { View, StyleSheet } from "react-native";
+import { View, StyleSheet, Text, Pressable } from "react-native";
 import Animated from "react-native-reanimated";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -7,7 +7,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { getPlayers } from "@/services/playerService";
 import { isDev } from "@/config/api";
-import { getCoachForUI } from "@/services/marketplaceService";
+import { getCoachForUI, getMarketplaceCoachSlots } from "@/services/marketplaceService";
+import type { MarketplaceAvailabilitySlot } from "@/services/marketplaceService";
 import { COACH_MARK_ID } from "@/services/chatService";
 import { MOCK_COACHES } from "@/constants/mockCoaches";
 import { MOCK_COACH_REVIEWS } from "@/constants/mockCoachReviews";
@@ -25,6 +26,13 @@ import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
 import { ScreenHeader } from "@/components/navigation/ScreenHeader";
 import { colors, spacing, typography, radius } from "@/constants/theme";
+import { SectionCard } from "@/components/player-passport";
+
+const SLOT_TYPE_LABEL: Record<string, string> = {
+  ice: "Лёд",
+  gym: "Зал",
+  private: "Индив.",
+};
 
 function CoachDetailSkeleton() {
   return (
@@ -50,6 +58,8 @@ export default function CoachDetailScreen() {
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [slots, setSlots] = useState<MarketplaceAvailabilitySlot[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(true);
 
   useEffect(() => {
     if (user?.id) {
@@ -89,6 +99,26 @@ export default function CoachDetailScreen() {
   useEffect(() => {
     loadCoach();
   }, [loadCoach]);
+
+  const loadSlots = useCallback(async () => {
+    if (!id) {
+      setSlotsLoading(false);
+      return;
+    }
+    setSlotsLoading(true);
+    try {
+      const list = await getMarketplaceCoachSlots(id);
+      setSlots(list);
+    } catch {
+      setSlots([]);
+    } finally {
+      setSlotsLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    loadSlots();
+  }, [loadSlots]);
 
   const reviews = useMemo(
     () => (id ? MOCK_COACH_REVIEWS.filter((r) => r.coachId === id) : []),
@@ -145,16 +175,72 @@ export default function CoachDetailScreen() {
     );
   }
 
-  const goToBooking = () => {
+  const goToBooking = (slotId?: string) => {
     triggerHaptic();
-    if (id) router.push(`/marketplace/coach/${id}/booking`);
+    if (!id) return;
+    const q = slotId ? `?slotId=${encodeURIComponent(slotId)}` : "";
+    router.push(`/marketplace/coach/${id}/booking${q}`);
+  };
+
+  const formatSlotDateLabel = (isoDate: string) => {
+    if (!isoDate || isoDate.length < 10) return isoDate;
+    try {
+      return new Date(`${isoDate}T12:00:00`).toLocaleDateString("ru-RU", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+      });
+    } catch {
+      return isoDate;
+    }
   };
 
   return (
     <FlagshipScreen header={header}>
       <Animated.View entering={screenReveal(0)}>
-        <VerifiedCoachHero coach={coach} onBook={goToBooking} />
+        <VerifiedCoachHero coach={coach} onBook={() => goToBooking()} />
       </Animated.View>
+
+      <Animated.View entering={screenReveal(STAGGER * 0.5)} style={styles.slotsSection}>
+        <SectionCard title="Свободные слоты">
+          {slotsLoading ? (
+            <Text style={styles.slotsHint}>Загрузка расписания…</Text>
+          ) : slots.length === 0 ? (
+            <Text style={styles.slotsHint}>
+              Пока нет свободных окон. Загляните позже или оставьте заявку тренеру.
+            </Text>
+          ) : (
+            <View style={styles.slotList}>
+              {slots.slice(0, 12).map((s) => (
+                <Pressable
+                  key={s.id}
+                  onPress={() => goToBooking(s.id)}
+                  style={({ pressed }) => [
+                    styles.slotRow,
+                    pressed && { opacity: 0.85 },
+                  ]}
+                >
+                  <View style={styles.slotRowMain}>
+                    <Text style={styles.slotDate}>{formatSlotDateLabel(s.date)}</Text>
+                    <Text style={styles.slotTime}>
+                      {s.startTime} – {s.endTime}
+                    </Text>
+                  </View>
+                  <View style={styles.slotRowMeta}>
+                    <Text style={styles.slotType}>
+                      {SLOT_TYPE_LABEL[s.type] ?? s.type}
+                    </Text>
+                    <Text style={styles.slotPrice}>
+                      {s.price.toLocaleString("ru")} ₽
+                    </Text>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </SectionCard>
+      </Animated.View>
+
       <View style={styles.spacer} />
 
       <Animated.View entering={screenReveal(STAGGER)}>
@@ -210,7 +296,7 @@ export default function CoachDetailScreen() {
       >
         <PrimaryButton
           label="Записаться на тренировку"
-          onPress={goToBooking}
+          onPress={() => goToBooking()}
         />
       </Animated.View>
     </FlagshipScreen>
@@ -251,6 +337,51 @@ const styles = StyleSheet.create({
   errorWrap: { flex: 1 },
 
   spacer: { height: spacing.sectionGap },
+
+  slotsSection: {
+    paddingHorizontal: spacing.screenPadding,
+    marginTop: spacing.lg,
+  },
+  slotsHint: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
+  slotList: { gap: spacing.sm },
+  slotRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.surfaceLevel1,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.surfaceLevel1Border,
+  },
+  slotRowMain: { flex: 1, minWidth: 0 },
+  slotDate: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  slotTime: {
+    ...typography.body,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  slotRowMeta: { alignItems: "flex-end", marginLeft: spacing.md },
+  slotType: {
+    ...typography.captionSmall,
+    color: colors.textMuted,
+    marginBottom: 4,
+  },
+  slotPrice: {
+    ...typography.bodySmall,
+    fontWeight: "700",
+    color: colors.accent,
+  },
+
   ctaWrap: {
     marginTop: spacing.xxl,
   },

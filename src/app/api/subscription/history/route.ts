@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthFromRequest } from "@/lib/api-auth";
-import { prisma } from "@/lib/prisma";
+import { getParentSubscriptionHistory } from "@/lib/subscription-parent";
 
 export async function GET(req: NextRequest) {
   const user = await getAuthFromRequest(req);
@@ -11,21 +11,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const records = await prisma.subscriptionBillingRecord.findMany({
-    where: { parentId: user.parentId },
-    orderBy: { date: "desc" },
-  });
-
-  const items = records.map((r) => ({
-    id: r.id,
-    date: r.date.toISOString(),
-    productName: r.productName,
-    amount: r.amount,
-    currency: r.currency,
-    status: r.status,
-    type: r.type,
-  }));
-
+  const items = await getParentSubscriptionHistory(user.parentId);
   return NextResponse.json(items);
 }
 

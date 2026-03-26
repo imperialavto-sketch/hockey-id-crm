@@ -6,10 +6,17 @@
 import { getCoachParentDrafts } from "@/services/coachParentDraftsService";
 
 export interface ParentDraftItem {
-  playerId: string;
+  id: string;
+  playerId: string | null;
   playerName: string;
   message: string;
   preview: string;
+  /** ISO 8601 from API when present */
+  updatedAt?: string | null;
+  /** Origin of the draft when API sends it */
+  source?: "parent_draft" | "session_draft" | null;
+  /** Только для standalone; у session_draft нет. */
+  voiceNoteId?: string | null;
 }
 
 /**

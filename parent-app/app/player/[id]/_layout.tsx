@@ -30,6 +30,10 @@ export default function PlayerIdLayout() {
         options={{ title: "AI видео-анализ", headerShown: false }}
       />
       <Stack.Screen
+        name="coach-materials"
+        options={{ title: "Материалы тренера", headerShown: false }}
+      />
+      <Stack.Screen
         name="passport"
         options={{ title: "Паспорт игрока", headerShown: false }}
       />

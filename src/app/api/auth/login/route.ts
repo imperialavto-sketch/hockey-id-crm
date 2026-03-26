@@ -53,6 +53,7 @@ const DEMO_USERS: Record<string, DemoUser> = {
   },
 };
 const DEMO_PASSWORD = "admin123";
+const isDemoAuthEnabled = process.env.DEMO_AUTH_ENABLED === "true";
 
 function checkDemoUser(email: string, password: string) {
   if (password !== DEMO_PASSWORD) return null;
@@ -70,7 +71,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const demo = checkDemoUser(String(email), String(password));
+  const demo = isDemoAuthEnabled
+    ? checkDemoUser(String(email), String(password))
+    : null;
   if (demo) {
     let parentId = demo.user.parentId ?? null;
     let teamId = demo.user.teamId ?? null;
@@ -92,6 +95,8 @@ export async function POST(req: NextRequest) {
       } catch {
         /* DB may be unavailable in pure demo mode */
       }
+      // Keep parent-compatible token shape even in pure demo mode.
+      if (!parentId) parentId = demo.user.id;
     }
     if ((demo.user.role === "COACH" || demo.user.role === "MAIN_COACH") && !teamId && schoolId) {
       try {
@@ -123,6 +128,12 @@ export async function POST(req: NextRequest) {
       secure: process.env.NODE_ENV === "production",
     });
     return res;
+  }
+  if (!isDemoAuthEnabled) {
+    return NextResponse.json(
+      { error: "Demo auth disabled" },
+      { status: 403 }
+    );
   }
   return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
 }

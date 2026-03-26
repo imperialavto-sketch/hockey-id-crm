@@ -15,6 +15,7 @@ export interface CoachCardData {
   reviewsCount: number;
   price: number;
   photoUrl: string;
+  formatsLine?: string;
   verified?: boolean;
   bio?: string;
 }
@@ -76,6 +77,11 @@ export function CoachCard({ coach, onPress, matchInfo }: CoachCardProps) {
             <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{coach.fullName}</Text>
             <Text style={styles.spec} numberOfLines={1} ellipsizeMode="tail">{coach.specialization}</Text>
             <Text style={styles.city} numberOfLines={1} ellipsizeMode="tail">{coach.city}</Text>
+            {!!coach.formatsLine?.trim() && (
+              <Text style={styles.formatsLine} numberOfLines={1} ellipsizeMode="tail">
+                {coach.formatsLine}
+              </Text>
+            )}
             {(shortBio || topReason) && (
               <Text style={styles.desc} numberOfLines={2}>
                 {shortBio || topReason}
@@ -161,6 +167,11 @@ const styles = StyleSheet.create({
   city: {
     ...typography.captionSmall,
     color: colors.textMuted,
+    marginBottom: spacing.xs,
+  },
+  formatsLine: {
+    ...typography.captionSmall,
+    color: colors.textSecondary,
     marginBottom: spacing.sm,
   },
   desc: {

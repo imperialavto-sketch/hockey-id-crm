@@ -28,17 +28,20 @@ export async function GET(req: NextRequest) {
 
   try {
     const accessibleIds = await getAccessiblePlayerIds(user!, prisma);
-    if (accessibleIds.length === 0) {
+    if (accessibleIds !== null && accessibleIds.length === 0) {
       return NextResponse.json([]);
     }
 
     const { searchParams } = new URL(req.url);
     const teamId = searchParams.get("teamId")?.trim() || null;
 
-    const where: { id: { in: string[] }; teamId?: string | null } = {
-      id: { in: accessibleIds },
-    };
-    if (teamId) where.teamId = teamId;
+    const where: { id?: { in: string[] }; teamId?: string | null } = {};
+    if (accessibleIds !== null) {
+      where.id = { in: accessibleIds };
+    }
+    if (teamId) {
+      where.teamId = teamId;
+    }
 
     const players = await prisma.player.findMany({
       where,

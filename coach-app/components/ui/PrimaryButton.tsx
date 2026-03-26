@@ -6,7 +6,16 @@ import {
   ViewStyle,
   TextStyle,
 } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { theme } from '@/constants/theme';
+
+const PRESS_IN = { duration: 100 };
+const SPRING_OUT = { damping: 18, stiffness: 220 };
 
 type PrimaryButtonProps = {
   title: string;
@@ -15,6 +24,8 @@ type PrimaryButtonProps = {
   disabled?: boolean;
   style?: ViewStyle;
   textStyle?: TextStyle;
+  /** Плавное scale/opacity при нажатии (reanimated). */
+  animatedPress?: boolean;
 };
 
 export function PrimaryButton({
@@ -24,9 +35,58 @@ export function PrimaryButton({
   disabled = false,
   style,
   textStyle,
+  animatedPress = false,
 }: PrimaryButtonProps) {
   const isOutline = variant === 'outline';
   const isGhost = variant === 'ghost';
+  const scale = useSharedValue(1);
+  const opacity = useSharedValue(1);
+
+  const motionStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
+  if (animatedPress) {
+    return (
+      <Pressable
+        onPress={onPress}
+        disabled={disabled}
+        onPressIn={() => {
+          if (disabled) return;
+          scale.value = withTiming(0.985, PRESS_IN);
+          opacity.value = withTiming(0.93, PRESS_IN);
+        }}
+        onPressOut={() => {
+          scale.value = withSpring(1, SPRING_OUT);
+          opacity.value = withTiming(1, PRESS_IN);
+        }}
+      >
+        <Animated.View
+          style={[
+            styles.button,
+            isOutline && styles.outline,
+            isGhost && styles.ghost,
+            disabled && styles.disabled,
+            style,
+            motionStyle,
+          ]}
+        >
+          <Text
+            style={[
+              styles.text,
+              isOutline && styles.outlineText,
+              isGhost && styles.ghostText,
+              disabled && styles.disabledText,
+              textStyle,
+            ]}
+          >
+            {title}
+          </Text>
+        </Animated.View>
+      </Pressable>
+    );
+  }
 
   return (
     <Pressable

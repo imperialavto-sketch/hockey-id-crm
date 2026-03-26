@@ -105,6 +105,7 @@ export async function GET(
       coachId: s.coachId,
       coach: s.coach,
       type: s.type,
+      subType: s.subType,
       startAt: s.startAt.toISOString(),
       endAt: s.endAt.toISOString(),
       locationName: s.locationName,

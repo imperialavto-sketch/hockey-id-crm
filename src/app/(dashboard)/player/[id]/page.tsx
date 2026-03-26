@@ -26,6 +26,7 @@ import {
   Lightbulb,
   Target,
   Trophy,
+  ChevronRight,
 } from "lucide-react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
@@ -35,6 +36,7 @@ import {
 } from "@/components/player/PassportCharts";
 import { PassportPDFExport } from "@/components/player/PassportPDFExport";
 import { usePermissions } from "@/hooks/usePermissions";
+import { CRM_RATING_DETAIL_COPY } from "@/lib/crmRatingDetailCopy";
 
 interface Team {
   id: string;
@@ -154,6 +156,8 @@ export default function PlayerCareerPassportPage() {
   const [aiData, setAiData] = useState<AIData | null>(null);
   const [rankingData, setRankingData] = useState<RankingData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
   const passportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -161,12 +165,29 @@ export default function PlayerCareerPassportPage() {
       setLoading(false);
       return;
     }
+    setLoading(true);
+    setFetchError(false);
     fetch(`/api/player/${id}`)
-      .then((r) => r.json())
-      .then((data) => (data?.id ? setPlayer(data) : setPlayer(null)))
-      .catch(() => setPlayer(null))
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error("fetch failed");
+        return data;
+      })
+      .then((data) => {
+        if (data?.id) {
+          setPlayer(data);
+          setFetchError(false);
+        } else {
+          setPlayer(null);
+          setFetchError(false);
+        }
+      })
+      .catch(() => {
+        setPlayer(null);
+        setFetchError(true);
+      })
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, reloadTick]);
 
   useEffect(() => {
     if (!id) return;
@@ -188,19 +209,96 @@ export default function PlayerCareerPassportPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-12 w-12 animate-spin text-neon-blue" />
+      <div className="overflow-x-hidden px-4 py-6 sm:px-6 md:px-8">
+        <div className="mx-auto max-w-7xl">
+          <Card className="rounded-2xl border-white/[0.08] p-0 hover:border-white/[0.08]">
+            <div className="flex min-h-[40vh] flex-col items-center justify-center gap-4 py-16">
+              <Loader2 className="h-10 w-10 animate-spin text-neon-blue" aria-hidden />
+              <div className="text-center">
+                <p className="font-display text-base font-semibold text-white">{CRM_RATING_DETAIL_COPY.loadingTitle}</p>
+                <p className="mt-1 text-sm text-slate-500">{CRM_RATING_DETAIL_COPY.loadingHint}</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className="overflow-x-hidden px-4 py-6 sm:px-6 md:px-8">
+        <div className="mx-auto max-w-7xl space-y-8">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <Link
+              href="/ratings"
+              className="inline-flex items-center gap-2 text-sm text-slate-400 transition-colors hover:text-neon-blue"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden />
+              {CRM_RATING_DETAIL_COPY.backRatings}
+            </Link>
+            <Link
+              href="/dashboard"
+              className="text-sm font-medium text-slate-500 transition-colors hover:text-neon-blue"
+            >
+              {CRM_RATING_DETAIL_COPY.backDashboard}
+            </Link>
+          </div>
+          <div
+            className="flex flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"
+            role="alert"
+          >
+            <div>
+              <p className="font-medium text-amber-100">{CRM_RATING_DETAIL_COPY.errorTitle}</p>
+              <p className="mt-0.5 text-sm text-amber-200/80">{CRM_RATING_DETAIL_COPY.errorHint}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setReloadTick((x) => x + 1)}
+              className="shrink-0 rounded-xl border border-amber-400/40 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/15"
+            >
+              {CRM_RATING_DETAIL_COPY.retryCta}
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (!player) {
     return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 p-8">
-        <p className="text-slate-400">Игрок не найден</p>
-        <Link href="/players" className="text-neon-blue hover:text-neon-cyan">
-          ← Назад к игрокам
-        </Link>
+      <div className="overflow-x-hidden px-4 py-6 sm:px-6 md:px-8">
+        <div className="mx-auto max-w-7xl space-y-8">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <Link
+              href="/ratings"
+              className="inline-flex items-center gap-2 text-sm text-slate-400 transition-colors hover:text-neon-blue"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden />
+              {CRM_RATING_DETAIL_COPY.backRatings}
+            </Link>
+            <Link
+              href="/dashboard"
+              className="text-sm font-medium text-slate-500 transition-colors hover:text-neon-blue"
+            >
+              {CRM_RATING_DETAIL_COPY.backDashboard}
+            </Link>
+          </div>
+          <div className="mx-auto max-w-2xl">
+            <Card className="border-white/[0.08] p-8 text-center">
+              <p className="font-display text-lg font-semibold text-white">{CRM_RATING_DETAIL_COPY.notFoundTitle}</p>
+              <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500">{CRM_RATING_DETAIL_COPY.notFoundHint}</p>
+              <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+                <Link href="/ratings" className="inline-flex">
+                  <Button variant="secondary">{CRM_RATING_DETAIL_COPY.notFoundBackRatings}</Button>
+                </Link>
+                <Link href="/players" className="inline-flex">
+                  <Button>{CRM_RATING_DETAIL_COPY.notFoundBackPlayers}</Button>
+                </Link>
+              </div>
+            </Card>
+          </div>
+        </div>
       </div>
     );
   }
@@ -212,15 +310,32 @@ export default function PlayerCareerPassportPage() {
     : null;
 
   return (
-    <div className="p-6 sm:p-8">
-      <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
+    <div className="overflow-x-hidden px-4 py-6 sm:px-6 md:px-8">
+      <div className="mx-auto max-w-7xl space-y-8">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-3">
         <Link
-          href="/players"
+          href="/ratings"
           className="inline-flex items-center gap-2 text-sm text-slate-400 transition-colors hover:text-neon-blue"
         >
           <ArrowLeft className="h-4 w-4" />
-          Назад к игрокам
+          {CRM_RATING_DETAIL_COPY.backRatings}
         </Link>
+        <Link
+          href="/players"
+          className="inline-flex items-center gap-2 text-sm text-slate-500 transition-colors hover:text-neon-blue"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {CRM_RATING_DETAIL_COPY.backPlayers}
+        </Link>
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-1 text-sm text-slate-500 transition-colors hover:text-neon-blue"
+        >
+          {CRM_RATING_DETAIL_COPY.backDashboard}
+          <ChevronRight className="h-3.5 w-3.5 opacity-60" aria-hidden />
+        </Link>
+        </div>
         <div className="flex items-center gap-3">
           <PassportPDFExport
             contentRef={passportRef}
@@ -239,7 +354,7 @@ export default function PlayerCareerPassportPage() {
 
       <div ref={passportRef} className="space-y-8">
         {/* Профиль игрока — Hero */}
-        <Card className="overflow-hidden border-neon-blue/30 bg-gradient-to-br from-dark-800 to-dark-900">
+        <Card className="overflow-hidden border-white/[0.08] bg-gradient-to-br from-white/[0.06] to-transparent">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
             <div className="flex shrink-0 justify-center sm:justify-start">
               {player.photoUrl ? (
@@ -257,9 +372,13 @@ export default function PlayerCareerPassportPage() {
               )}
             </div>
             <div className="flex-1 space-y-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-neon-blue/90">
+                {CRM_RATING_DETAIL_COPY.heroEyebrow}
+              </p>
               <h1 className="font-display text-3xl font-bold tracking-tight text-white sm:text-4xl">
                 {player.firstName} {player.lastName}
               </h1>
+              <p className="max-w-2xl text-sm leading-relaxed text-slate-400">{CRM_RATING_DETAIL_COPY.heroSubtitle}</p>
               <div className="flex flex-wrap gap-x-6 gap-y-2 text-slate-400">
                 <span className="flex items-center gap-1.5">
                   <Users className="h-4 w-4" />
@@ -445,15 +564,16 @@ export default function PlayerCareerPassportPage() {
 
         {/* Player Ranking */}
         {rankingData && (
-          <Card className="overflow-hidden border-neon-blue/20 bg-gradient-to-br from-dark-800 to-dark-900">
-            <div className="border-b border-white/10 px-6 py-4">
-              <h2 className="flex items-center gap-2 font-display text-xl font-semibold text-white">
-                <Trophy className="h-5 w-5 text-neon-blue" />
-                Player Ranking
-              </h2>
-              <p className="mt-1 text-sm text-slate-400">
-                Рейтинг на основе AI Development Index, статистики, посещаемости, оценок тренеров и достижений
+          <Card className="overflow-hidden border-white/[0.08] bg-white/[0.02] p-0">
+            <div className="border-b border-white/[0.08] bg-white/[0.02] px-5 py-4 sm:px-6">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                {CRM_RATING_DETAIL_COPY.rankingKicker}
               </p>
+              <h2 className="mt-0.5 flex items-center gap-2 font-display text-base font-semibold tracking-tight text-white sm:text-lg">
+                <Trophy className="h-4.5 w-4.5 text-slate-400" />
+                {CRM_RATING_DETAIL_COPY.rankingTitle}
+              </h2>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600">{CRM_RATING_DETAIL_COPY.rankingHint}</p>
             </div>
             <div className="p-6">
               <div className="flex flex-col gap-6 sm:flex-row sm:flex-wrap sm:items-center">
@@ -489,11 +609,9 @@ export default function PlayerCareerPassportPage() {
                   </div>
                 </div>
               </div>
-              <Link
-                href="/ratings"
-                className="mt-4 inline-flex items-center gap-2 text-sm text-neon-blue hover:text-neon-cyan"
-              >
-                Смотреть полный рейтинг →
+              <Link href="/ratings" className="mt-4 inline-flex items-center gap-1 text-sm text-slate-400 hover:text-neon-blue">
+                {CRM_RATING_DETAIL_COPY.backRatings}
+                <ChevronRight className="h-4 w-4 opacity-60" aria-hidden />
               </Link>
             </div>
           </Card>
@@ -714,11 +832,18 @@ export default function PlayerCareerPassportPage() {
           </Card>
 
           {/* Оценки тренеров */}
-          <Card>
-            <h2 className="mb-4 flex items-center gap-2 font-display text-xl font-semibold text-white">
-              <Star className="h-5 w-5 text-neon-blue" />
-              Оценки тренеров
-            </h2>
+          <Card className="overflow-hidden border-white/[0.08] p-0">
+            <div className="border-b border-white/[0.08] bg-white/[0.02] px-5 py-4 sm:px-6">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                {CRM_RATING_DETAIL_COPY.coachRatingsKicker}
+              </p>
+              <h2 className="mt-0.5 flex items-center gap-2 font-display text-base font-semibold tracking-tight text-white sm:text-lg">
+                <Star className="h-4.5 w-4.5 text-slate-400" />
+                {CRM_RATING_DETAIL_COPY.coachRatingsTitle}
+              </h2>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600">{CRM_RATING_DETAIL_COPY.coachRatingsHint}</p>
+            </div>
+            <div className="p-5 sm:p-6">
             {(player.coachRatings?.length ?? 0) > 0 ? (
               <ul className="space-y-4">
                 {player.coachRatings?.map((r) => (
@@ -747,8 +872,10 @@ export default function PlayerCareerPassportPage() {
             ) : (
               <p className="text-slate-500">Оценок пока нет</p>
             )}
+            </div>
           </Card>
         </div>
+      </div>
       </div>
     </div>
   );

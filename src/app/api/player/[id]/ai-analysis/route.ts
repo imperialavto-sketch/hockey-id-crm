@@ -4,7 +4,7 @@
  * Reads player from PostgreSQL, latest player_stats, latest ai_analyses from DB.
  * If ai_analyses record exists, returns it with basedOn.previousAnalysis = true.
  * If not, generates via generatePlayerAnalysis, saves to AiAnalysis, then returns.
- * Auth: CRM (session) or Parent (X-Parent-Id header).
+ * Auth: CRM (session/cookie) or Parent (Bearer token).
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -149,14 +149,18 @@ export async function GET(
         progressHistory,
       });
 
-      await saveAiAnalysis({
-        playerId: id,
-        summary: analysis.summary,
-        strengths: analysis.strengths ?? [],
-        weaknesses: analysis.growthAreas ?? [],
-        recommendations: analysis.recommendations ?? [],
-        score: null,
-      });
+      try {
+        await saveAiAnalysis({
+          playerId: id,
+          summary: analysis.summary,
+          strengths: analysis.strengths ?? [],
+          weaknesses: analysis.growthAreas ?? [],
+          recommendations: analysis.recommendations ?? [],
+          score: null,
+        });
+      } catch (saveErr) {
+        console.warn("saveAiAnalysis failed (table may be missing), returning without persist:", saveErr instanceof Error ? saveErr.message : saveErr);
+      }
 
       response = {
         playerId: id,
@@ -177,10 +181,7 @@ export async function GET(
   } catch (error) {
     console.error("GET /api/player/[id]/ai-analysis failed:", error);
     return NextResponse.json(
-      {
-        error: "Ошибка формирования анализа",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
+      { error: "Ошибка формирования анализа" },
       { status: 500 }
     );
   }

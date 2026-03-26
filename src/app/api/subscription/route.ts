@@ -13,16 +13,20 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const planId = body?.planId as string | undefined;
-  if (!planId) {
+  const o = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  // parentId from body is ignored — we use user.parentId from auth only
+  const planId = typeof o.planId === "string" ? o.planId.trim() : undefined;
+  const planCode = typeof o.planCode === "string" ? o.planCode.trim() : undefined;
+  const planKey = planId || planCode;
+  if (!planKey) {
     return NextResponse.json(
-      { error: "planId обязателен" },
+      { error: "planId или planCode обязателен" },
       { status: 400 }
     );
   }
 
   const plan = SUBSCRIPTION_STUB_PLANS.find(
-    (p) => p.id === planId || p.code === planId
+    (p) => p.id === planKey || p.code === planKey
   );
   if (!plan) {
     return NextResponse.json(

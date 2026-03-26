@@ -22,23 +22,31 @@ function jsonToStringArray(value: unknown): string[] {
   return [];
 }
 
+/**
+ * Returns null when table is missing or on DB error (dev-safe).
+ */
 export async function getLatestAiAnalysisForPlayer(
   playerId: string
 ): Promise<StoredAiAnalysis | null> {
-  const row = await prisma.aiAnalysis.findFirst({
-    where: { playerId },
-    orderBy: { createdAt: "desc" },
-  });
-  if (!row) return null;
-  return {
-    playerId: row.playerId,
-    summary: row.summary,
-    strengths: jsonToStringArray(row.strengths),
-    weaknesses: jsonToStringArray(row.weaknesses),
-    recommendations: jsonToStringArray(row.recommendations),
-    score: row.score,
-    createdAt: row.createdAt,
-  };
+  try {
+    const row = await prisma.aiAnalysis.findFirst({
+      where: { playerId },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!row) return null;
+    return {
+      playerId: row.playerId,
+      summary: row.summary,
+      strengths: jsonToStringArray(row.strengths),
+      weaknesses: jsonToStringArray(row.weaknesses),
+      recommendations: jsonToStringArray(row.recommendations),
+      score: row.score,
+      createdAt: row.createdAt,
+    };
+  } catch (err) {
+    console.warn("getLatestAiAnalysisForPlayer failed (table may be missing):", err instanceof Error ? err.message : err);
+    return null;
+  }
 }
 
 export interface SaveAiAnalysisInput {

@@ -10,11 +10,21 @@ export async function GET(req: NextRequest) {
     let coachId = searchParams.get("coachId");
 
     if (!coachId) {
-      const firstCoach = await prisma.coach.findFirst();
+      const firstCoach = await prisma.coach.findFirst({
+        where: { isMarketplaceIndependent: false },
+      });
       coachId = firstCoach?.id ?? null;
     }
 
     if (!coachId) {
+      return NextResponse.json([]);
+    }
+
+    const coachRow = await prisma.coach.findUnique({
+      where: { id: coachId },
+      select: { isMarketplaceIndependent: true },
+    });
+    if (coachRow?.isMarketplaceIndependent) {
       return NextResponse.json([]);
     }
 
@@ -68,13 +78,26 @@ export async function POST(req: NextRequest) {
 
     let coachId = paramCoachId;
     if (!coachId) {
-      const firstCoach = await prisma.coach.findFirst();
+      const firstCoach = await prisma.coach.findFirst({
+        where: { isMarketplaceIndependent: false },
+      });
       coachId = firstCoach?.id;
     }
 
     if (!coachId) {
       return NextResponse.json(
         { error: "Тренер не найден. Добавьте тренера в систему." },
+        { status: 400 }
+      );
+    }
+
+    const coachCheck = await prisma.coach.findUnique({
+      where: { id: coachId },
+      select: { isMarketplaceIndependent: true },
+    });
+    if (coachCheck?.isMarketplaceIndependent) {
+      return NextResponse.json(
+        { error: "Школьные занятия недоступны для независимого тренера маркетплейса" },
         { status: 400 }
       );
     }

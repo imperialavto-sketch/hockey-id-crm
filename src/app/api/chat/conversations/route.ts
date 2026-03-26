@@ -9,14 +9,12 @@ import { prisma } from "@/lib/prisma";
 import { getAuthFromRequest } from "@/lib/api-auth";
 import { canParentAccessPlayer } from "@/lib/parent-access";
 import { getOrCreateConversation } from "@/lib/chat";
+import { apiError } from "@/lib/api-error";
 
 export async function GET(req: NextRequest) {
   const user = await getAuthFromRequest(req);
   if (!user) {
-    return NextResponse.json(
-      { error: "Необходима авторизация" },
-      { status: 401 }
-    );
+    return apiError("UNAUTHORIZED", "Необходима авторизация", 401);
   }
 
   try {
@@ -115,46 +113,31 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json([]);
   } catch (error) {
-    console.error("GET /api/chat/conversations failed:", error);
-    return NextResponse.json(
-      { error: "Ошибка загрузки чатов", details: error instanceof Error ? error.message : "" },
-      { status: 500 }
-    );
+    console.error("GET /api/chat/conversations error:", error);
+    return apiError("INTERNAL_ERROR", "Internal server error", 500);
   }
 }
 
 export async function POST(req: NextRequest) {
   const user = await getAuthFromRequest(req);
   if (!user) {
-    return NextResponse.json(
-      { error: "Необходима авторизация" },
-      { status: 401 }
-    );
+    return apiError("UNAUTHORIZED", "Необходима авторизация", 401);
   }
 
   if (user.role !== "PARENT" || !user.parentId) {
-    return NextResponse.json(
-      { error: "Доступно только родителям" },
-      { status: 403 }
-    );
+    return apiError("FORBIDDEN", "Доступно только родителям", 403);
   }
 
   try {
     const body = await req.json().catch(() => ({}));
     const playerId = body?.playerId;
     if (!playerId || typeof playerId !== "string") {
-      return NextResponse.json(
-        { error: "Укажите playerId" },
-        { status: 400 }
-      );
+      return apiError("VALIDATION_ERROR", "Укажите playerId", 400);
     }
 
     const canAccess = await canParentAccessPlayer(user.parentId, playerId);
     if (!canAccess) {
-      return NextResponse.json(
-        { error: "Нет доступа к этому игроку" },
-        { status: 403 }
-      );
+      return apiError("FORBIDDEN", "Нет доступа к этому игроку", 403);
     }
 
     const player = await prisma.player.findUnique({
@@ -163,14 +146,15 @@ export async function POST(req: NextRequest) {
     });
 
     if (!player) {
-      return NextResponse.json({ error: "Игрок не найден" }, { status: 404 });
+      return apiError("NOT_FOUND", "Игрок не найден", 404);
     }
 
     const coachId = player.team?.coachId;
     if (!coachId) {
-      return NextResponse.json(
-        { error: "У команды игрока нет назначенного тренера" },
-        { status: 400 }
+      return apiError(
+        "VALIDATION_ERROR",
+        "У команды игрока нет назначенного тренера",
+        400
       );
     }
 
@@ -191,10 +175,7 @@ export async function POST(req: NextRequest) {
       updatedAt: conv.updatedAt.toISOString(),
     });
   } catch (error) {
-    console.error("POST /api/chat/conversations failed:", error);
-    return NextResponse.json(
-      { error: "Ошибка создания чата", details: error instanceof Error ? error.message : "" },
-      { status: 500 }
-    );
+    console.error("POST /api/chat/conversations error:", error);
+    return apiError("INTERNAL_ERROR", "Internal server error", 500);
   }
 }

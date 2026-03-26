@@ -11,14 +11,17 @@ import { getParentTeamIds } from "@/lib/feed/getParentTeamIds";
 import { sendPushToParents } from "@/lib/notifications/sendPush";
 import { getParentIdsForTeam } from "@/lib/notifications/getParentsForTeam";
 import { canAccessTeam } from "@/lib/data-scope";
+import { apiError } from "@/lib/api-error";
 
 export async function GET(req: NextRequest) {
+  console.log("[API]", {
+    path: "/api/feed",
+    method: "GET",
+    time: new Date().toISOString(),
+  });
   const user = await getAuthFromRequest(req);
   if (!user) {
-    return NextResponse.json(
-      { error: "Необходима авторизация" },
-      { status: 401 }
-    );
+    return apiError("UNAUTHORIZED", "Необходима авторизация", 401);
   }
 
   try {
@@ -73,18 +76,17 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(mapped);
   } catch (error) {
-    console.error("GET /api/feed failed:", error);
-    return NextResponse.json(
-      {
-        error: "Ошибка загрузки ленты",
-        details: error instanceof Error ? error.message : "",
-      },
-      { status: 500 }
-    );
+    console.error("GET /api/feed error:", error);
+    return apiError("INTERNAL_ERROR", "Internal server error", 500);
   }
 }
 
 export async function POST(req: NextRequest) {
+  console.log("[API]", {
+    path: "/api/feed",
+    method: "POST",
+    time: new Date().toISOString(),
+  });
   const { user, res } = await requirePermission(req, "trainings", "create");
   if (res) return res;
 
@@ -93,9 +95,10 @@ export async function POST(req: NextRequest) {
     const { teamId, type, title, body: bodyText, imageUrl, isPinned } = body;
 
     if (!teamId || !type || !title || typeof bodyText !== "string") {
-      return NextResponse.json(
-        { error: "teamId, type, title и body обязательны" },
-        { status: 400 }
+      return apiError(
+        "VALIDATION_ERROR",
+        "teamId, type, title и body обязательны",
+        400
       );
     }
 
@@ -107,10 +110,7 @@ export async function POST(req: NextRequest) {
       "photo_post",
     ];
     if (!validTypes.includes(type)) {
-      return NextResponse.json(
-        { error: "Некорректный тип публикации" },
-        { status: 400 }
-      );
+      return apiError("VALIDATION_ERROR", "Некорректный тип публикации", 400);
     }
 
     const team = await prisma.team.findUnique({
@@ -118,12 +118,12 @@ export async function POST(req: NextRequest) {
       include: { coach: true, school: { select: { id: true } } },
     });
     if (!team) {
-      return NextResponse.json({ error: "Команда не найдена" }, { status: 404 });
+      return apiError("NOT_FOUND", "Команда не найдена", 404);
     }
 
     const teamLike = { id: team.id, schoolId: team.schoolId };
     if (!canAccessTeam(user!, teamLike)) {
-      return NextResponse.json({ error: "Нет доступа к этой команде" }, { status: 403 });
+      return apiError("FORBIDDEN", "Нет доступа к этой команде", 403);
     }
 
     let authorName = user?.name ?? "Тренер";
@@ -185,13 +185,7 @@ export async function POST(req: NextRequest) {
       publishedAt: post.publishedAt?.toISOString() ?? null,
     });
   } catch (error) {
-    console.error("POST /api/feed failed:", error);
-    return NextResponse.json(
-      {
-        error: "Ошибка создания публикации",
-        details: error instanceof Error ? error.message : "",
-      },
-      { status: 500 }
-    );
+    console.error("POST /api/feed error:", error);
+    return apiError("INTERNAL_ERROR", "Internal server error", 500);
   }
 }

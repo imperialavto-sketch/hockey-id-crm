@@ -56,3 +56,46 @@ export async function getCoachPlayerDetail(
     return null;
   }
 }
+
+/** GET /api/players/:id/attendance-summary — период по календарным дням UTC (YYYY-MM-DD). */
+export interface PlayerAttendanceSummary {
+  totalSessions: number;
+  presentCount: number;
+  absentCount: number;
+  attendanceRate: number;
+}
+
+function formatYmdUTC(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Последние `days` календарных дней до сегодня (UTC). */
+export function getAttendanceSummaryRangeDays(days: number): {
+  fromDate: string;
+  toDate: string;
+} {
+  const to = new Date();
+  const from = new Date(to);
+  from.setUTCDate(from.getUTCDate() - days);
+  return { fromDate: formatYmdUTC(from), toDate: formatYmdUTC(to) };
+}
+
+export async function getPlayerAttendanceSummary(
+  playerId: string,
+  fromDate: string,
+  toDate: string
+): Promise<PlayerAttendanceSummary | null> {
+  try {
+    const headers = await getCoachAuthHeaders();
+    const qs = new URLSearchParams({ fromDate, toDate });
+    return await apiFetch<PlayerAttendanceSummary>(
+      `/api/players/${encodeURIComponent(playerId)}/attendance-summary?${qs.toString()}`,
+      { method: "GET", headers }
+    );
+  } catch {
+    return null;
+  }
+}

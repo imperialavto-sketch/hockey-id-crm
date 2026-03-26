@@ -20,15 +20,34 @@ export async function GET(req: NextRequest) {
 
     const requests = await prisma.coachBookingRequest.findMany({
       where,
-      include: { coach: { select: { fullName: true, city: true } } },
+      include: {
+        coach: { select: { fullName: true, city: true } },
+        independentCoach: {
+          select: {
+            displayName: true,
+            firstName: true,
+            lastName: true,
+            city: true,
+          },
+        },
+      },
       orderBy: { createdAt: "desc" },
     });
 
-    const mapped = requests.map((r) => ({
+    const mapped = requests.map((r) => {
+      const indieName =
+        r.independentCoach?.displayName?.trim() ||
+        [r.independentCoach?.firstName, r.independentCoach?.lastName]
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+      return {
       id: r.id,
-      coachId: r.coachId,
-      coachName: r.coach?.fullName ?? "—",
-      coachCity: r.coach?.city ?? "—",
+      coachId: r.coachId ?? r.independentCoachId ?? null,
+      coachProfileId: r.coachId,
+      independentCoachId: r.independentCoachId,
+      coachName: r.coach?.fullName ?? (indieName || "—"),
+      coachCity: r.coach?.city ?? r.independentCoach?.city ?? "—",
       parentId: r.parentId,
       parentName: r.parentName,
       parentPhone: r.parentPhone,
@@ -38,7 +57,8 @@ export async function GET(req: NextRequest) {
       status: r.status,
       createdAt: r.createdAt.toISOString(),
       updatedAt: r.updatedAt.toISOString(),
-    }));
+    };
+    });
 
     return NextResponse.json(mapped);
   } catch (error) {

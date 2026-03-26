@@ -10,6 +10,7 @@ import {
   verifyAndConsumeCode,
 } from "@/lib/phoneCodeStore";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { createParentSessionToken } from "@/lib/api-auth";
 
 const VERIFY_LIMIT = 5;
 const VERIFY_WINDOW_MS = 10 * 60 * 1000; // 10 минут
@@ -109,7 +110,12 @@ export async function POST(req: NextRequest) {
     }
 
     const result = verifyAndConsumeCode(normalized, codeStr);
-    if (result === "EXPIRED") {
+
+    // Dev-only: accept code 1234 even when store empty (e.g. server restarted between request-code and verify)
+    const isDev = process.env.NODE_ENV === "development";
+    const devAccept1234 = isDev && codeStr === "1234";
+
+    if (result === "EXPIRED" && !devAccept1234) {
       console.warn("[auth][verify] code expired", {
         phone: normalized,
         ip,
@@ -119,7 +125,7 @@ export async function POST(req: NextRequest) {
         { status: 410, headers: NO_STORE_HEADERS }
       );
     }
-    if (result === "INVALID") {
+    if (result === "INVALID" && !devAccept1234) {
       console.warn("[auth][verify] invalid code", {
         phone: normalized,
         ip,
@@ -144,7 +150,6 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const isDev = process.env.NODE_ENV === "development";
     if (isDev && parent) {
       const hasPlayers = await prisma.parentPlayer.count({
         where: { parentId: parent.id },
@@ -183,13 +188,15 @@ export async function POST(req: NextRequest) {
       parentId: parent.id,
     };
 
+    const token = createParentSessionToken(parent.id);
+
     console.info("[auth][verify] success", {
       parentId: user.id,
       phone: user.phone,
       ip,
     });
 
-    return NextResponse.json({ user }, { headers: NO_STORE_HEADERS });
+    return NextResponse.json({ user, token }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[auth][verify] unexpected error", error);
     return NextResponse.json(

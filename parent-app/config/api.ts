@@ -11,17 +11,17 @@ import { Platform } from "react-native";
 
 const ENV = process.env;
 
-const LIVE_BACKEND_URL = "https://hockey-server-api.onrender.com";
+const DEV_FALLBACK_URL = "http://localhost:3000";
 
 /**
  * API URL for physical device / Expo Go (non-web).
  * Override via EXPO_PUBLIC_DEVICE_API_URL or EXPO_PUBLIC_API_URL in .env.
- * Fallback: live backend.
+ * Phase 1: Next.js CRM.
  */
 const DEVICE_API_BASE_URL =
   ENV.EXPO_PUBLIC_DEVICE_API_URL?.trim() ||
   ENV.EXPO_PUBLIC_API_URL?.trim() ||
-  LIVE_BACKEND_URL;
+  DEV_FALLBACK_URL;
 
 /** true when running in development (__DEV__) */
 export const isDev = typeof __DEV__ !== "undefined" && __DEV__;
@@ -46,28 +46,25 @@ export const enableApiFallback: boolean =
 
 /**
  * Base URL for the Hockey ID backend.
- * Prefer EXPO_PUBLIC_API_URL so app can point to the current hockey-server.
+ * Phase 1: Next.js CRM. Set EXPO_PUBLIC_API_URL to your CRM URL.
  * Examples:
  * - same computer/simulator: http://localhost:3000
- * - physical device: http://192.168.X.X:3000
+ * - physical device: http://192.168.X.X:3000 (your Mac's LAN IP)
  */
 function resolveApiBaseUrl(): string {
   const explicit = ENV.EXPO_PUBLIC_API_URL?.trim();
 
-  // Local Expo/device flow should hit the LAN hockey-server directly.
+  // Local Expo/device flow should hit explicit LAN URL or local dev fallback.
   if (Platform.OS !== "web" && isDev) {
     return DEVICE_API_BASE_URL;
   }
 
-  const url = explicit || LIVE_BACKEND_URL;
-  if (!explicit && !isDev && typeof __DEV__ !== "undefined") {
-    if (typeof console !== "undefined" && console.warn) {
-      console.warn(
-        "[Hockey ID] EXPO_PUBLIC_API_URL not set for production build. Using fallback. Set EXPO_PUBLIC_API_URL in EAS build env or .env for explicit control."
-      );
-    }
+  if (!explicit && !isDev) {
+    throw new Error(
+      "[Hockey ID] EXPO_PUBLIC_API_URL is required for production builds."
+    );
   }
-  return url;
+  return explicit || DEV_FALLBACK_URL;
 }
 
 export const API_BASE_URL: string = resolveApiBaseUrl();

@@ -41,6 +41,7 @@ export async function GET(req: NextRequest) {
     });
 
     const coaches = await prisma.coach.findMany({
+      where: { isMarketplaceIndependent: false },
       include: {
         teams: {
           include: {

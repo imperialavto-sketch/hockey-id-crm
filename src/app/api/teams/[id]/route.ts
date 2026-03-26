@@ -59,6 +59,23 @@ export async function PUT(
     const body = await req.json().catch(() => ({}));
     const { name, ageGroup, coachId } = body;
 
+    if (coachId !== undefined && coachId) {
+      const cid = String(coachId).trim();
+      const coachCheck = await prisma.coach.findUnique({
+        where: { id: cid },
+        select: { isMarketplaceIndependent: true },
+      });
+      if (coachCheck?.isMarketplaceIndependent) {
+        return NextResponse.json(
+          {
+            error:
+              "Нельзя назначить независимого тренера маркетплейса на команду школы",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const team = await prisma.team.update({
       where: { id },
       data: {

@@ -11,6 +11,7 @@ import {
 import { ScreenContainer } from "@/components/layout/ScreenContainer";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { PressableFeedback } from "@/components/ui/PressableFeedback";
 import { DashboardSection } from "@/components/dashboard/DashboardSection";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { theme } from "@/constants/theme";
@@ -79,8 +80,56 @@ import type { SessionSyncMeta, SessionSyncStateMap } from "@/models/sessionSyncS
 import type { CoachSessionBundlePayload } from "@/models/coachSessionSync";
 import * as Clipboard from "expo-clipboard";
 import { SymbolView } from "expo-symbols";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useNavigation } from "@react-navigation/native";
+import {
+  buildVoiceStarterDestinationContext,
+  enrichVoiceStarterWithAi,
+  consumeVoiceStarterPayload,
+  consumeVoiceObservationPrefill,
+  formatVoiceStarterForActionItem,
+  formatVoiceStarterForCoachNote,
+  formatVoiceStarterForParentDraft,
+  getVoiceCreationMemoryForNote,
+  isVoiceSeriesEditLastPayloadFresh,
+  markVoiceCreationForNote,
+  parseContinuousVoiceCommand,
+  parseVoiceSeriesEditLastPayload,
+  saveVoiceStarterPayload,
+  type SkillTypeCandidate,
+  type VoiceStarterPayload,
+  VOICE_MVP_SOURCE,
+  VOICE_SERIES_EDIT_LAST_STORAGE_KEY,
+} from "@/lib/voiceMvp";
+import {
+  createParentDraft,
+  type CreateParentDraftPayload,
+} from "@/services/voiceCreateService";
+import { VoiceLoopNextStepsCard } from "@/components/voice/VoiceStarterServerSuccessPanel";
+import {
+  VOICE_AI_ACCOUNTED_LINE,
+  VOICE_AI_PILL_LABEL,
+  VOICE_LOOP_ACTION_LOCAL_DONE_LEAD,
+  VOICE_LOOP_ACTION_LOCAL_DONE_TITLE,
+  VOICE_LOOP_PARENT_DRAFT_DONE_LEAD,
+  VOICE_LOOP_PARENT_DRAFT_DONE_TITLE,
+} from "@/lib/voiceMvp/voiceStarterCompletionCopy";
+import {
+  POST_CREATE_FOLLOW_UP_LEAD,
+  POST_CREATE_FOLLOW_UP_TITLE,
+} from "@/lib/postCreateFollowUp";
+import { StaggerFadeIn } from "@/components/dashboard/StaggerFadeIn";
+import { coachHapticSuccess, coachHapticSelection } from "@/lib/coachHaptics";
+import {
+  appendVoiceSeriesLog,
+  buildVoiceSeriesRecap,
+  clearVoiceSeriesLog,
+  loadVoiceSeriesLog,
+  removeVoiceSeriesLogEntry,
+  truncateForVoiceSeriesPreview,
+  type VoiceSeriesLogEntry,
+  type VoiceSeriesRecap,
+} from "@/lib/voiceSeriesObservationLog";
 
 const SKILL_TYPE_LABELS: Record<SkillType, string> = {
   [SkillType.skating]: "Катание",
@@ -174,6 +223,395 @@ function pluralPlayerNom(n: number): string {
   return "игроков";
 }
 
+function normalizeName(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+type PlayerMatchResult =
+  | { kind: "matched"; playerId: string; hint: string }
+  | { kind: "ambiguous"; hint: string; candidates: Array<{ id: string; name: string; jerseyNumber?: number }> }
+  | { kind: "not_found"; hint: string }
+  | { kind: "no_candidate"; hint: string };
+
+type VoicePrefillReviewState = {
+  playerStatusLabel: string;
+  skillStatusLabel: string;
+  impactStatusLabel: string;
+  noteStatusLabel: string;
+};
+
+type VoiceSeriesFinishSnapshot = {
+  count: number;
+  entries: VoiceSeriesLogEntry[];
+  recent: VoiceSeriesLogEntry[];
+  uniquePlayers: string[];
+  recap: VoiceSeriesRecap | null;
+};
+
+function buildParentDraftStarterFromSeries(finish: VoiceSeriesFinishSnapshot): VoiceStarterPayload | null {
+  if (!finish.recap || finish.recap.total === 0) return null;
+  const recap = finish.recap;
+  const focusSkills = recap.topSkills.slice(0, 2);
+  const focusLine =
+    focusSkills.length > 0
+      ? focusSkills
+          .map((s) => `${SKILL_TYPE_LABELS[s.skillKey as SkillType] ?? s.skillKey} (${s.count})`)
+          .join(", ")
+      : null;
+  const summary = `Коротко по серии: ${recap.total} ${pluralObservation(recap.total)} по ${recap.uniquePlayers} ${pluralPlayerNom(recap.uniquePlayers)}.`;
+  const highlights: string[] = [
+    `Оценки: позитив ${recap.impactPositive}, нейтрально ${recap.impactNeutral}, негатив ${recap.impactNegative}.`,
+    ...(focusLine ? [`Фокус серии: ${focusLine}.`] : []),
+  ];
+  for (const entry of finish.recent.slice(0, 3)) {
+    const base = `${entry.playerName}: ${SKILL_TYPE_LABELS[entry.skillType as SkillType] ?? entry.skillType}, ${entry.impact === "positive" ? "позитив" : entry.impact === "negative" ? "негатив" : "нейтрально"}`;
+    highlights.push(entry.notePreview ? `${base}. ${entry.notePreview}` : base);
+  }
+
+  const parts: string[] = [
+    "Коротко по серии наблюдений на тренировке:",
+    "",
+    summary,
+    `Оценки: +${recap.impactPositive} / =${recap.impactNeutral} / -${recap.impactNegative}.`,
+    ...(focusLine ? [`Фокус серии: ${focusLine}.`] : []),
+  ];
+  if (finish.recent.length > 0) {
+    parts.push(
+      "",
+      "Ключевые наблюдения:",
+      ...finish.recent.slice(0, 3).map((entry) => {
+        const row = `• ${entry.playerName}: ${SKILL_TYPE_LABELS[entry.skillType as SkillType] ?? entry.skillType}, ${entry.impact === "positive" ? "позитив" : entry.impact === "negative" ? "негатив" : "нейтрально"}`;
+        return entry.notePreview ? `${row}. ${entry.notePreview}` : row;
+      })
+    );
+  }
+  parts.push("", "Проверьте и при необходимости уточните детали перед отправкой.");
+  const transcript = parts.join("\n").trim();
+
+  const playerCounts = new Map<string, { name: string; count: number }>();
+  for (const entry of finish.entries) {
+    const prev = playerCounts.get(entry.playerId);
+    if (prev) prev.count += 1;
+    else playerCounts.set(entry.playerId, { name: entry.playerName, count: 1 });
+  }
+  const sortedPlayers = [...playerCounts.entries()].sort((a, b) => b[1].count - a[1].count);
+  const top = sortedPlayers[0];
+  const second = sortedPlayers[1];
+  const hasSafeDominantPlayer =
+    !!top &&
+    top[1].count >= 2 &&
+    top[1].count / recap.total >= 0.6 &&
+    (!second || top[1].count > second[1].count);
+
+  return {
+    id: `voice_series_parent_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: new Date().toISOString(),
+    intent: "parent_draft",
+    source: VOICE_MVP_SOURCE,
+    transcript,
+    summary,
+    highlights: highlights.slice(0, 4),
+    context: hasSafeDominantPlayer
+      ? {
+          playerId: top[0],
+          playerLabel: top[1].name,
+          sessionHint: "Серия голосовых наблюдений",
+        }
+      : {
+          sessionHint: "Серия голосовых наблюдений",
+        },
+  };
+}
+
+/** UI-only parsing of VoiceStarterPayload for parent-draft composer (no contract change). */
+type ParentDraftComposerDerived = {
+  obsCount: number | null;
+  playerCount: number | null;
+  impactPlus: number | null;
+  impactEq: number | null;
+  impactMinus: number | null;
+  topSkillLabels: string[];
+  observationPreviews: string[];
+  isSeriesSessionHint: boolean;
+  hasRecapSummaryLine: boolean;
+};
+
+function parseSeriesCountsFromSummary(summary: string): { obs: number; players: number } | null {
+  const m = summary.match(/Коротко по серии:\s*(\d+)\D+по\s+(\d+)\b/);
+  if (!m) return null;
+  const obs = Number(m[1]);
+  const players = Number(m[2]);
+  if (!Number.isFinite(obs) || !Number.isFinite(players)) return null;
+  return { obs, players };
+}
+
+function parseImpactFromHighlight(line: string): { plus: number; eq: number; minus: number } | null {
+  const w = line.match(/позитив\s+(\d+),\s*нейтрально\s+(\d+),\s*негатив\s+(\d+)/i);
+  if (w) {
+    return { plus: Number(w[1]), eq: Number(w[2]), minus: Number(w[3]) };
+  }
+  const c = line.match(/\+\s*(\d+)\s*\/\s*=\s*(\d+)\s*\/\s*-\s*(\d+)/);
+  if (c) {
+    return { plus: Number(c[1]), eq: Number(c[2]), minus: Number(c[3]) };
+  }
+  return null;
+}
+
+function parseFocusSkillsFromHighlight(line: string): string[] {
+  const m = line.match(/^Фокус серии:\s*(.+?)\.?$/i);
+  if (!m) return [];
+  return m[1]
+    .split(",")
+    .map((s) => s.replace(/\s*\(\d+\)\s*$/u, "").trim())
+    .filter(Boolean)
+    .slice(0, 2);
+}
+
+function extractObservationLinesFromHighlights(highlights: string[]): string[] {
+  const out: string[] = [];
+  for (const h of highlights) {
+    const t = h.trim();
+    if (!t) continue;
+    if (/^Оценки:/i.test(t)) continue;
+    if (/^Фокус серии:/i.test(t)) continue;
+    out.push(t.replace(/^•\s*/, "").trim());
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
+function extractObservationPreviewsFromTranscript(transcript: string): string[] {
+  const key = "Ключевые наблюдения:";
+  const idx = transcript.indexOf(key);
+  if (idx === -1) return [];
+  const rest = transcript.slice(idx + key.length).split("\n");
+  const out: string[] = [];
+  for (const line of rest) {
+    const t = line.trim();
+    if (!t) continue;
+    if (t.startsWith("Проверьте")) break;
+    if (t.startsWith("•")) {
+      out.push(t.replace(/^•\s*/, "").trim());
+    }
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
+function deriveParentDraftComposerUi(payload: VoiceStarterPayload): ParentDraftComposerDerived {
+  const summary = payload.summary?.trim() ?? "";
+  const counts = parseSeriesCountsFromSummary(summary);
+  const isSeriesSessionHint =
+    (payload.context?.sessionHint?.trim() ?? "").toLowerCase().includes("серия") ||
+    /серии|серия/i.test(summary);
+
+  let impactPlus: number | null = null;
+  let impactEq: number | null = null;
+  let impactMinus: number | null = null;
+  const hl = payload.highlights ?? [];
+  for (const line of hl) {
+    const imp = parseImpactFromHighlight(line);
+    if (imp) {
+      impactPlus = imp.plus;
+      impactEq = imp.eq;
+      impactMinus = imp.minus;
+      break;
+    }
+  }
+  if (impactPlus === null && payload.transcript) {
+    const imp = parseImpactFromHighlight(payload.transcript);
+    if (imp) {
+      impactPlus = imp.plus;
+      impactEq = imp.eq;
+      impactMinus = imp.minus;
+    }
+  }
+
+  let topSkillLabels: string[] = [];
+  for (const line of hl) {
+    topSkillLabels = parseFocusSkillsFromHighlight(line);
+    if (topSkillLabels.length) break;
+  }
+
+  let observationPreviews = extractObservationLinesFromHighlights(hl);
+  if (observationPreviews.length === 0) {
+    observationPreviews = extractObservationPreviewsFromTranscript(payload.transcript ?? "");
+  }
+
+  return {
+    obsCount: counts?.obs ?? null,
+    playerCount: counts?.players ?? null,
+    impactPlus,
+    impactEq,
+    impactMinus,
+    topSkillLabels,
+    observationPreviews: observationPreviews.slice(0, 3),
+    isSeriesSessionHint,
+    hasRecapSummaryLine: /Коротко по серии/i.test(summary),
+  };
+}
+
+function parentDraftHasStarterBody(payload: VoiceStarterPayload): boolean {
+  const s = payload.summary?.trim();
+  if (s) return true;
+  if ((payload.highlights?.length ?? 0) > 0) return true;
+  return Boolean(payload.transcript?.trim());
+}
+
+type StarterIntakeCopy = {
+  eyebrow: string;
+  title: string;
+  secondaryHint: string;
+  primaryCta: string;
+};
+
+function getStarterIntakeCopy(payload: VoiceStarterPayload): StarterIntakeCopy {
+  const fromVoice =
+    payload.source === VOICE_MVP_SOURCE || Boolean(payload.originVoiceNoteId?.trim());
+  if (payload.intent === "parent_draft") {
+    if (fromVoice) {
+      return {
+        eyebrow: "Сообщение из заметки",
+        title: "Черновик для родителя уже собран",
+        secondaryHint:
+          "Текст добавлен в поле заметки — проверьте формулировки и тон. Ниже откроется блок оформления сообщения.",
+        primaryCta: "Перейти к сообщению",
+      };
+    }
+    return {
+      eyebrow: "Черновик ответа родителю",
+      title: "Подготовим ответ на основе последнего сообщения",
+      secondaryHint: "Это только стартовая заготовка — всё можно отредактировать вручную",
+      primaryCta: "Продолжить подготовку",
+    };
+  }
+  if (fromVoice) {
+    return {
+      eyebrow: "Задача из заметки",
+      title: "Заготовка действия готова к правке",
+      secondaryHint: "Текст добавлен в заметку — уточните формулировку перед сохранением или копированием.",
+      primaryCta: "Продолжить",
+    };
+  }
+  return {
+    eyebrow: "Черновик задачи",
+    title: "Зафиксируем задачу на основе последнего сообщения",
+    secondaryHint: "Это только стартовая заготовка задачи — всё можно отредактировать вручную",
+    primaryCta: "Продолжить",
+  };
+}
+
+function trimStarterPreview(text: string): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) return "Контекст из сообщения недоступен.";
+  return normalized.length > 260 ? `${normalized.slice(0, 259).trimEnd()}…` : normalized;
+}
+
+function pickStarterHighlights(payload: VoiceStarterPayload): string[] {
+  return (payload.highlights ?? [])
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+}
+
+const PARENT_DRAFT_PRESAVE_CHECKS = [
+  "Получатель сообщения выбран верно",
+  "Тон спокойный и уместный",
+  "Нет сырых или лишних формулировок",
+  "Родителю понятны важные детали",
+] as const;
+
+function findPlayerMatchResult(
+  players: Array<{ id: string; name: string; jerseyNumber?: number }>,
+  candidateName?: string | null,
+  candidateJersey?: number | null
+): PlayerMatchResult {
+  const byNumber =
+    candidateJersey != null
+      ? players.filter((p) => p.jerseyNumber != null && p.jerseyNumber === candidateJersey)
+      : [];
+  if (candidateJersey != null && byNumber.length === 1) {
+    return {
+      kind: "matched",
+      playerId: byNumber[0].id,
+      hint: `Игрок определён: #${candidateJersey} ${byNumber[0].name}`,
+    };
+  }
+  if (candidateJersey != null && byNumber.length > 1) {
+    return {
+      kind: "ambiguous",
+      hint: "Найдено несколько возможных совпадений по номеру — проверьте игрока.",
+      candidates: byNumber.slice(0, 4).map((p) => ({
+        id: p.id,
+        name: p.name,
+        jerseyNumber: p.jerseyNumber,
+      })),
+    };
+  }
+
+  const c = normalizeName(candidateName ?? "");
+  if (!c) {
+    return {
+      kind: "no_candidate",
+      hint: "Игрок не указан в расшифровке — выберите вручную.",
+    };
+  }
+
+  const cTokens = c.split(" ").filter(Boolean);
+  const scored = players
+    .map((p) => {
+      const n = normalizeName(p.name);
+      const nTokens = n.split(" ").filter(Boolean);
+      let score = 0;
+      if (n === c) score += 100;
+      if (n.includes(c) || c.includes(n)) score += 40;
+      const tokenHits = cTokens.filter((t) => nTokens.includes(t)).length;
+      score += tokenHits * 15;
+      return { p, score };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  if (scored.length === 0) {
+    return {
+      kind: "not_found",
+      hint: "Не удалось точно определить игрока — выберите вручную.",
+    };
+  }
+
+  const best = scored[0];
+  const second = scored[1];
+  const tiedTop = scored.filter((x) => x.score === best.score);
+  if ((second && best.score === second.score) || tiedTop.length > 1) {
+    return {
+      kind: "ambiguous",
+      hint: "Найдено несколько возможных совпадений — проверьте игрока.",
+      candidates: scored.slice(0, 4).map((x) => ({
+        id: x.p.id,
+        name: x.p.name,
+        jerseyNumber: x.p.jerseyNumber,
+      })),
+    };
+  }
+  return {
+    kind: "matched",
+    playerId: best.p.id,
+    hint: `Игрок определён: ${best.p.name}`,
+  };
+}
+
+function toSkillTypeFromCandidate(candidate: SkillTypeCandidate | null): SkillType | null {
+  if (!candidate) return null;
+  return Object.values(SkillType).includes(candidate as SkillType)
+    ? (candidate as SkillType)
+    : null;
+}
+
 function getSyncStatusLabel(
   meta: SessionSyncMeta | undefined,
   hasFrozenBundle?: boolean
@@ -228,6 +666,11 @@ function buildInitialDefaults() {
 
 export default function CoachInputScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    voiceStarterId?: string;
+    voiceObservationPrefillId?: string;
+    voiceSeries?: string;
+  }>();
   const navigation = useNavigation();
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [selectedSkillType, setSelectedSkillType] = useState<SkillType | null>(null);
@@ -235,8 +678,113 @@ export default function CoachInputScreen() {
   const [isStickyPlayer, setStickyPlayer] = useState(false);
   const [isStickySkill, setStickySkill] = useState(false);
   const [note, setNote] = useState("");
+  const [voiceObservationMatchHint, setVoiceObservationMatchHint] = useState<string | null>(
+    null
+  );
+  const [voiceObservationQuickPickCandidates, setVoiceObservationQuickPickCandidates] =
+    useState<Array<{ id: string; name: string; jerseyNumber?: number }>>([]);
+  const [voicePrefillReview, setVoicePrefillReview] = useState<VoicePrefillReviewState | null>(
+    null
+  );
+  const [voiceRapidLoopVisible, setVoiceRapidLoopVisible] = useState(false);
+  const [isVoiceSeriesMode, setIsVoiceSeriesMode] = useState(false);
+  const [voiceSeriesLog, setVoiceSeriesLog] = useState<VoiceSeriesLogEntry[]>([]);
+  const [voiceSeriesFinish, setVoiceSeriesFinish] = useState<VoiceSeriesFinishSnapshot | null>(
+    null
+  );
+  const prevVoiceSeriesModeRef = useRef(false);
+  const voiceSeriesSessionIdRef = useRef<string | null>(null);
+  const exitVoiceSeriesModeRef = useRef<() => void>(() => {});
+
+  const exitVoiceSeriesMode = useCallback(() => {
+    const log = [...voiceSeriesLog];
+    const uniqueNames = [...new Map(log.map((e) => [e.playerId, e.playerName] as const)).values()].slice(
+      0,
+      8
+    );
+    setVoiceSeriesFinish({
+      count: log.length,
+      entries: log,
+      recent: log.slice(0, 5),
+      uniquePlayers: uniqueNames,
+      recap: log.length > 0 ? buildVoiceSeriesRecap(log) : null,
+    });
+    setIsVoiceSeriesMode(false);
+    setVoiceRapidLoopVisible(false);
+    setVoicePrefillReview(null);
+    setVoiceObservationMatchHint(null);
+    setVoiceObservationQuickPickCandidates([]);
+  }, [voiceSeriesLog]);
+
+  exitVoiceSeriesModeRef.current = exitVoiceSeriesMode;
   const [voiceLocale, setVoiceLocale] = useState<VoiceLocale>(DEFAULT_VOICE_LOCALE);
   const [isRestored, setIsRestored] = useState(false);
+  const appliedVoiceStarterRef = useRef<string | null>(null);
+  const [parentDraftVoicePayload, setParentDraftVoicePayload] =
+    useState<VoiceStarterPayload | null>(null);
+  const [savingParentDraftToServer, setSavingParentDraftToServer] = useState(false);
+  const [parentDraftSaveSuccessId, setParentDraftSaveSuccessId] = useState<string | null>(null);
+  const [parentDraftSaveSuccessPlayerId, setParentDraftSaveSuccessPlayerId] = useState<string | null>(null);
+  const [parentDraftDuplicateHint, setParentDraftDuplicateHint] = useState(false);
+  const parentDraftSubmitLockRef = useRef(false);
+  const [starterIntakePayload, setStarterIntakePayload] = useState<VoiceStarterPayload | null>(null);
+  const [starterIntakeHint, setStarterIntakeHint] = useState<string | null>(null);
+  const starterInjectedTextRef = useRef<string | null>(null);
+  const [parentDraftCompletionDismissed, setParentDraftCompletionDismissed] = useState(false);
+  const [parentDraftCopyFeedback, setParentDraftCopyFeedback] = useState(false);
+  const parentDraftCopyFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [actionItemVoicePayload, setActionItemVoicePayload] =
+    useState<VoiceStarterPayload | null>(null);
+  const [actionItemCompletionDismissed, setActionItemCompletionDismissed] = useState(false);
+  const [actionItemCopyFeedback, setActionItemCopyFeedback] = useState(false);
+  const actionItemCopyFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const parentDraftComposerDerived = useMemo(
+    () => (parentDraftVoicePayload ? deriveParentDraftComposerUi(parentDraftVoicePayload) : null),
+    [parentDraftVoicePayload]
+  );
+  const parentDraftStarterPresent = useMemo(
+    () => (parentDraftVoicePayload ? parentDraftHasStarterBody(parentDraftVoicePayload) : false),
+    [parentDraftVoicePayload]
+  );
+  const parentDraftDestinationContext = useMemo(
+    () =>
+      parentDraftVoicePayload
+        ? buildVoiceStarterDestinationContext(parentDraftVoicePayload)
+        : null,
+    [parentDraftVoicePayload]
+  );
+  const starterIntakeContext = useMemo(
+    () => (starterIntakePayload ? buildVoiceStarterDestinationContext(starterIntakePayload) : null),
+    [starterIntakePayload]
+  );
+
+  const parentDraftResolvedText = useMemo(() => {
+    if (!parentDraftVoicePayload) return "";
+    const fromNote = note.trim();
+    const fromStarter = formatVoiceStarterForParentDraft(parentDraftVoicePayload).trim();
+    return fromNote || fromStarter;
+  }, [note, parentDraftVoicePayload]);
+
+  const showParentDraftCompletion =
+    Boolean(parentDraftVoicePayload) &&
+    Boolean(parentDraftResolvedText) &&
+    !starterIntakePayload &&
+    !parentDraftCompletionDismissed;
+
+  const actionItemResolvedText = useMemo(() => {
+    if (!actionItemVoicePayload) return "";
+    const fromNote = note.trim();
+    const fromStarter = formatVoiceStarterForActionItem(actionItemVoicePayload).trim();
+    return fromNote || fromStarter;
+  }, [note, actionItemVoicePayload]);
+
+  const showActionItemCompletion =
+    Boolean(actionItemVoicePayload) &&
+    Boolean(actionItemResolvedText) &&
+    !starterIntakePayload &&
+    !actionItemCompletionDismissed &&
+    !parentDraftVoicePayload;
 
   const [sessionDraft, setSessionDraft] = useState<TrainingSessionDraft>(() =>
     buildInitialDefaults().sessionDraft
@@ -265,14 +813,50 @@ export default function CoachInputScreen() {
     Record<string, CoachSessionBundlePayload>
   >({});
 
-  const handleVoiceTranscript = useCallback((text: string) => {
-    const t = text.trim();
-    if (!t) return;
-    setNote((prev) => {
-      const p = prev.trim();
-      return p ? `${p} ${t}` : t;
-    });
-  }, []);
+  const handleEditLastForVoiceRef = useRef<() => void>(() => {});
+
+  const handleVoiceTranscript = useCallback(
+    (text: string) => {
+      const t = text.trim();
+      if (!t) return;
+
+      if (isVoiceSeriesMode) {
+        const cmd = parseContinuousVoiceCommand(t);
+        if (cmd) {
+          if (voicePrefillReview) {
+            if (cmd === "exit") {
+              exitVoiceSeriesModeRef.current();
+              return;
+            }
+            return;
+          }
+          if (cmd === "exit") {
+            exitVoiceSeriesModeRef.current();
+            return;
+          }
+          if (voiceRapidLoopVisible) {
+            if (cmd === "next") {
+              router.push(
+                isVoiceSeriesMode ? "/voice-note?voiceSeries=1" : "/voice-note"
+              );
+              return;
+            }
+            if (cmd === "fix") {
+              setVoiceRapidLoopVisible(false);
+              handleEditLastForVoiceRef.current();
+              return;
+            }
+          }
+        }
+      }
+
+      setNote((prev) => {
+        const p = prev.trim();
+        return p ? `${p} ${t}` : t;
+      });
+    },
+    [isVoiceSeriesMode, router, voicePrefillReview, voiceRapidLoopVisible]
+  );
   const voiceNote = useVoiceNote(handleVoiceTranscript, voiceLocale);
 
   useEffect(() => {
@@ -362,6 +946,309 @@ export default function CoachInputScreen() {
       frozenSyncBundles,
     });
   }, [isRestored, sessionDraft, playerDevelopmentById, completedSessions, editedDrafts, sessionSyncStateMap, frozenSyncBundles]);
+
+  useEffect(() => {
+    if (!isRestored) return;
+    const starterId = params.voiceStarterId?.trim();
+    if (!starterId) return;
+    if (appliedVoiceStarterRef.current === starterId) return;
+    appliedVoiceStarterRef.current = starterId;
+
+    consumeVoiceStarterPayload(starterId).then((payload) => {
+      if (!payload) {
+        setStarterIntakePayload(null);
+        setStarterIntakeHint("Черновик не найден — можно продолжить в обычном режиме.");
+        setActionItemVoicePayload(null);
+        setActionItemCompletionDismissed(false);
+        setActionItemCopyFeedback(false);
+        return;
+      }
+
+      if (payload.intent !== "parent_draft" && payload.intent !== "action_item") {
+        setStarterIntakePayload(null);
+        setStarterIntakeHint("Тип черновика не поддержан — можно продолжить в обычном режиме.");
+        setActionItemVoicePayload(null);
+        setActionItemCompletionDismissed(false);
+        setActionItemCopyFeedback(false);
+        return;
+      }
+
+      if (payload.intent === "parent_draft") {
+        setParentDraftVoicePayload(payload);
+        setParentDraftSaveSuccessId(null);
+        setParentDraftSaveSuccessPlayerId(null);
+        setParentDraftCompletionDismissed(false);
+        setActionItemVoicePayload(null);
+        setActionItemCompletionDismissed(false);
+        setActionItemCopyFeedback(false);
+      } else {
+        setParentDraftVoicePayload(null);
+        setParentDraftSaveSuccessId(null);
+        setParentDraftSaveSuccessPlayerId(null);
+        setParentDraftCompletionDismissed(false);
+        setParentDraftCopyFeedback(false);
+        setActionItemVoicePayload(payload);
+        setActionItemCompletionDismissed(false);
+        setActionItemCopyFeedback(false);
+      }
+
+      const text =
+        payload.intent === "parent_draft"
+          ? formatVoiceStarterForParentDraft(payload)
+          : payload.intent === "action_item"
+            ? formatVoiceStarterForActionItem(payload)
+            : formatVoiceStarterForCoachNote(payload);
+      starterInjectedTextRef.current = text;
+
+      setNote((prev) => {
+        const p = prev.trim();
+        return p ? `${p}\n\n———\n\n${text}` : text;
+      });
+      setStarterIntakePayload(payload);
+      setStarterIntakeHint(null);
+
+      if (payload.context?.playerId) {
+        setSelectedPlayerId(payload.context.playerId);
+      }
+      setSelectedSkillType((prev) => prev ?? SkillType.effort);
+      setSelectedImpact((prev) => prev ?? "neutral");
+    });
+  }, [isRestored, params.voiceStarterId]);
+
+  useEffect(() => {
+    if (params.voiceSeries === "1") {
+      setIsVoiceSeriesMode(true);
+      setVoiceSeriesFinish(null);
+    }
+  }, [params.voiceSeries]);
+
+  useEffect(() => {
+    if (isVoiceSeriesMode && sessionDraft.id) {
+      voiceSeriesSessionIdRef.current = sessionDraft.id;
+    }
+  }, [isVoiceSeriesMode, sessionDraft.id]);
+
+  useEffect(() => {
+    if (!isVoiceSeriesMode) {
+      setVoiceSeriesLog([]);
+      return;
+    }
+    if (!sessionDraft.id) return;
+    void loadVoiceSeriesLog(sessionDraft.id).then(setVoiceSeriesLog);
+  }, [isVoiceSeriesMode, sessionDraft.id]);
+
+  useEffect(() => {
+    if (prevVoiceSeriesModeRef.current && !isVoiceSeriesMode) {
+      const sid = voiceSeriesSessionIdRef.current;
+      if (sid) void clearVoiceSeriesLog(sid);
+      voiceSeriesSessionIdRef.current = null;
+    }
+    prevVoiceSeriesModeRef.current = isVoiceSeriesMode;
+  }, [isVoiceSeriesMode]);
+
+  useEffect(() => {
+    if (!isRestored) return;
+    const prefillId = params.voiceObservationPrefillId?.trim();
+    if (!prefillId) return;
+    if (appliedVoiceStarterRef.current === `obs:${prefillId}`) return;
+    appliedVoiceStarterRef.current = `obs:${prefillId}`;
+
+    consumeVoiceObservationPrefill(prefillId).then((payload) => {
+      if (!payload) return;
+
+      const match = findPlayerMatchResult(
+        players,
+        payload.playerNameCandidate,
+        payload.playerJerseyCandidate
+      );
+      setVoiceObservationMatchHint(match.hint);
+      setVoiceObservationQuickPickCandidates(
+        match.kind === "ambiguous" ? match.candidates : []
+      );
+      if (match.kind === "matched") setSelectedPlayerId(match.playerId);
+
+      const skill = toSkillTypeFromCandidate(payload.skillCandidate);
+      if (skill) setSelectedSkillType(skill);
+
+      if (payload.impactCandidate) setSelectedImpact(payload.impactCandidate);
+
+      if (payload.noteCandidate?.trim()) {
+        setNote((prev) => {
+          const p = prev.trim();
+          return p ? `${p}\n\n${payload.noteCandidate.trim()}` : payload.noteCandidate.trim();
+        });
+      }
+
+      setVoicePrefillReview({
+        playerStatusLabel:
+          match.kind === "matched"
+            ? match.hint
+            : match.kind === "ambiguous"
+              ? "Игрок: найдено несколько совпадений"
+              : "Игрок: нужно выбрать вручную",
+        skillStatusLabel: skill
+          ? `Навык: ${SKILL_TYPE_LABELS[skill]}`
+          : "Навык: нужно выбрать",
+        impactStatusLabel: payload.impactCandidate
+          ? `Оценка: ${payload.impactCandidate === "positive" ? "позитив" : payload.impactCandidate === "negative" ? "негатив" : "нейтрально"}`
+          : "Оценка: нужно выбрать",
+        noteStatusLabel: payload.noteCandidate?.trim()
+          ? "Заметка: заполнено из расшифровки"
+          : "Заметка: пусто",
+      });
+
+      Alert.alert(
+        "Автозаполнение из голосовой заметки",
+        `${match.hint}\n\nПроверьте игрока, навык и оценку перед добавлением наблюдения.`
+      );
+    });
+  }, [isRestored, params.voiceObservationPrefillId, players]);
+
+  const handleSaveParentDraftToServer = useCallback(async () => {
+    if (
+      !parentDraftVoicePayload ||
+      parentDraftSubmitLockRef.current ||
+      parentDraftSaveSuccessId
+    ) {
+      return;
+    }
+    const textBody =
+      note.trim() ||
+      formatVoiceStarterForParentDraft(parentDraftVoicePayload).trim();
+    if (!textBody) {
+      Alert.alert(
+        "Пустой текст",
+        "Добавьте текст в заметку или вернитесь к голосовой заметке."
+      );
+      return;
+    }
+    parentDraftSubmitLockRef.current = true;
+    setSavingParentDraftToServer(true);
+    try {
+      const input: CreateParentDraftPayload = { text: textBody };
+      const pid = parentDraftVoicePayload.context?.playerId?.trim();
+      if (pid) input.playerId = pid;
+      const vid = parentDraftVoicePayload.originVoiceNoteId?.trim();
+      if (vid) input.voiceNoteId = vid;
+      const res = await createParentDraft(input);
+      if (!res.ok) {
+        Alert.alert("Не удалось сохранить", res.error);
+        return;
+      }
+      const voiceNoteId = parentDraftVoicePayload.originVoiceNoteId?.trim();
+      if (voiceNoteId) {
+        await markVoiceCreationForNote(voiceNoteId, "parent_draft");
+      }
+      coachHapticSuccess();
+      setParentDraftSaveSuccessId(res.data.id);
+      setParentDraftSaveSuccessPlayerId(pid || null);
+      setParentDraftVoicePayload(null);
+    } finally {
+      parentDraftSubmitLockRef.current = false;
+      setSavingParentDraftToServer(false);
+    }
+  }, [note, parentDraftVoicePayload, parentDraftSaveSuccessId]);
+
+  const handleDismissParentDraftComposer = useCallback(() => {
+    setParentDraftVoicePayload(null);
+    setParentDraftSaveSuccessId(null);
+    setParentDraftSaveSuccessPlayerId(null);
+    setParentDraftDuplicateHint(false);
+    setParentDraftCompletionDismissed(false);
+    setParentDraftCopyFeedback(false);
+  }, []);
+
+  const handleContinueStarterIntake = useCallback(() => {
+    setStarterIntakePayload(null);
+    setStarterIntakeHint(null);
+  }, []);
+
+  const handleCopyParentDraftResolved = useCallback(async () => {
+    if (!parentDraftResolvedText) return;
+    await Clipboard.setStringAsync(parentDraftResolvedText);
+    coachHapticSelection();
+    if (parentDraftCopyFeedbackTimerRef.current) {
+      clearTimeout(parentDraftCopyFeedbackTimerRef.current);
+    }
+    setParentDraftCopyFeedback(true);
+    parentDraftCopyFeedbackTimerRef.current = setTimeout(() => {
+      setParentDraftCopyFeedback(false);
+      parentDraftCopyFeedbackTimerRef.current = null;
+    }, 2000);
+  }, [parentDraftResolvedText]);
+
+  const handleCopyActionItemResolved = useCallback(async () => {
+    if (!actionItemResolvedText) return;
+    await Clipboard.setStringAsync(actionItemResolvedText);
+    coachHapticSelection();
+    if (actionItemCopyFeedbackTimerRef.current) {
+      clearTimeout(actionItemCopyFeedbackTimerRef.current);
+    }
+    setActionItemCopyFeedback(true);
+    actionItemCopyFeedbackTimerRef.current = setTimeout(() => {
+      setActionItemCopyFeedback(false);
+      actionItemCopyFeedbackTimerRef.current = null;
+    }, 2000);
+  }, [actionItemResolvedText]);
+
+  useEffect(() => {
+    return () => {
+      if (parentDraftCopyFeedbackTimerRef.current) {
+        clearTimeout(parentDraftCopyFeedbackTimerRef.current);
+      }
+      if (actionItemCopyFeedbackTimerRef.current) {
+        clearTimeout(actionItemCopyFeedbackTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!parentDraftVoicePayload) setParentDraftCopyFeedback(false);
+  }, [parentDraftVoicePayload]);
+
+  useEffect(() => {
+    if (!actionItemVoicePayload) setActionItemCopyFeedback(false);
+  }, [actionItemVoicePayload]);
+
+  const handleClearStarterIntake = useCallback(() => {
+    setStarterIntakePayload(null);
+    setStarterIntakeHint(null);
+    setParentDraftVoicePayload(null);
+    setParentDraftSaveSuccessId(null);
+    setParentDraftSaveSuccessPlayerId(null);
+    setParentDraftDuplicateHint(false);
+    setParentDraftCompletionDismissed(false);
+    setParentDraftCopyFeedback(false);
+    setActionItemVoicePayload(null);
+    setActionItemCompletionDismissed(false);
+    setActionItemCopyFeedback(false);
+    const injected = starterInjectedTextRef.current?.trim();
+    if (!injected) return;
+    setNote((prev) => {
+      if (!prev.trim()) return prev;
+      if (prev.trim() === injected) return "";
+      const suffix = `\n\n———\n\n${injected}`;
+      if (prev.endsWith(suffix)) return prev.slice(0, prev.length - suffix.length).trimEnd();
+      return prev;
+    });
+    starterInjectedTextRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    const voiceNoteId = parentDraftVoicePayload?.originVoiceNoteId?.trim();
+    if (!voiceNoteId) {
+      setParentDraftDuplicateHint(false);
+      return;
+    }
+    let cancelled = false;
+    getVoiceCreationMemoryForNote(voiceNoteId).then((memory) => {
+      if (cancelled) return;
+      setParentDraftDuplicateHint(Boolean(memory.parent_draft));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [parentDraftVoicePayload?.originVoiceNoteId]);
 
   const sessionDraftRef = useRef(sessionDraft);
   const syncingSessionIdRef = useRef<string | null>(null);
@@ -566,6 +1453,10 @@ export default function CoachInputScreen() {
           text: "Очистить",
           style: "destructive",
           onPress: async () => {
+            const sidToClear = sessionDraft.id;
+            if (sidToClear) await clearVoiceSeriesLog(sidToClear);
+            setVoiceSeriesLog([]);
+            setVoiceSeriesFinish(null);
             await clearCoachInputState();
             const defaults = getDefaultCoachInputState();
             setSessionDraft(defaults.sessionDraft);
@@ -582,6 +1473,9 @@ export default function CoachInputScreen() {
             setSelectedImpact(null);
             setStickyPlayer(false);
             setStickySkill(false);
+            setActionItemVoicePayload(null);
+            setActionItemCompletionDismissed(false);
+            setActionItemCopyFeedback(false);
           },
         },
       ]
@@ -622,6 +1516,8 @@ export default function CoachInputScreen() {
       ),
     }));
 
+    const fromVoicePrefill = !!voicePrefillReview;
+
     if (isStickyPlayer && isStickySkill) {
       setSelectedImpact(null);
     } else if (isStickyPlayer) {
@@ -632,6 +1528,31 @@ export default function CoachInputScreen() {
       setSelectedImpact(null);
     }
     setNote("");
+
+    if (fromVoicePrefill) {
+      setVoiceRapidLoopVisible(true);
+      setVoicePrefillReview(null);
+      setVoiceObservationMatchHint(null);
+      setVoiceObservationQuickPickCandidates([]);
+    } else {
+      setVoiceRapidLoopVisible(false);
+    }
+
+    if (fromVoicePrefill && isVoiceSeriesMode) {
+      const seriesSid = sessionDraftRef.current.id;
+      if (seriesSid) {
+        const logEntry: VoiceSeriesLogEntry = {
+          obsId: obs.id,
+          playerId: obs.playerId,
+          playerName: obs.playerName,
+          skillType: obs.skillType,
+          impact: obs.impact,
+          notePreview: truncateForVoiceSeriesPreview(obs.note ?? ""),
+          createdAt: obs.createdAt,
+        };
+        void appendVoiceSeriesLog(seriesSid, logEntry).then(setVoiceSeriesLog);
+      }
+    }
 
     const sid = sessionDraftRef.current.id;
     const isServerBacked = sid && !sid.startsWith("session_local_");
@@ -726,6 +1647,77 @@ export default function CoachInputScreen() {
       recalculatePlayerDevelopmentFromObservations(remaining)
     );
   }, [lastObs, sessionDraft.observations]);
+  handleEditLastForVoiceRef.current = handleEditLast;
+
+  const handleVoiceSeriesLogEntryPress = useCallback(
+    (entry: VoiceSeriesLogEntry) => {
+      const observations = sessionDraft.observations;
+      const idx = observations.findIndex((o) => o.id === entry.obsId);
+      if (idx === -1) {
+        Alert.alert(
+          "Недоступно",
+          "Этого наблюдения уже нет в черновике сессии. Список серии обновлён."
+        );
+        const sid = sessionDraft.id;
+        if (sid) void loadVoiceSeriesLog(sid).then(setVoiceSeriesLog);
+        return;
+      }
+      const obs = observations[idx];
+      setSelectedPlayerId(obs.playerId);
+      setSelectedSkillType(obs.skillType);
+      setSelectedImpact(obs.impact);
+      setNote(obs.note ?? "");
+      const remaining = observations.filter((_, i) => i !== idx);
+      setSessionDraft((prev) => ({ ...prev, observations: remaining }));
+      setPlayerDevelopmentById(recalculatePlayerDevelopmentFromObservations(remaining));
+      setVoiceRapidLoopVisible(false);
+      setVoicePrefillReview(null);
+      setVoiceObservationMatchHint(null);
+      setVoiceObservationQuickPickCandidates([]);
+      const sid = sessionDraft.id;
+      if (sid) void removeVoiceSeriesLogEntry(sid, entry.obsId).then(setVoiceSeriesLog);
+    },
+    [sessionDraft.id, sessionDraft.observations]
+  );
+
+  const handleStartParentDraftFromSeries = useCallback(async () => {
+    if (!voiceSeriesFinish) return;
+    const payload = buildParentDraftStarterFromSeries(voiceSeriesFinish);
+    if (!payload) {
+      Alert.alert(
+        "Недостаточно данных",
+        "Для серии пока мало подтверждённых голосовых наблюдений. Продолжите наблюдения или создайте черновик вручную."
+      );
+      return;
+    }
+    const enriched = await enrichVoiceStarterWithAi(payload);
+    const id = await saveVoiceStarterPayload(enriched);
+    setVoiceSeriesFinish(null);
+    router.replace(`/dev/coach-input?voiceStarterId=${encodeURIComponent(id)}`);
+  }, [router, voiceSeriesFinish]);
+
+  useEffect(() => {
+    if (!isRestored) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(VOICE_SERIES_EDIT_LAST_STORAGE_KEY);
+        const payload = parseVoiceSeriesEditLastPayload(raw);
+        if (cancelled) return;
+        if (!payload || !isVoiceSeriesEditLastPayloadFresh(payload)) {
+          if (raw) await AsyncStorage.removeItem(VOICE_SERIES_EDIT_LAST_STORAGE_KEY);
+          return;
+        }
+        await AsyncStorage.removeItem(VOICE_SERIES_EDIT_LAST_STORAGE_KEY);
+        handleEditLast();
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isRestored, handleEditLast]);
 
   const handleQuickNoteTemplate = useCallback((template: string) => {
     setNote((prev) => {
@@ -1105,7 +2097,10 @@ export default function CoachInputScreen() {
                 </Text>
                 <Switch
                   value={isStickyPlayer}
-                  onValueChange={setStickyPlayer}
+                  onValueChange={(v) => {
+                    coachHapticSelection();
+                    setStickyPlayer(v);
+                  }}
                   disabled={!selectedPlayerId}
                   trackColor={{
                     false: theme.colors.border,
@@ -1123,6 +2118,43 @@ export default function CoachInputScreen() {
                   </Text>
                 </View>
               )}
+              {voiceObservationMatchHint ? (
+                <Text style={styles.voicePrefillHint}>{voiceObservationMatchHint}</Text>
+              ) : null}
+              {voiceObservationQuickPickCandidates.length > 0 ? (
+                <View style={styles.voiceQuickPickWrap}>
+                  <Text style={styles.voiceQuickPickTitle}>
+                    Возможно, это один из игроков:
+                  </Text>
+                  <View style={styles.chipRow}>
+                    {voiceObservationQuickPickCandidates.map((c) => {
+                      const isSelected = selectedPlayerId === c.id;
+                      return (
+                        <Pressable
+                          key={c.id}
+                          onPress={() => setSelectedPlayerId(c.id)}
+                          style={({ pressed }) => [
+                            styles.chip,
+                            isSelected && styles.chipSelected,
+                            pressed && styles.chipPressed,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.chipText,
+                              isSelected && styles.chipTextSelected,
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {c.jerseyNumber ? `#${c.jerseyNumber} ` : ""}
+                            {c.name}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
             </SectionCard>
           </DashboardSection>
 
@@ -1244,7 +2276,10 @@ export default function CoachInputScreen() {
                 </Text>
                 <Switch
                   value={isStickySkill}
-                  onValueChange={setStickySkill}
+                  onValueChange={(v) => {
+                    coachHapticSelection();
+                    setStickySkill(v);
+                  }}
                   disabled={!selectedSkillType}
                   trackColor={{
                     false: theme.colors.border,
@@ -1419,8 +2454,347 @@ export default function CoachInputScreen() {
             </SectionCard>
           </DashboardSection>
 
-          <DashboardSection title="Заметка">
+          {starterIntakePayload ? (
+            <StaggerFadeIn preset="snappy" delay={0} revealKey={`intake_${starterIntakePayload.id}`}>
+              <SectionCard elevated style={styles.starterIntakeCard}>
+                <Text style={styles.starterIntakeEyebrow}>
+                  {getStarterIntakeCopy(starterIntakePayload).eyebrow}
+                </Text>
+                <Text style={styles.starterIntakeTitle}>
+                  {getStarterIntakeCopy(starterIntakePayload).title}
+                </Text>
+
+                {starterIntakeContext?.playerLabel ? (
+                  <Text style={styles.starterContextRow}>Игрок: {starterIntakeContext.playerLabel}</Text>
+                ) : null}
+                {starterIntakeContext?.sessionLabel ? (
+                  <Text style={styles.starterContextRow}>Контекст: {starterIntakeContext.sessionLabel}</Text>
+                ) : null}
+
+                <Text style={styles.starterPreviewText} numberOfLines={4}>
+                  {trimStarterPreview(starterIntakePayload.transcript)}
+                </Text>
+
+                {pickStarterHighlights(starterIntakePayload).length > 0 ? (
+                  <View style={styles.starterHighlightsWrap}>
+                    {pickStarterHighlights(starterIntakePayload).map((line, idx) => (
+                      <Text key={`${line}_${idx}`} style={styles.starterHighlightLine} numberOfLines={2}>
+                        • {line}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+
+                <Text style={styles.starterSecondaryHint}>
+                  {getStarterIntakeCopy(starterIntakePayload).secondaryHint}
+                </Text>
+
+                <View style={styles.starterActionsRow}>
+                  <PrimaryButton
+                    animatedPress
+                    title={getStarterIntakeCopy(starterIntakePayload).primaryCta}
+                    onPress={handleContinueStarterIntake}
+                    style={styles.starterActionBtn}
+                  />
+                  <PrimaryButton
+                    animatedPress
+                    title="Очистить"
+                    variant="outline"
+                    onPress={handleClearStarterIntake}
+                    style={styles.starterActionBtn}
+                  />
+                </View>
+              </SectionCard>
+            </StaggerFadeIn>
+          ) : null}
+
+          {starterIntakeHint ? (
+            <SectionCard elevated style={styles.starterHintCard}>
+              <Text style={styles.starterHintText}>{starterIntakeHint}</Text>
+            </SectionCard>
+          ) : null}
+
+          {parentDraftVoicePayload && parentDraftComposerDerived ? (
+            <StaggerFadeIn
+              style={styles.pdFlowRoot}
+              preset="snappy"
+              delay={0}
+              revealKey={parentDraftVoicePayload.id}
+            >
+              <SectionCard elevated style={styles.pdHeroCard}>
+                <Text style={styles.pdHeroEyebrow}>Готово к отправке (черновик)</Text>
+                <Text style={styles.pdHeroTitle}>Сообщение для родителя</Text>
+                <Text style={styles.pdHeroSubtitle}>
+                  {parentDraftComposerDerived.hasRecapSummaryLine ||
+                  parentDraftComposerDerived.isSeriesSessionHint
+                    ? "Текст собран по итогам серии наблюдений — это почти готовое сообщение. Просмотрите тон и детали перед копированием или сохранением."
+                    : "Заметка обработана и превращена в черновик сообщения. Просмотрите формулировки — затем можно скопировать или сохранить локально."}
+                </Text>
+                <View style={styles.pdHeroMetaRow}>
+                  <View style={styles.pdHintPill}>
+                    <Text style={styles.pdHintPillText}>
+                      {parentDraftDestinationContext?.sourceHint ?? "На основе заметки"}
+                    </Text>
+                  </View>
+                  {parentDraftVoicePayload.aiProcessed ? (
+                    <View style={styles.pdAiPill}>
+                      <Text style={styles.pdAiPillText}>{VOICE_AI_PILL_LABEL}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </SectionCard>
+
+              <SectionCard elevated style={styles.pdReadOnlyCard}>
+                <Text style={styles.pdBlockKicker}>Краткий контекст</Text>
+                <Text style={styles.pdReadOnlyBody}>
+                  {parentDraftDestinationContext?.summary ?? "Краткая выжимка пока недоступна."}
+                </Text>
+                {parentDraftDestinationContext?.highlights?.length ? (
+                  <View style={styles.pdPreviewList}>
+                    <Text style={styles.pdPreviewKicker}>Ключевые акценты</Text>
+                    {parentDraftDestinationContext.highlights.map((line, i) => (
+                      <Text key={`${line}_${i}`} style={styles.pdPreviewLine} numberOfLines={3}>
+                        {line}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+              </SectionCard>
+
+              {(() => {
+                const d = parentDraftComposerDerived;
+                const hasMetrics =
+                  d.obsCount != null ||
+                  d.playerCount != null ||
+                  (d.impactPlus != null && d.impactEq != null && d.impactMinus != null) ||
+                  d.topSkillLabels.length > 0 ||
+                  d.observationPreviews.length > 0;
+                const showBlock = hasMetrics || d.hasRecapSummaryLine || d.isSeriesSessionHint;
+                if (!showBlock) return null;
+                return (
+                  <SectionCard elevated style={styles.pdReadOnlyCard}>
+                    <Text style={styles.pdBlockKicker}>На основе серии</Text>
+                        {!hasMetrics && d.isSeriesSessionHint ? (
+                      <Text style={styles.pdReadOnlyBody}>
+                        Черновик связан с голосовой серией наблюдений. Детальная сводка недоступна —
+                        опирайтесь на текст ниже.
+                      </Text>
+                    ) : !hasMetrics && parentDraftVoicePayload.summary?.trim() ? (
+                      <Text style={styles.pdReadOnlyBody}>
+                        {parentDraftVoicePayload.summary.trim()}
+                      </Text>
+                    ) : (
+                      <>
+                        {(d.obsCount != null || d.playerCount != null) && (
+                          <View style={styles.pdStatRow}>
+                            {d.obsCount != null ? (
+                              <View style={styles.pdStatChip}>
+                                <Text style={styles.pdStatValue}>{d.obsCount}</Text>
+                                <Text style={styles.pdStatLabel}>
+                                  {pluralObservation(d.obsCount)}
+                                </Text>
+                              </View>
+                            ) : null}
+                            {d.playerCount != null ? (
+                              <View style={styles.pdStatChip}>
+                                <Text style={styles.pdStatValue}>{d.playerCount}</Text>
+                                <Text style={styles.pdStatLabel}>
+                                  {pluralPlayerNom(d.playerCount)}
+                                </Text>
+                              </View>
+                            ) : null}
+                          </View>
+                        )}
+                        {d.impactPlus != null &&
+                        d.impactEq != null &&
+                        d.impactMinus != null ? (
+                          <Text style={styles.pdImpactLine}>
+                            Оценки: +{d.impactPlus} · ={d.impactEq} · −{d.impactMinus}
+                          </Text>
+                        ) : null}
+                        {d.topSkillLabels.length > 0 ? (
+                          <Text style={styles.pdSkillsLine}>
+                            {d.topSkillLabels.length >= 2 ? "Фокус: " : "Навык: "}
+                            {d.topSkillLabels.join(" · ")}
+                          </Text>
+                        ) : null}
+                        {d.observationPreviews.length > 0 ? (
+                          <View style={styles.pdPreviewList}>
+                            <Text style={styles.pdPreviewKicker}>Фрагменты наблюдений</Text>
+                            {d.observationPreviews.map((line, i) => (
+                              <Text key={i} style={styles.pdPreviewLine} numberOfLines={3}>
+                                {line}
+                              </Text>
+                            ))}
+                          </View>
+                        ) : null}
+                      </>
+                    )}
+                  </SectionCard>
+                );
+              })()}
+
+              <SectionCard elevated style={styles.pdPlayerCard}>
+                {parentDraftVoicePayload.context?.playerId?.trim() ? (
+                  <>
+                    <View style={styles.pdAutoPlayerPill}>
+                      <Text style={styles.pdAutoPlayerPillText}>
+                        Игрок определён автоматически
+                      </Text>
+                    </View>
+                    <Text style={styles.pdPlayerNameText}>
+                      {parentDraftVoicePayload.context?.playerLabel?.trim() ||
+                        parentDraftVoicePayload.context?.playerId?.trim()}
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={styles.pdPlayerHelper}>
+                    Игрок не выбран автоматически — проверьте получателя вручную перед сохранением.
+                  </Text>
+                )}
+              </SectionCard>
+
+              <SectionCard elevated style={styles.pdChecklistCard}>
+                <Text style={styles.pdChecklistTitle}>Перед сохранением проверьте</Text>
+                {PARENT_DRAFT_PRESAVE_CHECKS.map((item) => (
+                  <Text key={item} style={styles.pdChecklistItem}>
+                    • {item}
+                  </Text>
+                ))}
+              </SectionCard>
+            </StaggerFadeIn>
+          ) : null}
+
+          {showParentDraftCompletion ? (
+            <StaggerFadeIn
+              preset="snappy"
+              delay={0}
+              revealKey={`pd_done_${parentDraftVoicePayload?.id ?? "x"}`}
+            >
+              <SectionCard elevated style={styles.pdCompletionCard}>
+                <Text style={styles.pdCompletionEyebrow}>Готово к отправке (черновик)</Text>
+                <Text style={styles.pdCompletionTitle}>{VOICE_LOOP_PARENT_DRAFT_DONE_TITLE}</Text>
+                <Text style={styles.pdCompletionLead}>{VOICE_LOOP_PARENT_DRAFT_DONE_LEAD}</Text>
+                {parentDraftVoicePayload?.aiProcessed ? (
+                  <Text style={styles.pdCompletionMetaLine}>{VOICE_AI_ACCOUNTED_LINE}</Text>
+                ) : null}
+                <View style={styles.pdCompletionPreviewShell}>
+                  <Text style={styles.pdCompletionPreviewLabel}>Текст</Text>
+                  <Text
+                    style={styles.pdCompletionPreviewBody}
+                    numberOfLines={6}
+                    ellipsizeMode="tail"
+                  >
+                    {parentDraftResolvedText}
+                  </Text>
+                </View>
+                {parentDraftCopyFeedback ? (
+                  <Text style={styles.pdCompletionCopySuccess}>Скопировано</Text>
+                ) : null}
+                <View style={styles.pdCompletionActions}>
+                  <PrimaryButton
+                    animatedPress
+                    title="Скопировать текст"
+                    onPress={handleCopyParentDraftResolved}
+                    style={styles.pdCompletionPrimaryBtn}
+                  />
+                  <PrimaryButton
+                    animatedPress
+                    title="Продолжить редактирование"
+                    variant="outline"
+                    onPress={() => setParentDraftCompletionDismissed(true)}
+                    style={styles.pdCompletionSecondaryBtn}
+                  />
+                  <PressableFeedback
+                    style={styles.pdCompletionBackLink}
+                    onPress={() => {
+                      if (navigation.canGoBack()) {
+                        navigation.goBack();
+                      }
+                    }}
+                  >
+                    <Text style={styles.pdCompletionBackLinkTitle}>Вернуться к диалогу</Text>
+                    <Text style={styles.pdCompletionBackLinkHint}>
+                      Без отправки сообщения из этого экрана
+                    </Text>
+                  </PressableFeedback>
+                </View>
+              </SectionCard>
+              <VoiceLoopNextStepsCard router={router} />
+            </StaggerFadeIn>
+          ) : null}
+
+          {showActionItemCompletion ? (
+            <StaggerFadeIn
+              preset="snappy"
+              delay={0}
+              revealKey={`ai_done_${actionItemVoicePayload?.id ?? "x"}`}
+            >
+              <SectionCard elevated style={styles.pdCompletionCard}>
+                <Text style={styles.pdCompletionEyebrow}>Локальный черновик</Text>
+                <Text style={styles.pdCompletionTitle}>{VOICE_LOOP_ACTION_LOCAL_DONE_TITLE}</Text>
+                <Text style={styles.pdCompletionLead}>{VOICE_LOOP_ACTION_LOCAL_DONE_LEAD}</Text>
+                {actionItemVoicePayload?.aiProcessed ? (
+                  <Text style={styles.pdCompletionMetaLine}>{VOICE_AI_ACCOUNTED_LINE}</Text>
+                ) : null}
+                <View style={styles.pdCompletionPreviewShell}>
+                  <Text style={styles.pdCompletionPreviewLabel}>Текст</Text>
+                  <Text
+                    style={styles.pdCompletionPreviewBody}
+                    numberOfLines={6}
+                    ellipsizeMode="tail"
+                  >
+                    {actionItemResolvedText}
+                  </Text>
+                </View>
+                {actionItemCopyFeedback ? (
+                  <Text style={styles.pdCompletionCopySuccess}>Скопировано</Text>
+                ) : null}
+                <View style={styles.pdCompletionActions}>
+                  <PrimaryButton
+                    animatedPress
+                    title="Скопировать задачу"
+                    onPress={handleCopyActionItemResolved}
+                    style={styles.pdCompletionPrimaryBtn}
+                  />
+                  <PrimaryButton
+                    animatedPress
+                    title="Продолжить редактирование"
+                    variant="outline"
+                    onPress={() => setActionItemCompletionDismissed(true)}
+                    style={styles.pdCompletionSecondaryBtn}
+                  />
+                  <PressableFeedback
+                    style={styles.pdCompletionBackLink}
+                    onPress={() => {
+                      if (navigation.canGoBack()) {
+                        navigation.goBack();
+                      }
+                    }}
+                  >
+                    <Text style={styles.pdCompletionBackLinkTitle}>Вернуться к диалогу</Text>
+                    <Text style={styles.pdCompletionBackLinkHint}>
+                      Без создания задачи на сервере
+                    </Text>
+                  </PressableFeedback>
+                </View>
+              </SectionCard>
+              <VoiceLoopNextStepsCard router={router} />
+            </StaggerFadeIn>
+          ) : null}
+
+          <DashboardSection title={parentDraftVoicePayload ? "Текст сообщения" : "Заметка"}>
             <SectionCard elevated>
+              {parentDraftVoicePayload ? (
+                <View style={styles.pdComposerFieldHeader}>
+                  <Text style={styles.pdComposerLabel}>Черновик для родителя</Text>
+                  <Text style={styles.pdComposerHelper}>
+                    {parentDraftStarterPresent
+                      ? "Ниже — черновик на основе итогов серии. Отредактируйте при необходимости."
+                      : "Текст можно набрать вручную. При необходимости вернитесь к голосовой заметке и повторите подготовку."}
+                  </Text>
+                </View>
+              ) : null}
               {!voiceNote.isAvailable && (
                 <Text style={styles.voiceDevUnsupported}>
                   Голосовой ввод недоступен в Expo Go
@@ -1455,14 +2829,34 @@ export default function CoachInputScreen() {
                   })}
                 </View>
               )}
-              <View style={styles.noteRow}>
+              {isVoiceSeriesMode && voiceNote.isAvailable ? (
+                <Text style={styles.voiceHandsFreeHint}>
+                  Серия: после «Наблюдение добавлено» скажите у поля заметки одну короткую фразу:
+                  дальше, исправить, выйти. Пока открыта проверка автозаполнения из голоса
+                  распознаётся только «выйти» из серии. Наблюдение по-прежнему только кнопкой.
+                </Text>
+              ) : null}
+              <View
+                style={[
+                  styles.noteRow,
+                  parentDraftVoicePayload ? styles.noteRowComposer : null,
+                ]}
+              >
                 <TextInput
-                  style={styles.noteInput}
-                  placeholder="Текст заметки"
+                  style={[
+                    styles.noteInput,
+                    parentDraftVoicePayload ? styles.noteInputComposer : null,
+                  ]}
+                  placeholder={
+                    parentDraftVoicePayload
+                      ? "Текст сообщения родителю…"
+                      : "Текст заметки"
+                  }
                   placeholderTextColor={theme.colors.textMuted}
                   value={note}
                   onChangeText={setNote}
                   editable={voiceNote.state !== "listening"}
+                  multiline={Boolean(parentDraftVoicePayload)}
                 />
                 {voiceNote.isAvailable && (
                   <View style={styles.noteVoiceRow}>
@@ -1556,6 +2950,114 @@ export default function CoachInputScreen() {
             </SectionCard>
           </DashboardSection>
 
+          {voicePrefillReview ? (
+            <DashboardSection title="Проверка перед подтверждением" compact>
+              <SectionCard elevated style={styles.voiceReviewCard}>
+                <Text style={styles.voiceReviewTitle}>Распознано из голосовой заметки</Text>
+                <View style={styles.voiceReviewList}>
+                  <Text style={styles.voiceReviewItem}>• {voicePrefillReview.playerStatusLabel}</Text>
+                  <Text style={styles.voiceReviewItem}>• {voicePrefillReview.skillStatusLabel}</Text>
+                  <Text style={styles.voiceReviewItem}>• {voicePrefillReview.impactStatusLabel}</Text>
+                  <Text style={styles.voiceReviewItem}>• {voicePrefillReview.noteStatusLabel}</Text>
+                </View>
+                <Text style={styles.voiceReviewHint}>
+                  Проверьте поля выше и нажмите «Добавить наблюдение».
+                </Text>
+              </SectionCard>
+            </DashboardSection>
+          ) : null}
+
+          {parentDraftVoicePayload ? (
+            <DashboardSection title="Сохранение черновика" compact>
+              <SectionCard elevated style={styles.pdSaveCard}>
+                <Text style={styles.pdSaveHint}>
+                  На сервер отправляется текст из поля выше. Если оно пустое, будет использован
+                  исходный черновик из голоса.
+                </Text>
+                {parentDraftDuplicateHint ? (
+                  <Text style={styles.pdSaveDuplicateHint}>
+                    По этой заметке уже создавали черновик. Можно открыть существующий в списке или
+                    сохранить новый вариант.
+                  </Text>
+                ) : null}
+                <View style={styles.pdSaveActions}>
+                  <PrimaryButton
+                    animatedPress
+                    title={
+                      savingParentDraftToServer
+                        ? "Сохранение…"
+                        : parentDraftDuplicateHint
+                          ? "Сохранить новый вариант"
+                          : "Сохранить черновик"
+                    }
+                    onPress={handleSaveParentDraftToServer}
+                    disabled={savingParentDraftToServer}
+                    style={styles.pdSavePrimary}
+                  />
+                  <PrimaryButton
+                    animatedPress
+                    title="Закрыть без сохранения"
+                    variant="outline"
+                    onPress={handleDismissParentDraftComposer}
+                    disabled={savingParentDraftToServer}
+                    style={styles.pdSaveSecondary}
+                  />
+                </View>
+              </SectionCard>
+            </DashboardSection>
+          ) : parentDraftSaveSuccessId ? (
+            <DashboardSection title="Сохранение черновика" compact>
+              <SectionCard elevated style={styles.pdSaveSuccessCard}>
+                <Text style={styles.pdSaveSuccessTitle}>Черновик сохранён</Text>
+                <Text style={styles.pdSaveSuccessHint}>
+                  Подготовлено из голосовой заметки. Черновик можно открыть в списке и доработать
+                  позже.
+                </Text>
+                <View style={styles.pdSaveActions}>
+                  <PrimaryButton
+                    animatedPress
+                    title="К списку черновиков"
+                    onPress={() => router.replace("/parent-drafts")}
+                    style={styles.pdSavePrimary}
+                  />
+                  <PrimaryButton
+                    animatedPress
+                    title="Остаться здесь"
+                    variant="ghost"
+                    onPress={() => {
+                      setParentDraftSaveSuccessId(null);
+                      setParentDraftSaveSuccessPlayerId(null);
+                    }}
+                    style={styles.pdSaveSecondary}
+                  />
+                </View>
+              </SectionCard>
+              <SectionCard elevated style={styles.pdFollowUpCard}>
+                <Text style={styles.pdFollowUpKicker}>{POST_CREATE_FOLLOW_UP_TITLE}</Text>
+                <Text style={styles.pdFollowUpLead}>{POST_CREATE_FOLLOW_UP_LEAD}</Text>
+                <PrimaryButton
+                  animatedPress
+                  title={parentDraftSaveSuccessPlayerId ? "Проверить и отправить родителю" : "Открыть черновики"}
+                  onPress={() => {
+                    if (parentDraftSaveSuccessPlayerId) {
+                      router.push(`/player/${parentDraftSaveSuccessPlayerId}/share-report`);
+                      return;
+                    }
+                    router.replace("/parent-drafts");
+                  }}
+                  style={styles.pdFollowUpBtn}
+                />
+                <PressableFeedback
+                  style={styles.pdFollowUpLink}
+                  onPress={() => router.replace("/parent-drafts")}
+                >
+                  <Text style={styles.pdFollowUpLinkTitle}>Открыть список черновиков</Text>
+                  <Text style={styles.pdFollowUpLinkHint}>Проверить и отправить позже</Text>
+                </PressableFeedback>
+              </SectionCard>
+            </DashboardSection>
+          ) : null}
+
           {selectedPlayerId && selectedSkillType && (
             <DashboardSection title="Быстрая оценка" compact>
               <SectionCard elevated>
@@ -1604,6 +3106,216 @@ export default function CoachInputScreen() {
             disabled={!canAddObservation}
             style={styles.addBtn}
           />
+
+          {voiceSeriesFinish && !isVoiceSeriesMode ? (
+            <SectionCard elevated style={styles.voiceSeriesFinishCard}>
+              <Text style={styles.voiceSeriesFinishTitle}>Серия завершена</Text>
+              <Text style={styles.voiceSeriesFinishBody}>
+                {voiceSeriesFinish.count === 0
+                  ? "В этой серии не было подтверждённых голосовых наблюдений из голосовых заметок."
+                  : "Подтверждённые голосом наблюдения сохранены в текущей сессии. Ниже — локальный итог по серии."}
+              </Text>
+              {voiceSeriesFinish.recap ? (
+                <View style={styles.voiceSeriesRecapBlock}>
+                  <Text style={styles.voiceSeriesRecapTitle}>Итог серии</Text>
+                  <Text style={styles.voiceSeriesRecapMeta}>
+                    {voiceSeriesFinish.recap.total}{" "}
+                    {pluralObservation(voiceSeriesFinish.recap.total)}
+                    {" · "}
+                    {voiceSeriesFinish.recap.uniquePlayers}{" "}
+                    {pluralPlayerNom(voiceSeriesFinish.recap.uniquePlayers)}
+                  </Text>
+                  <View style={styles.voiceSeriesRecapChipRow}>
+                    <View style={[styles.voiceSeriesRecapChip, styles.voiceSeriesRecapChipPlus]}>
+                      <Text style={styles.voiceSeriesRecapChipText}>
+                        +{voiceSeriesFinish.recap.impactPositive}
+                      </Text>
+                    </View>
+                    <View style={[styles.voiceSeriesRecapChip, styles.voiceSeriesRecapChipNeut]}>
+                      <Text style={styles.voiceSeriesRecapChipText}>
+                        нейтр. {voiceSeriesFinish.recap.impactNeutral}
+                      </Text>
+                    </View>
+                    <View style={[styles.voiceSeriesRecapChip, styles.voiceSeriesRecapChipMinus]}>
+                      <Text style={styles.voiceSeriesRecapChipText}>
+                        −{voiceSeriesFinish.recap.impactNegative}
+                      </Text>
+                    </View>
+                  </View>
+                  {voiceSeriesFinish.recap.topSkills.length > 0 ? (
+                    <>
+                      <Text style={styles.voiceSeriesRecapFocusLabel}>Фокус (навыки)</Text>
+                      <View style={styles.voiceSeriesRecapChipRow}>
+                        {voiceSeriesFinish.recap.topSkills.slice(0, 2).map((s) => (
+                          <View key={s.skillKey} style={styles.voiceSeriesRecapChip}>
+                            <Text style={styles.voiceSeriesRecapChipText} numberOfLines={1}>
+                              {SKILL_TYPE_LABELS[s.skillKey as SkillType] ?? s.skillKey} · {s.count}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    </>
+                  ) : null}
+                </View>
+              ) : null}
+              {voiceSeriesFinish.uniquePlayers.length > 0 ? (
+                <Text style={styles.voiceSeriesFinishPlayers} numberOfLines={4}>
+                  Упомянуты: {voiceSeriesFinish.uniquePlayers.join(", ")}
+                </Text>
+              ) : null}
+              {voiceSeriesFinish.recent.length > 0 ? (
+                <>
+                  <Text style={styles.voiceSeriesFinishSub}>Последние в серии:</Text>
+                  {voiceSeriesFinish.recent.map((entry) => (
+                    <Text
+                      key={entry.obsId}
+                      style={styles.voiceSeriesFinishLine}
+                      numberOfLines={2}
+                    >
+                      • {entry.playerName} —{" "}
+                      {SKILL_TYPE_LABELS[entry.skillType as SkillType] ?? entry.skillType} —{" "}
+                      {impactLabel(entry.impact)}
+                    </Text>
+                  ))}
+                </>
+              ) : null}
+              <Text style={styles.voiceSeriesFinishHint}>
+                Дальше можно открыть «Мои материалы» и проверить, что уже создано тренером после
+                серии, или продолжить работу в текущей сессии. Без автосохранения: всё подтверждено
+                вручную.
+              </Text>
+              <PrimaryButton
+                title="Подготовить сообщение родителю"
+                variant="outline"
+                onPress={handleStartParentDraftFromSeries}
+                style={styles.voiceLoopBtn}
+              />
+              <PrimaryButton
+                title="Продолжить запись сессии"
+                variant="outline"
+                onPress={() => setVoiceSeriesFinish(null)}
+                style={styles.voiceLoopBtn}
+              />
+              <PrimaryButton
+                title="Голосовые заметки"
+                variant="outline"
+                onPress={() => {
+                  setVoiceSeriesFinish(null);
+                  router.push("/voice-notes");
+                }}
+                style={styles.voiceLoopBtn}
+              />
+              <PrimaryButton
+                title="Открыть «Мои материалы»"
+                variant="outline"
+                onPress={() => {
+                  setVoiceSeriesFinish(null);
+                  router.push("/created");
+                }}
+                style={styles.voiceLoopBtn}
+              />
+              <PrimaryButton
+                title="Новая голосовая серия"
+                onPress={() => {
+                  setVoiceSeriesFinish(null);
+                  router.push("/voice-note?voiceSeries=1");
+                }}
+                style={styles.voiceLoopBtn}
+              />
+            </SectionCard>
+          ) : null}
+
+          {isVoiceSeriesMode && !voiceRapidLoopVisible ? (
+            <SectionCard elevated style={styles.voiceSeriesModeCard}>
+              <Text style={styles.voiceSeriesModeTitle}>Серия голосовых наблюдений включена</Text>
+              <Text style={styles.voiceSeriesModeHint}>
+                После подтверждения можно сразу перейти к следующей голосовой заметке. Голосовые
+                команды у поля заметки работают на шаге «Наблюдение добавлено» (дальше / исправить /
+                выйти); при проверке автозаполнения — только «выйти».
+              </Text>
+              <PrimaryButton
+                title="Выйти из серии"
+                variant="ghost"
+                onPress={exitVoiceSeriesMode}
+                style={styles.voiceLoopBtn}
+              />
+            </SectionCard>
+          ) : null}
+
+          {isVoiceSeriesMode && voiceSeriesLog.length > 0 ? (
+            <SectionCard elevated style={styles.voiceSeriesLogCard}>
+              <Text style={styles.voiceSeriesLogTitle}>Добавлено в этой серии</Text>
+              <Text style={styles.voiceSeriesLogSub}>
+                Тап по строке — вынести в форму для правки; подтвердите снова кнопкой «Добавить
+                наблюдение».
+              </Text>
+              {voiceSeriesLog.slice(0, 5).map((entry) => (
+                <Pressable
+                  key={entry.obsId}
+                  onPress={() => handleVoiceSeriesLogEntryPress(entry)}
+                  style={({ pressed }) => [
+                    styles.voiceSeriesLogRow,
+                    pressed && styles.chipPressed,
+                  ]}
+                >
+                  <Text style={styles.voiceSeriesLogRowMain} numberOfLines={1}>
+                    {entry.playerName}
+                    {" · "}
+                    {SKILL_TYPE_LABELS[entry.skillType as SkillType] ?? entry.skillType}
+                    {" · "}
+                    {impactLabel(entry.impact)}
+                  </Text>
+                  {entry.notePreview ? (
+                    <Text style={styles.voiceSeriesLogRowNote} numberOfLines={2}>
+                      {entry.notePreview}
+                    </Text>
+                  ) : null}
+                </Pressable>
+              ))}
+            </SectionCard>
+          ) : null}
+
+          {voiceRapidLoopVisible ? (
+            <SectionCard elevated style={styles.voiceLoopCard}>
+              <Text style={styles.voiceLoopTitle}>Наблюдение добавлено</Text>
+              <Text style={styles.voiceLoopHint}>
+                {isVoiceSeriesMode
+                  ? "Серия включена. Кнопки ниже или короткая команда у поля заметки: дальше, исправить, выйти."
+                  : "Выберите следующий шаг для быстрого цикла во время тренировки."}
+              </Text>
+              <PrimaryButton
+                title={isVoiceSeriesMode ? "Следующая голосовая заметка" : "Ещё голосовая заметка"}
+                variant="outline"
+                onPress={() =>
+                  router.push(isVoiceSeriesMode ? "/voice-note?voiceSeries=1" : "/voice-note")
+                }
+                style={styles.voiceLoopBtn}
+              />
+              <PrimaryButton
+                title="Исправить последнее"
+                variant="ghost"
+                onPress={() => {
+                  setVoiceRapidLoopVisible(false);
+                  handleEditLast();
+                }}
+                style={styles.voiceLoopBtn}
+              />
+              <PrimaryButton
+                title="Продолжить вручную"
+                variant="ghost"
+                onPress={() => setVoiceRapidLoopVisible(false)}
+                style={styles.voiceLoopBtn}
+              />
+              {isVoiceSeriesMode ? (
+                <PrimaryButton
+                  title="Выйти из серии"
+                  variant="ghost"
+                  onPress={exitVoiceSeriesMode}
+                  style={styles.voiceLoopBtn}
+                />
+              ) : null}
+            </SectionCard>
+          ) : null}
 
           {guardrailHints.length > 0 && (
             <View style={styles.guardrailContainer}>
@@ -2628,6 +4340,211 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontWeight: "600",
   },
+  voicePrefillHint: {
+    ...theme.typography.caption,
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.sm,
+    lineHeight: 18,
+  },
+  voiceQuickPickWrap: {
+    marginTop: theme.spacing.sm,
+    paddingTop: theme.spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  voiceQuickPickTitle: {
+    ...theme.typography.caption,
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.xs,
+  },
+  voiceReviewCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: theme.colors.primary,
+  },
+  voiceReviewTitle: {
+    ...theme.typography.subtitle,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
+  },
+  voiceReviewList: {
+    gap: theme.spacing.xs,
+  },
+  voiceReviewItem: {
+    ...theme.typography.caption,
+    color: theme.colors.textSecondary,
+    lineHeight: 18,
+  },
+  voiceReviewHint: {
+    ...theme.typography.caption,
+    color: theme.colors.textMuted,
+    marginTop: theme.spacing.sm,
+    lineHeight: 18,
+  },
+  voiceLoopCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: theme.colors.success,
+    marginBottom: theme.spacing.sm,
+  },
+  voiceSeriesModeCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: theme.colors.primary,
+    marginBottom: theme.spacing.sm,
+  },
+  voiceSeriesModeTitle: {
+    ...theme.typography.subtitle,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  voiceSeriesModeHint: {
+    ...theme.typography.caption,
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.sm,
+    lineHeight: 18,
+  },
+  voiceHandsFreeHint: {
+    ...theme.typography.caption,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.sm,
+    lineHeight: 18,
+  },
+  voiceSeriesLogCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: theme.colors.textMuted,
+    marginBottom: theme.spacing.sm,
+  },
+  voiceSeriesLogTitle: {
+    ...theme.typography.subtitle,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  voiceSeriesLogSub: {
+    ...theme.typography.caption,
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.sm,
+    lineHeight: 18,
+  },
+  voiceSeriesLogRow: {
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.colors.border,
+  },
+  voiceSeriesLogRowMain: {
+    ...theme.typography.caption,
+    color: theme.colors.text,
+    fontWeight: "600",
+  },
+  voiceSeriesLogRowNote: {
+    ...theme.typography.caption,
+    color: theme.colors.textSecondary,
+    marginTop: 4,
+    lineHeight: 18,
+  },
+  voiceSeriesFinishCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: theme.colors.primary,
+    marginBottom: theme.spacing.md,
+  },
+  voiceSeriesFinishTitle: {
+    ...theme.typography.subtitle,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  voiceSeriesFinishBody: {
+    ...theme.typography.body,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.sm,
+    lineHeight: 22,
+  },
+  voiceSeriesRecapBlock: {
+    marginBottom: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.colors.border,
+  },
+  voiceSeriesRecapTitle: {
+    ...theme.typography.subtitle,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  voiceSeriesRecapMeta: {
+    ...theme.typography.caption,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.sm,
+    lineHeight: 18,
+  },
+  voiceSeriesRecapChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing.xs,
+    marginBottom: theme.spacing.xs,
+  },
+  voiceSeriesRecapChip: {
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 6,
+    borderRadius: theme.borderRadius.sm,
+    backgroundColor: theme.colors.primaryMuted,
+    maxWidth: "100%",
+  },
+  voiceSeriesRecapChipPlus: {
+    backgroundColor: theme.colors.primaryMuted,
+  },
+  voiceSeriesRecapChipNeut: {
+    backgroundColor: theme.colors.surfaceElevated,
+  },
+  voiceSeriesRecapChipMinus: {
+    backgroundColor: "rgba(255, 77, 106, 0.15)",
+  },
+  voiceSeriesRecapChipText: {
+    ...theme.typography.caption,
+    fontWeight: "600",
+    color: theme.colors.text,
+  },
+  voiceSeriesRecapFocusLabel: {
+    ...theme.typography.caption,
+    color: theme.colors.textMuted,
+    marginTop: theme.spacing.xs,
+    marginBottom: theme.spacing.xs,
+  },
+  voiceSeriesFinishPlayers: {
+    ...theme.typography.caption,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
+    lineHeight: 18,
+    fontWeight: "600",
+  },
+  voiceSeriesFinishSub: {
+    ...theme.typography.caption,
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.xs,
+  },
+  voiceSeriesFinishLine: {
+    ...theme.typography.caption,
+    color: theme.colors.textSecondary,
+    marginBottom: 4,
+    lineHeight: 18,
+  },
+  voiceSeriesFinishHint: {
+    ...theme.typography.caption,
+    color: theme.colors.textMuted,
+    marginTop: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+    lineHeight: 18,
+  },
+  voiceLoopTitle: {
+    ...theme.typography.subtitle,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  voiceLoopHint: {
+    ...theme.typography.caption,
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.sm,
+    lineHeight: 18,
+  },
+  voiceLoopBtn: {
+    marginTop: theme.spacing.xs,
+  },
   playerStatsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -2700,6 +4617,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: theme.spacing.sm,
   },
+  noteRowComposer: {
+    flexDirection: "column",
+    alignItems: "stretch",
+  },
   quickNoteTemplatesRow: {
     marginTop: theme.spacing.md,
     paddingTop: theme.spacing.sm,
@@ -2765,6 +4686,391 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     marginBottom: theme.spacing.xs,
     fontStyle: "italic",
+  },
+  pdFlowRoot: {
+    marginBottom: theme.spacing.md,
+    gap: theme.spacing.sm,
+  },
+  pdHeroCard: {
+    paddingVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.primary,
+    backgroundColor: theme.colors.surfaceElevated,
+  },
+  pdHeroEyebrow: {
+    ...theme.typography.heroEyebrow,
+    color: theme.colors.primary,
+    marginBottom: theme.spacing.xs,
+  },
+  pdHeroTitle: {
+    ...theme.typography.title,
+    fontSize: 20,
+    fontWeight: "700",
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
+  },
+  pdHeroSubtitle: {
+    ...theme.typography.body,
+    fontSize: 15,
+    lineHeight: 22,
+    color: theme.colors.textSecondary,
+  },
+  pdHeroMetaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.sm,
+  },
+  pdHintPill: {
+    alignSelf: "flex-start",
+    paddingVertical: 4,
+    paddingHorizontal: theme.spacing.sm,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.primaryMuted,
+  },
+  pdHintPillText: {
+    ...theme.typography.caption,
+    fontSize: 11,
+    fontWeight: "600",
+    color: theme.colors.primary,
+  },
+  pdAiPill: {
+    paddingVertical: 4,
+    paddingHorizontal: theme.spacing.sm,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.accentMuted,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
+  },
+  pdAiPillText: {
+    ...theme.typography.caption,
+    fontSize: 11,
+    fontWeight: "600",
+    color: theme.colors.accent,
+  },
+  pdReadOnlyCard: {
+    padding: theme.spacing.md,
+    backgroundColor: theme.colors.card,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  pdBlockKicker: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+    color: theme.colors.textMuted,
+    textTransform: "uppercase",
+    marginBottom: theme.spacing.sm,
+  },
+  pdReadOnlyBody: {
+    ...theme.typography.body,
+    fontSize: 14,
+    lineHeight: 20,
+    color: theme.colors.textSecondary,
+  },
+  pdStatRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+  },
+  pdStatChip: {
+    paddingVertical: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.md,
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.surfaceElevated,
+    minWidth: 88,
+  },
+  pdStatValue: {
+    ...theme.typography.title,
+    fontSize: 20,
+    color: theme.colors.text,
+  },
+  pdStatLabel: {
+    ...theme.typography.caption,
+    fontSize: 11,
+    color: theme.colors.textMuted,
+    marginTop: 2,
+  },
+  pdImpactLine: {
+    ...theme.typography.body,
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.xs,
+  },
+  pdSkillsLine: {
+    ...theme.typography.body,
+    fontSize: 14,
+    lineHeight: 20,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  pdPreviewList: {
+    marginTop: theme.spacing.sm,
+    paddingTop: theme.spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  pdPreviewKicker: {
+    ...theme.typography.caption,
+    fontSize: 12,
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.xs,
+  },
+  pdPreviewLine: {
+    ...theme.typography.caption,
+    fontSize: 13,
+    lineHeight: 18,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.xs,
+    paddingLeft: theme.spacing.sm,
+    borderLeftWidth: 2,
+    borderLeftColor: theme.colors.primaryMuted,
+  },
+  pdPlayerCard: {
+    padding: theme.spacing.md,
+  },
+  pdAutoPlayerPill: {
+    alignSelf: "flex-start",
+    paddingVertical: 4,
+    paddingHorizontal: theme.spacing.sm,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.primaryMuted,
+    marginBottom: theme.spacing.sm,
+  },
+  pdAutoPlayerPillText: {
+    ...theme.typography.caption,
+    fontSize: 11,
+    fontWeight: "600",
+    color: theme.colors.primary,
+  },
+  pdPlayerNameText: {
+    ...theme.typography.subtitle,
+    fontSize: 17,
+    color: theme.colors.text,
+  },
+  pdPlayerHelper: {
+    ...theme.typography.body,
+    fontSize: 14,
+    lineHeight: 20,
+    color: theme.colors.textSecondary,
+  },
+  pdChecklistCard: {
+    padding: theme.spacing.md,
+    backgroundColor: theme.colors.surfaceElevated,
+  },
+  pdChecklistTitle: {
+    ...theme.typography.subtitle,
+    fontSize: 14,
+    fontWeight: "600",
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
+  },
+  pdChecklistItem: {
+    ...theme.typography.caption,
+    fontSize: 13,
+    lineHeight: 20,
+    color: theme.colors.textSecondary,
+    marginBottom: 4,
+  },
+  pdCompletionCard: {
+    padding: theme.spacing.md,
+    backgroundColor: theme.colors.surfaceElevated,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.primaryMuted,
+  },
+  pdCompletionEyebrow: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+    color: theme.colors.textMuted,
+    textTransform: "uppercase",
+    marginBottom: theme.spacing.xs,
+  },
+  pdCompletionTitle: {
+    ...theme.typography.subtitle,
+    fontSize: 17,
+    fontWeight: "700",
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  pdCompletionLead: {
+    ...theme.typography.caption,
+    fontSize: 13,
+    lineHeight: 19,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.sm,
+  },
+  pdCompletionMetaLine: {
+    ...theme.typography.caption,
+    fontSize: 12,
+    lineHeight: 18,
+    color: theme.colors.accent,
+    marginBottom: theme.spacing.md,
+  },
+  pdCompletionPreviewShell: {
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.card,
+    padding: theme.spacing.sm,
+    marginBottom: theme.spacing.md,
+    maxHeight: 132,
+    overflow: "hidden",
+  },
+  pdCompletionPreviewLabel: {
+    ...theme.typography.caption,
+    fontSize: 11,
+    fontWeight: "600",
+    color: theme.colors.textMuted,
+    marginBottom: 4,
+  },
+  pdCompletionPreviewBody: {
+    ...theme.typography.caption,
+    fontSize: 14,
+    lineHeight: 21,
+    color: theme.colors.textSecondary,
+  },
+  pdCompletionCopySuccess: {
+    ...theme.typography.caption,
+    fontSize: 13,
+    fontWeight: "600",
+    color: theme.colors.success,
+    marginBottom: theme.spacing.sm,
+  },
+  pdCompletionActions: {
+    gap: theme.spacing.sm,
+  },
+  pdCompletionPrimaryBtn: {
+    width: "100%",
+  },
+  pdCompletionSecondaryBtn: {
+    width: "100%",
+  },
+  pdCompletionBackLink: {
+    paddingVertical: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.xs,
+    alignSelf: "flex-start",
+  },
+  pdCompletionBackLinkTitle: {
+    ...theme.typography.caption,
+    fontSize: 14,
+    color: theme.colors.textMuted,
+  },
+  pdCompletionBackLinkHint: {
+    ...theme.typography.caption,
+    fontSize: 12,
+    color: theme.colors.textMuted,
+    marginTop: 2,
+    opacity: 0.85,
+  },
+  pdComposerFieldHeader: {
+    marginBottom: theme.spacing.md,
+  },
+  pdComposerLabel: {
+    ...theme.typography.subtitle,
+    fontSize: 15,
+    fontWeight: "600",
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  pdComposerHelper: {
+    ...theme.typography.caption,
+    fontSize: 13,
+    lineHeight: 18,
+    color: theme.colors.textMuted,
+  },
+  noteInputComposer: {
+    minHeight: 160,
+    paddingVertical: theme.spacing.md,
+    textAlignVertical: "top",
+  },
+  pdSaveCard: {
+    padding: theme.spacing.md,
+  },
+  pdSaveSuccessCard: {
+    padding: theme.spacing.md,
+    backgroundColor: theme.colors.surfaceElevated,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.success,
+  },
+  pdSaveSuccessTitle: {
+    ...theme.typography.subtitle,
+    fontSize: 16,
+    fontWeight: "700",
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  pdSaveSuccessHint: {
+    ...theme.typography.caption,
+    fontSize: 13,
+    lineHeight: 19,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.md,
+  },
+  pdFollowUpCard: {
+    marginTop: theme.spacing.sm,
+    padding: theme.spacing.md,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+  },
+  pdFollowUpKicker: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+    color: theme.colors.textMuted,
+    textTransform: "uppercase",
+    marginBottom: theme.spacing.xs,
+  },
+  pdFollowUpLead: {
+    ...theme.typography.caption,
+    fontSize: 13,
+    lineHeight: 18,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.md,
+  },
+  pdFollowUpBtn: {
+    width: "100%",
+    marginBottom: theme.spacing.sm,
+  },
+  pdFollowUpLink: {
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.xs,
+  },
+  pdFollowUpLinkTitle: {
+    ...theme.typography.subtitle,
+    fontSize: 15,
+    color: theme.colors.text,
+  },
+  pdFollowUpLinkHint: {
+    ...theme.typography.caption,
+    fontSize: 12,
+    color: theme.colors.textMuted,
+    marginTop: 2,
+  },
+  pdSaveHint: {
+    ...theme.typography.caption,
+    fontSize: 13,
+    lineHeight: 19,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.md,
+  },
+  pdSaveDuplicateHint: {
+    ...theme.typography.caption,
+    fontSize: 13,
+    lineHeight: 18,
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.md,
+  },
+  pdSaveActions: {
+    gap: theme.spacing.sm,
+  },
+  pdSavePrimary: {
+    width: "100%",
+  },
+  pdSaveSecondary: {
+    width: "100%",
   },
   addBtn: {
     marginBottom: theme.spacing.lg,
@@ -3281,6 +5587,64 @@ const styles = StyleSheet.create({
   parentDraftLinkText: {
     ...theme.typography.subtitle,
     color: theme.colors.primary,
+  },
+  starterIntakeCard: {
+    marginBottom: theme.spacing.md,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.primary,
+  },
+  starterIntakeEyebrow: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.xs,
+  },
+  starterIntakeTitle: {
+    ...theme.typography.subtitle,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
+  },
+  starterContextRow: {
+    ...theme.typography.caption,
+    color: theme.colors.textSecondary,
+    marginBottom: 4,
+  },
+  starterPreviewText: {
+    ...theme.typography.body,
+    color: theme.colors.text,
+    lineHeight: 21,
+    marginTop: theme.spacing.xs,
+    marginBottom: theme.spacing.sm,
+  },
+  starterHighlightsWrap: {
+    marginBottom: theme.spacing.sm,
+    gap: 4,
+  },
+  starterHighlightLine: {
+    ...theme.typography.caption,
+    color: theme.colors.textSecondary,
+  },
+  starterSecondaryHint: {
+    ...theme.typography.caption,
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.md,
+  },
+  starterActionsRow: {
+    gap: theme.spacing.xs,
+  },
+  starterActionBtn: {
+    alignSelf: "flex-start",
+  },
+  starterHintCard: {
+    marginBottom: theme.spacing.md,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.border,
+  },
+  starterHintText: {
+    ...theme.typography.caption,
+    color: theme.colors.textMuted,
   },
   clearBtn: {
     marginTop: theme.spacing.lg,

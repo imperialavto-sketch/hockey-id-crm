@@ -9,81 +9,131 @@ import {
   RefreshControl,
   Alert,
 } from "react-native";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from "react-native-reanimated";
+import Animated from "react-native-reanimated";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EmptyBookingsState } from "@/components/marketplace/EmptyBookingsState";
-import { BookingStatusBadge } from "@/components/marketplace/BookingStatusBadge";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
-import { SkeletonBlock, ErrorStateView } from "@/components/ui";
+import { SkeletonBlock, ErrorStateView, GhostButton } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
-import { getBookings } from "@/services/bookingService";
+import {
+  getMarketplaceSlotBookingsMe,
+  getCoachById,
+  cancelMarketplaceSlotBooking,
+  type MarketplaceSlotBookingRow,
+} from "@/services/marketplaceService";
 import { useAuth } from "@/context/AuthContext";
+import { MarketplaceBookingAuthState } from "@/components/marketplace/MarketplaceBookingAuthState";
+import { ApiRequestError } from "@/lib/api";
+import {
+  parentBookingPillTone,
+  parentBookingStatusLabelRu,
+  parentCanCancelMarketplaceBooking,
+  parentMarketplaceBookingCrossHint,
+  parentPaymentPillTone,
+  parentPaymentStatusLabelRu,
+} from "@/lib/marketplaceBookingLifecycle";
 import { colors, spacing, typography, radius } from "@/constants/theme";
-import type { Booking } from "@/types/booking";
 
 const PRESSED_OPACITY = 0.88;
 
-const STATUS_LABELS: Record<string, string> = {
-  confirmed: "Подтверждено",
-  pending: "Ожидает",
-  cancelled: "Отменено",
-  completed: "Завершено",
-};
-const FORMAT_LABELS: Record<string, string> = {
+const TYPE_LABELS: Record<string, string> = {
   ice: "Лёд",
   gym: "Зал",
-  online: "Онлайн",
+  private: "Индив.",
 };
 
-const FORMAT_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  ice: "snow-outline",
-  gym: "fitness-outline",
-  online: "desktop-outline",
+function formatCardAmount(n: number, fallback: number): string {
+  const v = Number.isFinite(n) ? n : fallback;
+  const x = Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0;
+  return x.toLocaleString("ru");
+}
+
+function formatCardPaidAt(iso: string | null): string | null {
+  if (!iso?.trim()) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString("ru-RU", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function PaymentStatusPill({ paymentStatus }: { paymentStatus: string }) {
+  const label = parentPaymentStatusLabelRu(paymentStatus);
+  const tone = parentPaymentPillTone(paymentStatus);
+  return (
+    <View
+      style={[
+        styles.paymentPill,
+        tone === "paid" && styles.paymentPillPaid,
+        tone === "refunded" && styles.paymentPillRefunded,
+        tone === "failed" && styles.paymentPillFailed,
+        tone === "pending" && styles.paymentPillPending,
+        (tone === "unpaid" || tone === "unknown") && styles.paymentPillUnpaid,
+      ]}
+    >
+      <Text style={styles.paymentPillText}>{label}</Text>
+    </View>
+  );
+}
+
+function BookingStatusPill({ status }: { status: string }) {
+  const label = parentBookingStatusLabelRu(status);
+  const tone = parentBookingPillTone(status);
+  return (
+    <View
+      style={[
+        styles.bookingPill,
+        tone === "pending" && styles.bookingPillPending,
+        tone === "confirmed" && styles.bookingPillConfirmed,
+        tone === "cancelled" && styles.bookingPillCancelled,
+        tone === "unknown" && styles.bookingPillUnknown,
+      ]}
+    >
+      <Text style={styles.bookingPillText}>{label}</Text>
+    </View>
+  );
+}
+
+type Row = MarketplaceSlotBookingRow & {
+  coachName: string;
+  coachPhoto: string | null;
 };
 
-function BookingCard({
-  booking,
-  onPress,
+function MarketplaceBookingCard({
+  row,
+  onCancel,
 }: {
-  booking: Booking;
-  onPress: () => void;
+  row: Row;
+  onCancel: () => void;
 }) {
-  const scale = useSharedValue(1);
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const dateFormatted = new Date(
-    booking.bookingDate + "T12:00:00"
-  ).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-  const formatIcon = FORMAT_ICONS[booking.format] ?? "calendar-outline";
+  const dateFormatted =
+    row.date.length >= 10
+      ? new Date(`${row.date}T12:00:00`).toLocaleDateString("ru-RU", {
+          day: "numeric",
+          month: "short",
+        })
+      : row.date;
+  const canCancel = parentCanCancelMarketplaceBooking(row.status);
+  const paidLine = formatCardPaidAt(row.paidAt);
+  const crossHint = parentMarketplaceBookingCrossHint({
+    status: row.status,
+    paymentStatus: row.paymentStatus,
+  });
 
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`Бронирование ${booking.coach.fullName}`}
-      onPressIn={() => {
-        scale.value = withSpring(0.98, { damping: 15, stiffness: 400 });
-      }}
-      onPressOut={() => {
-        scale.value = withSpring(1);
-      }}
-      style={({ pressed }) => [styles.cardWrap, pressed && { opacity: PRESSED_OPACITY }]}
-    >
-      <Animated.View style={[styles.card, animatedStyle]}>
+    <View style={styles.cardWrap}>
+      <View style={styles.card}>
         <View style={styles.cardRow}>
           <View style={styles.avatarWrap}>
-            {booking.coach.photoUrl ? (
+            {row.coachPhoto ? (
               <Image
-                source={{ uri: booking.coach.photoUrl }}
+                source={{ uri: row.coachPhoto }}
                 style={styles.avatar}
                 resizeMode="cover"
               />
@@ -94,40 +144,52 @@ function BookingCard({
             )}
           </View>
           <View style={styles.cardContent}>
-            <Text style={styles.coachName}>{booking.coach.fullName}</Text>
-            <Text style={styles.spec}>{booking.coach.specialization}</Text>
+            <Text style={styles.coachName} numberOfLines={1}>
+              {row.coachName}
+            </Text>
             <View style={styles.metaRow}>
               <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
               <Text style={styles.meta}>
-                {dateFormatted} · {booking.bookingTime}
+                {dateFormatted} · {row.startTime}–{row.endTime}
               </Text>
             </View>
             <View style={styles.footerRow}>
               <View style={styles.formatBadge}>
-                <Ionicons name={formatIcon} size={12} color={colors.textSecondary} />
                 <Text style={styles.formatText}>
-                  {FORMAT_LABELS[booking.format] ?? booking.format}
+                  {TYPE_LABELS[row.type] ?? row.type}
                 </Text>
               </View>
               <Text style={styles.price}>
-                {booking.priceBreakdown.totalAmount.toLocaleString("ru")} ₽
+                {formatCardAmount(row.amountSnapshot, row.price)} ₽
               </Text>
             </View>
+            <Text style={styles.statusSectionCaption}>Статус брони</Text>
+            <View style={styles.statusRow}>
+              <BookingStatusPill status={row.status} />
+            </View>
+            <Text style={styles.statusSectionCaption}>Оплата</Text>
+            <View style={styles.statusRow}>
+              <PaymentStatusPill paymentStatus={row.paymentStatus} />
+            </View>
+            {paidLine ? (
+              <Text style={styles.paidAtLine}>Оплачено: {paidLine}</Text>
+            ) : null}
+            {crossHint ? <Text style={styles.crossHint}>{crossHint}</Text> : null}
+            {canCancel && (
+              <View style={styles.cancelBtnWrap}>
+                <GhostButton label="Отменить бронь" onPress={onCancel} />
+              </View>
+            )}
           </View>
-          <BookingStatusBadge
-            status={booking.status}
-            paymentStatus={booking.paymentStatus}
-          />
         </View>
-      </Animated.View>
-    </Pressable>
+      </View>
+    </View>
   );
 }
 
 function BookingsSkeleton() {
   return (
     <View style={styles.skeletonContent}>
-      <SkeletonBlock height={120} style={styles.skeletonCard} />
       <SkeletonBlock height={120} style={styles.skeletonCard} />
       <SkeletonBlock height={120} style={styles.skeletonCard} />
       <SkeletonBlock height={120} style={styles.skeletonCard} />
@@ -138,29 +200,89 @@ function BookingsSkeleton() {
 export default function BookingsListScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const {
+    isLoading: authLoading,
+    isAuthenticated,
+    hasMarketplaceApiAuth,
+    token,
+  } = useAuth();
+  const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(false);
+  const [listAuthIssue, setListAuthIssue] = useState<
+    "none" | "session_expired" | "forbidden"
+  >("none");
 
   const load = useCallback(async () => {
+    if (authLoading) {
+      setLoading(true);
+      return;
+    }
     setLoading(true);
     setError(false);
+    if (!isAuthenticated) {
+      setRows([]);
+      setListAuthIssue("none");
+      setLoading(false);
+      return;
+    }
+    if (!hasMarketplaceApiAuth) {
+      setRows([]);
+      setListAuthIssue("none");
+      setLoading(false);
+      return;
+    }
+    setListAuthIssue("none");
     try {
-      const data = await getBookings(user?.id);
-      setBookings(data);
-    } catch {
-      setBookings([]);
+      const raw = await getMarketplaceSlotBookingsMe();
+      const coachIds = [...new Set(raw.map((r) => r.coachId))];
+      const coachMap = new Map<string, { name: string; photo: string | null }>();
+      await Promise.all(
+        coachIds.map(async (cid) => {
+          try {
+            const c = await getCoachById(cid);
+            coachMap.set(cid, {
+              name: c?.fullName ?? "Тренер",
+              photo: c?.photoUrl ?? null,
+            });
+          } catch {
+            coachMap.set(cid, { name: "Тренер", photo: null });
+          }
+        })
+      );
+      setRows(
+        raw.map((r) => ({
+          ...r,
+          coachName: coachMap.get(r.coachId)?.name ?? "Тренер",
+          coachPhoto: coachMap.get(r.coachId)?.photo ?? null,
+        }))
+      );
+    } catch (e) {
+      setRows([]);
+      if (e instanceof ApiRequestError) {
+        if (e.status === 401) {
+          setListAuthIssue("session_expired");
+          setError(false);
+          setLoading(false);
+          return;
+        }
+        if (e.status === 403) {
+          setListAuthIssue("forbidden");
+          setError(false);
+          setLoading(false);
+          return;
+        }
+      }
       setError(true);
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [authLoading, isAuthenticated, hasMarketplaceApiAuth, token]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      void load();
     }, [load])
   );
 
@@ -170,23 +292,39 @@ export default function BookingsListScreen() {
     setRefreshing(false);
   }, [load]);
 
-  const handleCardPress = useCallback((item: Booking) => {
-    triggerHaptic();
-    const d = new Date(item.bookingDate + "T12:00:00").toLocaleDateString(
-      "ru-RU",
-      { day: "numeric", month: "long", year: "numeric" }
-    );
-    const statusStr = STATUS_LABELS[item.status] ?? item.status;
-    const formatStr = FORMAT_LABELS[item.format] ?? item.format;
-    const lines = [
-      item.coach.specialization,
-      `${d} · ${item.bookingTime}`,
-      `${item.duration} мин · ${formatStr}`,
-      `${item.priceBreakdown.totalAmount.toLocaleString("ru")} ₽`,
-      `Статус: ${statusStr}`,
-    ];
-    Alert.alert(item.coach.fullName, lines.join("\n"), [{ text: "OK" }]);
-  }, []);
+  const confirmCancel = (row: Row) => {
+    Alert.alert("Отменить бронь?", "Слот снова станет доступен другим.", [
+      { text: "Нет", style: "cancel" },
+      {
+        text: "Отменить",
+        style: "destructive",
+        onPress: async () => {
+          triggerHaptic();
+          const res = await cancelMarketplaceSlotBooking(row.id);
+          if (!res.ok) {
+            if (res.status === 401) {
+              Alert.alert(
+                "Сессия истекла",
+                "Войдите снова, чтобы управлять бронированиями.",
+                [
+                  { text: "Отмена", style: "cancel" },
+                  { text: "Войти", onPress: () => router.push("/(auth)/login") },
+                ]
+              );
+              return;
+            }
+            if (res.status === 403) {
+              Alert.alert("Нет доступа", res.error || "Операция недоступна.");
+              return;
+            }
+            Alert.alert("Не удалось отменить", res.error);
+            return;
+          }
+          load();
+        },
+      },
+    ]);
+  };
 
   const header = (
     <View style={[styles.customHeader, { paddingTop: insets.top + spacing.lg }]}>
@@ -208,12 +346,51 @@ export default function BookingsListScreen() {
 
   const listBottomPadding = spacing.xxl + insets.bottom;
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <FlagshipScreen header={header} scroll={false}>
         <View style={styles.paddedContent}>
           <BookingsSkeleton />
         </View>
+      </FlagshipScreen>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <FlagshipScreen header={header} scroll={false}>
+        <MarketplaceBookingAuthState
+          kind={listAuthIssue === "session_expired" ? "session_expired" : "login_required"}
+          onPrimary={() => router.push("/(auth)/login")}
+          secondaryLabel="К тренерам"
+          onSecondary={() => router.replace("/marketplace/coaches")}
+        />
+      </FlagshipScreen>
+    );
+  }
+
+  if (!hasMarketplaceApiAuth) {
+    return (
+      <FlagshipScreen header={header} scroll={false}>
+        <MarketplaceBookingAuthState
+          kind="phone_confirmation_required"
+          onPrimary={() => router.push("/(auth)/login")}
+          secondaryLabel="К тренерам"
+          onSecondary={() => router.replace("/marketplace/coaches")}
+        />
+      </FlagshipScreen>
+    );
+  }
+
+  if (listAuthIssue === "forbidden") {
+    return (
+      <FlagshipScreen header={header} scroll={false}>
+        <MarketplaceBookingAuthState
+          kind="forbidden"
+          onPrimary={() => router.push("/(auth)/login")}
+          secondaryLabel="К тренерам"
+          onSecondary={() => router.replace("/marketplace/coaches")}
+        />
       </FlagshipScreen>
     );
   }
@@ -232,7 +409,7 @@ export default function BookingsListScreen() {
     );
   }
 
-  if (bookings.length === 0) {
+  if (rows.length === 0) {
     return (
       <FlagshipScreen header={header} scroll={false}>
         <View style={styles.emptyWrap}>
@@ -247,7 +424,7 @@ export default function BookingsListScreen() {
   return (
     <FlagshipScreen header={header} scroll={false}>
       <FlatList
-        data={bookings}
+        data={rows}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[
           styles.list,
@@ -263,9 +440,9 @@ export default function BookingsListScreen() {
         }
         renderItem={({ item, index }) => (
           <Animated.View entering={screenReveal(STAGGER + index * 40)}>
-            <BookingCard
-              booking={item}
-              onPress={() => handleCardPress(item)}
+            <MarketplaceBookingCard
+              row={item}
+              onCancel={() => confirmCancel(item)}
             />
           </Animated.View>
         )}
@@ -347,11 +524,6 @@ const styles = StyleSheet.create({
   coachName: {
     ...typography.cardTitle,
     color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  spec: {
-    ...typography.caption,
-    color: colors.textSecondary,
     marginBottom: spacing.sm,
   },
   metaRow: {
@@ -363,16 +535,15 @@ const styles = StyleSheet.create({
   meta: {
     ...typography.bodySmall,
     color: colors.textSecondary,
+    flex: 1,
   },
   footerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: spacing.sm,
   },
   formatBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
     backgroundColor: colors.surfaceLevel2,
@@ -387,4 +558,96 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: colors.accent,
   },
+  statusSectionCaption: {
+    ...typography.captionSmall,
+    fontWeight: "600",
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  statusRow: {
+    marginBottom: spacing.xs,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    alignItems: "center",
+  },
+  bookingPill: {
+    alignSelf: "flex-start",
+    paddingVertical: 6,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.surfaceLevel1Border,
+    backgroundColor: colors.surfaceLevel1,
+  },
+  bookingPillPending: {
+    borderColor: colors.warning,
+    backgroundColor: "rgba(245, 166, 35, 0.12)",
+  },
+  bookingPillConfirmed: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  bookingPillCancelled: {
+    borderColor: colors.textMuted,
+    backgroundColor: colors.surfaceLevel2,
+    opacity: 0.95,
+  },
+  bookingPillUnknown: {
+    borderStyle: "dashed",
+  },
+  bookingPillText: {
+    ...typography.captionSmall,
+    fontWeight: "600",
+    color: colors.text,
+  },
+  paymentPill: {
+    alignSelf: "flex-start",
+    paddingVertical: 4,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 8,
+    backgroundColor: colors.surfaceLevel2,
+    borderWidth: 1,
+    borderColor: colors.surfaceLevel1Border,
+  },
+  paymentPillPaid: {
+    backgroundColor: "rgba(34, 197, 94, 0.15)",
+    borderColor: "rgba(34, 197, 94, 0.35)",
+  },
+  paymentPillRefunded: {
+    backgroundColor: colors.surfaceLevel2,
+    borderColor: colors.textMuted,
+  },
+  paymentPillFailed: {
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    borderColor: "rgba(239, 68, 68, 0.35)",
+  },
+  paymentPillPending: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
+  },
+  paymentPillUnpaid: {
+    backgroundColor: colors.surfaceLevel2,
+    borderColor: colors.surfaceLevel1Border,
+  },
+  paymentPillText: {
+    ...typography.captionSmall,
+    fontWeight: "600",
+    color: colors.textSecondary,
+  },
+  paidAtLine: {
+    ...typography.captionSmall,
+    color: colors.textMuted,
+    marginBottom: spacing.xs,
+  },
+  crossHint: {
+    ...typography.captionSmall,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+    lineHeight: 18,
+  },
+  cancelBtnWrap: { marginTop: spacing.sm },
 });

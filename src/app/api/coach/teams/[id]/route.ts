@@ -39,7 +39,7 @@ export async function GET(
   }
 
   const teamIds = await getAccessibleTeamIds(user!, prisma);
-  if (!teamIds.includes(id)) {
+  if (teamIds !== null && !teamIds.includes(id)) {
     return NextResponse.json({ error: "Нет доступа к команде" }, { status: 403 });
   }
 

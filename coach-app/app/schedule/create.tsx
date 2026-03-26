@@ -22,14 +22,13 @@ import {
   type CreateTrainingPayload,
 } from "@/services/coachScheduleService";
 import { isAuthRequiredError } from "@/lib/coachAuth";
+import { normalizeWeekStartDateParam } from "@/lib/scheduleWeekUtc";
 import { ApiRequestError } from "@/lib/api";
 import { theme } from "@/constants/theme";
 
-const TRAINING_TYPES: Array<{ value: CreateTrainingPayload["type"]; label: string }> = [
-  { value: "hockey", label: "Хоккей" },
+const TRAINING_KINDS: Array<{ value: CreateTrainingPayload["type"]; label: string }> = [
+  { value: "ice", label: "Лёд" },
   { value: "ofp", label: "ОФП" },
-  { value: "game", label: "Игра" },
-  { value: "individual", label: "Индивидуалка" },
 ];
 
 function toDateStr(d: Date): string {
@@ -100,8 +99,10 @@ export default function CreateTrainingScreen() {
   const today = new Date();
   const initialWeekStart = params.weekStartDate
     ? (() => {
-        const parsed = new Date(params.weekStartDate + "T12:00:00");
-        return isNaN(parsed.getTime()) ? getWeekStart(today) : getWeekStart(parsed);
+        const norm =
+          normalizeWeekStartDateParam(params.weekStartDate) ?? params.weekStartDate;
+        const parsed = new Date(norm + "T12:00:00");
+        return Number.isNaN(parsed.getTime()) ? getWeekStart(today) : getWeekStart(parsed);
       })()
     : getWeekStart(today);
   const weekDays = getWeekDays(initialWeekStart);
@@ -111,7 +112,7 @@ export default function CreateTrainingScreen() {
   const [groups, setGroups] = useState<TeamGroup[]>([]);
   const [teamId, setTeamId] = useState("");
   const [groupId, setGroupId] = useState("");
-  const [type, setType] = useState<CreateTrainingPayload["type"]>("hockey");
+  const [type, setType] = useState<CreateTrainingPayload["type"]>("ice");
   const [dateStr, setDateStr] = useState(defaultDateStr);
   const [startTime, setStartTime] = useState("18:00");
   const [endTime, setEndTime] = useState("19:30");
@@ -296,7 +297,7 @@ export default function CreateTrainingScreen() {
           <SectionCard>
             <Text style={styles.label}>Тип тренировки</Text>
             <View style={styles.chipRow}>
-              {TRAINING_TYPES.map((t) => (
+              {TRAINING_KINDS.map((t) => (
                 <Pressable
                   key={t.value}
                   onPress={() => setType(t.value)}

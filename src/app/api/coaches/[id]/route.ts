@@ -20,6 +20,13 @@ export async function GET(
       );
     }
 
+    if (coach.isMarketplaceIndependent) {
+      return NextResponse.json(
+        { error: "Тренер не найден" },
+        { status: 404 }
+      );
+    }
+
     return NextResponse.json(coach);
   } catch (error) {
     console.error("GET /api/coaches/[id] failed:", error);
@@ -39,6 +46,17 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
+    const existing = await prisma.coach.findUnique({
+      where: { id },
+      select: { isMarketplaceIndependent: true },
+    });
+    if (existing?.isMarketplaceIndependent) {
+      return NextResponse.json(
+        { error: "Нельзя изменять профиль независимого тренера через CRM школы" },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json().catch(() => ({}));
     const { firstName, lastName, phone, email, specialization, teamIds } = body;
 
@@ -82,6 +100,16 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    const existing = await prisma.coach.findUnique({
+      where: { id },
+      select: { isMarketplaceIndependent: true },
+    });
+    if (existing?.isMarketplaceIndependent) {
+      return NextResponse.json(
+        { error: "Нельзя удалить независимого тренера через CRM школы" },
+        { status: 403 }
+      );
+    }
     await prisma.coachRating.deleteMany({ where: { coachId: id } });
     await prisma.team.updateMany({ where: { coachId: id }, data: { coachId: null } });
     await prisma.coach.delete({ where: { id } });

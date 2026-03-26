@@ -57,13 +57,14 @@ function toReportPriority(item: WeeklyReportItem): CoachHomePriorityItem {
 }
 
 function toParentDraftPriority(item: ParentDraftItem): CoachHomePriorityItem {
+  const pid = item.playerId ?? "";
   return {
     type: "parent_draft",
     title: item.playerName,
     subtitle: item.preview,
     ctaLabel: "Сообщение",
-    ctaRoute: `/player/${item.playerId}/share-report`,
-    playerId: item.playerId,
+    ctaRoute: `/player/${pid}/share-report`,
+    playerId: pid,
   };
 }
 
@@ -126,6 +127,7 @@ export async function getCoachHomePriorities(): Promise<CoachHomePriorityItem[]>
   }
 
   for (const item of drafts) {
+    if (!item.playerId) continue;
     const existing = byPlayer.get(item.playerId);
     if (!existing || TYPE_ORDER[existing.type] > TYPE_ORDER.parent_draft) {
       byPlayer.set(item.playerId, toParentDraftPriority(item));

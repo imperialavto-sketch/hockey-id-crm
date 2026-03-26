@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { theme } from '@/constants/theme';
+import { COACH_PLAYERS_LIST_COPY } from '@/lib/coachPlayersListUi';
 
 type PlayersOverviewProps = {
   watchlistCount?: number;
@@ -29,7 +30,10 @@ export function PlayersOverview({
         </>
       ) : null}
       {watchlistCount === 0 && needsFollowUpCount === 0 ? (
-        <Text style={styles.empty}>Все игроки в порядке</Text>
+        <View style={styles.emptyWrap}>
+          <Text style={styles.empty}>{COACH_PLAYERS_LIST_COPY.overviewAllGood}</Text>
+          <Text style={styles.emptyHint}>{COACH_PLAYERS_LIST_COPY.overviewAllGoodHint}</Text>
+        </View>
       ) : null}
     </View>
   );
@@ -40,6 +44,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: theme.colors.surfaceElevated,
     borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
     padding: theme.spacing.md,
     marginBottom: theme.spacing.lg,
     alignItems: 'center',
@@ -68,8 +74,18 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     textTransform: 'uppercase',
   },
+  emptyWrap: {
+    flex: 1,
+    gap: theme.spacing.xs,
+  },
   empty: {
     ...theme.typography.body,
     color: theme.colors.textSecondary,
+    fontWeight: '500',
+  },
+  emptyHint: {
+    ...theme.typography.caption,
+    color: theme.colors.textMuted,
+    lineHeight: 18,
   },
 });

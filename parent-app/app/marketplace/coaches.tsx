@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { View, FlatList, StyleSheet, Text } from "react-native";
+import { View, FlatList, StyleSheet, Text, TextInput, Pressable, ScrollView } from "react-native";
 import Animated from "react-native-reanimated";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,6 +20,13 @@ import { colors, spacing, typography, radius } from "@/constants/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const TOP_RECOMMENDED = 3;
+
+const FORMAT_MARKETPLACE_FILTERS: { key: string; label: string }[] = [
+  { key: "", label: "Все форматы" },
+  { key: "ice", label: "Лёд" },
+  { key: "gym", label: "Зал" },
+  { key: "private", label: "Индив." },
+];
 
 function CoachesSkeleton() {
   return (
@@ -49,6 +56,9 @@ export default function CoachesMarketplaceScreen() {
     playerName?: string;
   }>();
   const [activeFilter, setActiveFilter] = useState("");
+  const [formatFilter, setFormatFilter] = useState("");
+  const [cityInput, setCityInput] = useState("");
+  const [cityApplied, setCityApplied] = useState("");
   const [coaches, setCoaches] = useState<Awaited<ReturnType<typeof getCoaches>>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -57,7 +67,14 @@ export default function CoachesMarketplaceScreen() {
     setLoading(true);
     setError(false);
     try {
-      const data = await getCoaches(undefined, user?.id);
+      const data = await getCoaches(
+        {
+          city: cityApplied.trim() || undefined,
+          format: formatFilter || undefined,
+          category: activeFilter || undefined,
+        },
+        user?.id
+      );
       setCoaches(data);
     } catch {
       setCoaches([]);
@@ -65,7 +82,7 @@ export default function CoachesMarketplaceScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, activeFilter, formatFilter, cityApplied]);
 
   useEffect(() => {
     loadCoaches();
@@ -118,25 +135,22 @@ export default function CoachesMarketplaceScreen() {
   );
 
   const filteredCoaches = useMemo(() => {
-    let list = coaches;
-    if (activeFilter) {
-      list = list.filter(
-        (c) =>
-          c.specialization === activeFilter ||
-          (c.specializations ?? []).includes(activeFilter)
-      );
-    }
-    const sorted = [...list].sort((a, b) => {
+    const sorted = [...coaches].sort((a, b) => {
       const ma = matchByCoachId.get(a.id)?.matchScore ?? 0;
       const mb = matchByCoachId.get(b.id)?.matchScore ?? 0;
       return mb - ma;
     });
     return sorted.filter((c) => !recommendedIds.has(c.id));
-  }, [coaches, activeFilter, matchByCoachId, recommendedIds]);
+  }, [coaches, matchByCoachId, recommendedIds]);
 
   const handleFilterSelect = (key: string) => {
     triggerHaptic();
     setActiveFilter(key);
+  };
+
+  const handleFormatSelect = (key: string) => {
+    triggerHaptic();
+    setFormatFilter(key);
   };
 
   const goToCoach = (id: string) => {
@@ -192,6 +206,46 @@ export default function CoachesMarketplaceScreen() {
           onSelect={handleFilterSelect}
         />
       </Animated.View>
+      <Animated.View entering={screenReveal(STAGGER + 0.5)} style={styles.cityRow}>
+        <Text style={styles.filterLabel}>Город</Text>
+        <TextInput
+          value={cityInput}
+          onChangeText={setCityInput}
+          onSubmitEditing={() => setCityApplied(cityInput.trim())}
+          placeholder="Например, Москва"
+          placeholderTextColor={colors.textMuted}
+          style={styles.cityInput}
+          returnKeyType="search"
+        />
+      </Animated.View>
+      <Animated.View entering={screenReveal(STAGGER + 0.75)}>
+        <Text style={styles.filterLabel}>Формат площадки</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.formatChipsRow}
+        >
+          {FORMAT_MARKETPLACE_FILTERS.map((f) => (
+            <Pressable
+              key={f.key || "all"}
+              onPress={() => handleFormatSelect(f.key)}
+              style={[
+                styles.formatChip,
+                formatFilter === f.key && styles.formatChipActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.formatChipText,
+                  formatFilter === f.key && styles.formatChipTextActive,
+                ]}
+              >
+                {f.label}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </Animated.View>
       {recommended.length > 0 && (
         <Animated.View entering={screenReveal(STAGGER * 2)}>
           <View style={styles.aiSection}>
@@ -223,11 +277,11 @@ export default function CoachesMarketplaceScreen() {
   const listEmpty = (
     <EmptyStateView
       icon="people-outline"
-      title={coaches.length === 0 ? "Нет тренеров" : "Нет тренеров по фильтру"}
+      title={coaches.length === 0 ? "Нет тренеров" : "Никого по фильтрам"}
       subtitle={
         coaches.length === 0
-          ? "Тренеры появятся в разделе позже"
-          : "Попробуйте изменить фильтр выше"
+          ? "Частные тренеры появятся здесь после регистрации в маркетплейсе"
+          : "Измените город, формат или специализацию"
       }
       style={styles.emptyWrap}
     />
@@ -313,4 +367,50 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
   },
   emptyWrap: { flex: 1, justifyContent: "center" },
+
+  filterLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+    marginHorizontal: spacing.screenPadding,
+  },
+  cityRow: {
+    marginBottom: spacing.lg,
+  },
+  cityInput: {
+    marginHorizontal: spacing.screenPadding,
+    backgroundColor: colors.surfaceLevel1,
+    borderWidth: 1,
+    borderColor: colors.surfaceLevel1Border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    color: colors.text,
+    fontSize: 16,
+  },
+  formatChipsRow: {
+    paddingHorizontal: spacing.screenPadding,
+    gap: spacing.sm,
+    paddingBottom: spacing.sm,
+  },
+  formatChip: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 20,
+    backgroundColor: colors.surfaceLevel1,
+    borderWidth: 1,
+    borderColor: colors.surfaceLevel1Border,
+  },
+  formatChipActive: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
+  },
+  formatChipText: {
+    ...typography.caption,
+    fontWeight: "600",
+    color: colors.textSecondary,
+  },
+  formatChipTextActive: {
+    color: colors.accent,
+  },
 });

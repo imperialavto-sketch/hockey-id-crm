@@ -5,10 +5,15 @@
  * GET /api/coach/messages/:conversationId
  */
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiFetch, isApi404 } from '@/lib/api';
 import { getCoachAuthHeaders } from '@/lib/coachAuth';
 import { isEndpointUnavailable, markEndpointUnavailable } from '@/lib/endpointAvailability';
 import type { ConversationCardData, ConversationType } from '@/components/messages/ConversationCard';
+
+const AWAITING_REPLY_STORAGE_KEY = '@coach_conversation_awaiting_reply_v1';
+/** ms: if thread lastMessageAt moved past this after our send, treat as possible parent reply */
+const AWAITING_REPLY_CLEAR_SLACK_MS = 2_000;
 
 /** API response for conversation list item */
 export interface ConversationApiItem {
@@ -21,6 +26,10 @@ export interface ConversationApiItem {
   unreadCount?: number;
   participants?: string[];
   kind?: string;
+  /** When API provides it: last list message was sent by current coach */
+  lastMessageIsOwn?: boolean;
+  /** e.g. coach | parent — when API provides it */
+  lastMessageSenderRole?: string;
 }
 
 /** API response for conversation detail */
@@ -81,8 +90,95 @@ function mapKindToType(kind?: string): ConversationType {
   return 'parent';
 }
 
-function mapConversationApiToCard(api: ConversationApiItem): ConversationCardData {
-  const type = mapKindToType(api.kind);
+type AwaitingReplyMap = Record<string, string>;
+
+async function loadAwaitingReplyMap(): Promise<AwaitingReplyMap> {
+  try {
+    const raw = await AsyncStorage.getItem(AWAITING_REPLY_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return {};
+    return parsed as AwaitingReplyMap;
+  } catch {
+    return {};
+  }
+}
+
+async function saveAwaitingReplyMap(map: AwaitingReplyMap): Promise<void> {
+  try {
+    await AsyncStorage.setItem(AWAITING_REPLY_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    /* ignore */
+  }
+}
+
+function lastMessageAppearsFromCoach(api: ConversationApiItem): boolean {
+  const role = (api.lastMessageSenderRole ?? '').toLowerCase().trim();
+  if (api.lastMessageIsOwn === true) return true;
+  if (role === 'coach' || role === 'trainer' || role === 'main_coach') return true;
+  return false;
+}
+
+function lastMessageAppearsFromParent(api: ConversationApiItem): boolean {
+  const role = (api.lastMessageSenderRole ?? '').toLowerCase().trim();
+  if (api.lastMessageIsOwn === false) return true;
+  if (role === 'parent' || role === 'guardian') return true;
+  return false;
+}
+
+/**
+ * Parent dialogues where the last message looks like it was from the coach:
+ * we surface "waiting for parent" without claiming certainty when API omits sender hints.
+ */
+function computeAwaitingParentReply(
+  api: ConversationApiItem,
+  type: ConversationType,
+  markedAtIso: string | undefined
+): { awaiting: boolean; clearMarked: boolean } {
+  if (type !== 'parent') return { awaiting: false, clearMarked: false };
+
+  if ((api.unreadCount ?? 0) > 0) {
+    return { awaiting: false, clearMarked: !!markedAtIso };
+  }
+
+  const hasLast = !!(api.lastMessage && String(api.lastMessage).trim());
+
+  if (lastMessageAppearsFromParent(api)) {
+    return { awaiting: false, clearMarked: !!markedAtIso };
+  }
+
+  if (hasLast && lastMessageAppearsFromCoach(api)) {
+    return { awaiting: true, clearMarked: false };
+  }
+
+  if (markedAtIso) {
+    const marked = new Date(markedAtIso).getTime();
+    const lastAt = api.lastMessageAt ? new Date(api.lastMessageAt).getTime() : 0;
+    if (lastAt > marked + AWAITING_REPLY_CLEAR_SLACK_MS) {
+      return { awaiting: false, clearMarked: true };
+    }
+    return { awaiting: true, clearMarked: false };
+  }
+
+  return { awaiting: false, clearMarked: false };
+}
+
+function computeNeedsCoachReaction(
+  api: ConversationApiItem,
+  type: ConversationType
+): boolean {
+  if (type !== 'parent') return false;
+  if ((api.unreadCount ?? 0) <= 0) return false;
+  if (lastMessageAppearsFromCoach(api)) return false;
+  return true;
+}
+
+function mapConversationApiToCard(
+  api: ConversationApiItem,
+  type: ConversationType,
+  awaitingParentReply: boolean,
+  needsCoachReaction: boolean
+): ConversationCardData {
   const name = api.title ?? 'Диалог';
   let metadata = '';
   if (type === 'team' || type === 'announcement') {
@@ -100,10 +196,13 @@ function mapConversationApiToCard(api: ConversationApiItem): ConversationCardDat
     id: api.id,
     type,
     name,
+    playerId: api.playerId,
     metadata: metadata || undefined,
     preview: api.lastMessage ?? '—',
     time: formatTime(api.lastMessageAt),
     unreadCount: api.unreadCount ?? 0,
+    awaitingParentReply,
+    needsCoachReaction,
   };
 }
 
@@ -137,15 +236,38 @@ const MESSAGES_PATH = '/api/coach/messages';
 export async function getCoachMessages(): Promise<ConversationCardData[]> {
   if (isEndpointUnavailable(MESSAGES_PATH)) return [];
   try {
+    const awaitingMap = await loadAwaitingReplyMap();
+    const nextAwaiting: AwaitingReplyMap = { ...awaitingMap };
+
     const headers = await getCoachAuthHeaders();
     const raw = await apiFetch<ConversationApiItem[]>(MESSAGES_PATH, {
       method: 'GET',
       headers,
     });
     const items = Array.isArray(raw) ? raw : [];
-    return items
-      .filter((item): item is ConversationApiItem => !!item?.id)
-      .map(mapConversationApiToCard);
+    const cards: ConversationCardData[] = [];
+
+    for (const item of items.filter((i): i is ConversationApiItem => !!i?.id)) {
+      const type = mapKindToType(item.kind);
+      if (type !== 'parent') {
+        delete nextAwaiting[item.id];
+      }
+      const marked = nextAwaiting[item.id];
+      const { awaiting, clearMarked } = computeAwaitingParentReply(item, type, marked);
+      const needsCoachReaction = computeNeedsCoachReaction(item, type);
+      if (clearMarked) delete nextAwaiting[item.id];
+      cards.push(
+        mapConversationApiToCard(
+          item,
+          type,
+          needsCoachReaction ? false : awaiting,
+          needsCoachReaction
+        )
+      );
+    }
+
+    await saveAwaitingReplyMap(nextAwaiting);
+    return cards;
   } catch (e) {
     if (isApi404(e)) {
       markEndpointUnavailable(MESSAGES_PATH);
@@ -198,6 +320,14 @@ export async function sendCoachMessage(
     });
 
     if (!res?.id) return null;
+
+    const createdIso =
+      typeof res.createdAt === 'string' && res.createdAt
+        ? res.createdAt
+        : new Date().toISOString();
+    const awaitingMap = await loadAwaitingReplyMap();
+    awaitingMap[conversationId] = createdIso;
+    await saveAwaitingReplyMap(awaitingMap);
 
     return {
       id: res.id,

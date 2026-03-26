@@ -28,6 +28,18 @@ export interface ApiError {
   details?: string;
 }
 
+function pickApiErrorMessage(data: unknown, fallback: string): string {
+  if (!data || typeof data !== 'object') return fallback;
+  const d = data as Record<string, unknown>;
+  const e = d.error;
+  if (typeof e === 'string') return e;
+  if (e && typeof e === 'object' && 'message' in e) {
+    const m = (e as { message?: unknown }).message;
+    if (typeof m === 'string' && m.trim()) return m;
+  }
+  return fallback;
+}
+
 export class ApiRequestError extends Error {
   status: number;
 
@@ -108,8 +120,7 @@ export async function apiFetch<T>(
         /* ignore */
       }
     }
-    const err = data as ApiError;
-    const message = err?.error ?? `Ошибка ${res.status}`;
+    const message = pickApiErrorMessage(data, `Ошибка ${res.status}`);
     throw new ApiRequestError(message, res.status);
   }
 

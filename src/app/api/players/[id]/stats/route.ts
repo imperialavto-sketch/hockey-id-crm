@@ -1,19 +1,54 @@
+/**
+ * GET /api/players/[id]/stats — player statistics.
+ * PARENT: uses canParentAccessPlayer, returns aggregated object or null.
+ * CRM roles: uses requirePermission + checkPlayerAccess, returns stats array.
+ */
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getAuthFromRequest } from "@/lib/api-auth";
 import { requirePermission } from "@/lib/api-rbac";
 import { checkPlayerAccess } from "@/lib/data-scope";
+import { getParentPlayerStats } from "@/lib/parent-players";
+import { canParentAccessPlayer } from "@/lib/parent-access";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { user, res } = await requirePermission(req, "players", "view");
+  const user = await getAuthFromRequest(req);
+  if (!user) {
+    return NextResponse.json(
+      { error: "Необходима авторизация" },
+      { status: 401 }
+    );
+  }
+
+  const { id } = await params;
+
+  if (user.role === "PARENT" && user.parentId) {
+    try {
+      const canAccess = await canParentAccessPlayer(user.parentId, id);
+      if (!canAccess) {
+        return NextResponse.json({ error: "Нет доступа к игроку" }, { status: 403 });
+      }
+      const stats = await getParentPlayerStats(user.parentId, id);
+      return NextResponse.json(stats);
+    } catch (error) {
+      console.error("GET /api/players/[id]/stats (parent) failed:", error);
+      return NextResponse.json(
+        { error: "Ошибка загрузки статистики" },
+        { status: 500 }
+      );
+    }
+  }
+
+  const { user: _u, res } = await requirePermission(req, "players", "view");
   if (res) return res;
   try {
-    const { id } = await params;
     const player = await prisma.player.findUnique({ where: { id }, include: { team: true } });
     if (!player) return NextResponse.json([], { status: 200 });
-    const accessRes = checkPlayerAccess(user!, { ...player, team: player.team ?? undefined });
+    const accessRes = checkPlayerAccess(_u!, { ...player, team: player.team ?? undefined });
     if (accessRes) return accessRes;
 
     const stats = await prisma.playerStat.findMany({
@@ -24,10 +59,7 @@ export async function GET(
   } catch (error) {
     console.error("GET /api/players/[id]/stats failed:", error);
     return NextResponse.json(
-      {
-        error: "Ошибка загрузки статистики",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
+      { error: "Ошибка загрузки статистики" },
       { status: 500 }
     );
   }
@@ -76,10 +108,7 @@ export async function POST(
   } catch (error) {
     console.error("POST /api/players/[id]/stats failed:", error);
     return NextResponse.json(
-      {
-        error: "Ошибка сохранения статистики",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
+      { error: "Ошибка сохранения статистики" },
       { status: 500 }
     );
   }

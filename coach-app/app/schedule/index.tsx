@@ -6,6 +6,7 @@ import {
   Pressable,
   ActivityIndicator,
   ScrollView,
+  RefreshControl,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { SymbolView } from "expo-symbols";
@@ -14,15 +15,25 @@ import { SectionCard } from "@/components/ui/SectionCard";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { getCoachTeams, type CoachTeamItem } from "@/services/coachTeamsService";
-import { getScheduleForWeek, type ScheduleItem } from "@/services/coachScheduleService";
+import {
+  getCoachScheduleWeek,
+  type CoachTrainingSession,
+} from "@/services/coachScheduleService";
+import { weekStartParamFromLocalMonday } from "@/lib/scheduleWeekUtc";
 import { isAuthRequiredError } from "@/lib/coachAuth";
 import { theme } from "@/constants/theme";
+import { Ionicons } from "@expo/vector-icons";
+import {
+  COACH_SCHEDULE_AUTH_LINE,
+  COACH_SCHEDULE_COPY,
+} from "@/lib/coachScheduleUi";
 
 const TYPE_LABELS: Record<string, string> = {
-  hockey: "Хоккей",
+  ice: "Лёд",
   ofp: "ОФП",
-  game: "Игра",
-  individual: "Индивидуалка",
+  hockey: "Лёд",
+  game: "Лёд",
+  individual: "Лёд",
 };
 
 const WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
@@ -86,8 +97,10 @@ function getDayKey(d: Date): string {
   return toDateStr(d);
 }
 
-function groupSessionsByDay(sessions: ScheduleItem[]): Map<string, ScheduleItem[]> {
-  const map = new Map<string, ScheduleItem[]>();
+function groupSessionsByDay(
+  sessions: CoachTrainingSession[]
+): Map<string, CoachTrainingSession[]> {
+  const map = new Map<string, CoachTrainingSession[]>();
   for (const s of sessions) {
     const d = new Date(s.startAt);
     const key = toDateStr(d);
@@ -101,16 +114,25 @@ function groupSessionsByDay(sessions: ScheduleItem[]): Map<string, ScheduleItem[
   return map;
 }
 
-function SessionCard({ item }: { item: ScheduleItem }) {
+function SessionCard({
+  item,
+  onPress,
+}: {
+  item: CoachTrainingSession;
+  onPress?: () => void;
+}) {
   const typeLabel = TYPE_LABELS[item.type] ?? item.type;
-  return (
-    <View style={styles.sessionCard}>
+  const sub = item.subType?.trim();
+  const kindLine = sub ? `${typeLabel} · ${sub}` : typeLabel;
+  const inner = (
+    <>
+      <View style={styles.sessionAccent} />
       <Text style={styles.sessionTimeText}>
         {formatTime(item.startAt)} – {formatTime(item.endAt)}
       </Text>
       <View style={styles.sessionBody}>
         <Text style={styles.sessionTitle}>
-          {item.group.name} • {typeLabel}
+          {item.teamName} · {item.group.name} • {kindLine}
         </Text>
         {item.locationName ? (
           <Text style={styles.sessionLocation} numberOfLines={1}>
@@ -118,64 +140,90 @@ function SessionCard({ item }: { item: ScheduleItem }) {
           </Text>
         ) : null}
       </View>
-    </View>
+      {onPress ? (
+        <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
+      ) : null}
+    </>
   );
+  if (onPress) {
+    return (
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.sessionCard,
+          pressed && styles.sessionCardPressed,
+        ]}
+      >
+        {inner}
+      </Pressable>
+    );
+  }
+  return <View style={styles.sessionCard}>{inner}</View>;
 }
 
 export default function ScheduleScreen() {
   const router = useRouter();
   const [teams, setTeams] = useState<CoachTeamItem[]>([]);
-  const [sessions, setSessions] = useState<ScheduleItem[]>([]);
+  const [sessions, setSessions] = useState<CoachTrainingSession[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()));
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    setError(null);
+    try {
+      const teamList = await getCoachTeams();
+      setTeams(teamList);
+      const tid =
+        selectedTeamId && teamList.some((t) => t.id === selectedTeamId)
+          ? selectedTeamId
+          : teamList[0]?.id ?? null;
+      if (tid && !selectedTeamId) setSelectedTeamId(tid);
+      if (!tid) {
+        setSessions([]);
+        return;
+      }
+      const sched = await getCoachScheduleWeek(
+        weekStartParamFromLocalMonday(weekStart),
+        tid
+      );
+      setSessions(Array.isArray(sched) ? sched : []);
+    } catch (err) {
+      setSessions([]);
+      setError(
+        isAuthRequiredError(err)
+          ? COACH_SCHEDULE_AUTH_LINE
+          : err instanceof Error
+            ? err.message
+            : COACH_SCHEDULE_COPY.loadErrorFallback
+      );
+    }
+  }, [weekStart, selectedTeamId]);
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
-      setError(null);
       let cancelled = false;
-      getCoachTeams()
-        .then((teamList) => {
-          if (cancelled) return null;
-          setTeams(teamList);
-          const tid =
-            selectedTeamId && teamList.some((t) => t.id === selectedTeamId)
-              ? selectedTeamId
-              : teamList[0]?.id ?? null;
-          if (tid && !selectedTeamId) setSelectedTeamId(tid);
-          return tid;
-        })
-        .then((tid) => {
-          if (cancelled || !tid) {
-            setSessions([]);
-            return;
-          }
-          return getScheduleForWeek(toDateStr(weekStart), tid).then((sched) => {
-            if (!cancelled) setSessions(Array.isArray(sched) ? sched : []);
-          });
-        })
-        .catch((err) => {
-          if (!cancelled) {
-            setSessions([]);
-            setError(
-              isAuthRequiredError(err)
-                ? "Требуется авторизация"
-                : err instanceof Error
-                  ? err.message
-                  : "Не удалось загрузить расписание"
-            );
-          }
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
+      setLoading(true);
+      void (async () => {
+        await reload();
+        if (!cancelled) setLoading(false);
+      })();
       return () => {
         cancelled = true;
       };
-    }, [weekStart, selectedTeamId])
+    }, [reload])
   );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await reload();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [reload]);
 
   const prevWeek = () => setWeekStart(getPrevWeek(weekStart));
   const nextWeek = () => setWeekStart(getNextWeek(weekStart));
@@ -184,8 +232,23 @@ export default function ScheduleScreen() {
   const byDay = groupSessionsByDay(sessions);
   const weekDays = getWeekDays(weekStart);
 
+  const todayStr = toDateStr(new Date());
+  const tomorrowD = new Date();
+  tomorrowD.setDate(tomorrowD.getDate() + 1);
+  const tomorrowStr = toDateStr(tomorrowD);
+  const todaySessions = sessions.filter(
+    (s) => toDateStr(new Date(s.startAt)) === todayStr
+  );
+  const tomorrowSessions = sessions.filter(
+    (s) => toDateStr(new Date(s.startAt)) === tomorrowStr
+  );
+
   return (
     <ScreenContainer contentContainerStyle={styles.content}>
+      <View style={styles.heroBlock}>
+        <Text style={styles.heroEyebrow}>{COACH_SCHEDULE_COPY.heroEyebrow}</Text>
+        <Text style={styles.heroHint}>{COACH_SCHEDULE_COPY.heroHint}</Text>
+      </View>
       <View style={styles.weekRow}>
         <Pressable
           onPress={prevWeek}
@@ -212,7 +275,7 @@ export default function ScheduleScreen() {
 
       {teams.length > 1 && (
         <View style={styles.teamRow}>
-          <Text style={styles.teamLabel}>Команда: </Text>
+          <Text style={styles.teamLabel}>{COACH_SCHEDULE_COPY.teamPickerLabel} </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {teams.map((t) => (
               <Pressable
@@ -235,47 +298,101 @@ export default function ScheduleScreen() {
       )}
 
       {error ? (
-        <SectionCard>
+        <SectionCard elevated style={styles.errorCard}>
           <Text style={styles.errorText}>{error}</Text>
+          {error !== COACH_SCHEDULE_AUTH_LINE ? (
+            <Text style={styles.errorHint}>{COACH_SCHEDULE_COPY.networkRetryHint}</Text>
+          ) : null}
+          <PrimaryButton
+            title={COACH_SCHEDULE_COPY.retryCta}
+            variant="outline"
+            onPress={() => {
+              setLoading(true);
+              void reload().finally(() => setLoading(false));
+            }}
+            style={styles.errorRetryBtn}
+          />
         </SectionCard>
       ) : loading ? (
         <View style={styles.loading}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <ActivityIndicator size="small" color={theme.colors.primary} />
+          <Text style={styles.loadingHint}>{COACH_SCHEDULE_COPY.loadingHint}</Text>
         </View>
       ) : !effectiveTeamId ? (
         <EmptyState
-          title="Нет доступных команд"
-          subtitle="Добавьте команду в CRM"
+          title={COACH_SCHEDULE_COPY.noTeamsTitle}
+          subtitle={COACH_SCHEDULE_COPY.noTeamsSubtitle}
           icon="👥"
         />
       ) : (
         <>
           <PrimaryButton
-            title="+ Новая тренировка"
+            title={COACH_SCHEDULE_COPY.createCta}
             onPress={() =>
               router.push({
                 pathname: "/schedule/create",
-                params: { weekStartDate: toDateStr(weekStart) },
+                params: {
+                  weekStartDate: weekStartParamFromLocalMonday(weekStart),
+                },
               })
             }
             style={styles.createBtn}
           />
+
+          {(todaySessions.length > 0 || tomorrowSessions.length > 0) && (
+            <View style={styles.quickSection}>
+              {todaySessions.length > 0 && (
+                <SectionCard elevated style={styles.quickCard}>
+                  <Text style={styles.quickTitle}>{COACH_SCHEDULE_COPY.quickToday}</Text>
+                  {todaySessions.map((s) => (
+                    <SessionCard
+                      key={s.id}
+                      item={s}
+                      onPress={() => router.push(`/schedule/${s.id}` as never)}
+                    />
+                  ))}
+                </SectionCard>
+              )}
+              {tomorrowSessions.length > 0 && (
+                <SectionCard elevated style={styles.quickCard}>
+                  <Text style={styles.quickTitle}>{COACH_SCHEDULE_COPY.quickTomorrow}</Text>
+                  {tomorrowSessions.map((s) => (
+                    <SessionCard
+                      key={s.id}
+                      item={s}
+                      onPress={() => router.push(`/schedule/${s.id}` as never)}
+                    />
+                  ))}
+                </SectionCard>
+              )}
+            </View>
+          )}
+
           {sessions.length === 0 ? (
             <EmptyState
-              title="Нет тренировок на неделю"
+              title={COACH_SCHEDULE_COPY.emptyWeekTitle}
               subtitle={formatWeekRange(weekStart)}
               icon="📅"
               action={{
-                label: "Создать",
+                label: COACH_SCHEDULE_COPY.emptyWeekAction,
                 onPress: () =>
                   router.push({
                     pathname: "/schedule/create",
-                    params: { weekStartDate: toDateStr(weekStart) },
+                    params: {
+                  weekStartDate: weekStartParamFromLocalMonday(weekStart),
+                },
                   }),
               }}
             />
           ) : (
-            <ScrollView style={styles.weekScroll} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={styles.weekScroll}
+              showsVerticalScrollIndicator={false}
+              refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+              }
+            >
+              <Text style={styles.weekSectionTitle}>{COACH_SCHEDULE_COPY.weekSectionTitle}</Text>
               {weekDays.map((day) => {
                 const key = getDayKey(day);
                 const daySessions = byDay.get(key) ?? [];
@@ -285,10 +402,14 @@ export default function ScheduleScreen() {
                       {WEEKDAY_LABELS[(day.getDay() + 6) % 7]} {day.getDate()}
                     </Text>
                     {daySessions.length === 0 ? (
-                      <Text style={styles.dayEmpty}>—</Text>
+                      <Text style={styles.dayEmpty}>{COACH_SCHEDULE_COPY.dayFree}</Text>
                     ) : (
                       daySessions.map((s) => (
-                        <SessionCard key={s.id} item={s} />
+                        <SessionCard
+                          key={s.id}
+                          item={s}
+                          onPress={() => router.push(`/schedule/${s.id}` as never)}
+                        />
                       ))
                     )}
                   </View>
@@ -304,8 +425,21 @@ export default function ScheduleScreen() {
 
 const styles = StyleSheet.create({
   content: {
-    paddingHorizontal: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.md,
     paddingBottom: theme.spacing.xxl,
+  },
+  heroBlock: {
+    marginBottom: theme.layout.heroBottom,
+  },
+  heroEyebrow: {
+    ...theme.typography.heroEyebrow,
+    color: theme.colors.primary,
+    marginBottom: theme.spacing.xs,
+  },
+  heroHint: {
+    ...theme.typography.body,
+    color: theme.colors.textSecondary,
+    lineHeight: 22,
   },
   weekRow: {
     flexDirection: "row",
@@ -328,15 +462,27 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.md,
     gap: theme.spacing.sm,
   },
-  teamLabel: { ...theme.typography.caption, color: theme.colors.textSecondary },
+  teamLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.45,
+    color: theme.colors.textMuted,
+    textTransform: "uppercase",
+    marginRight: theme.spacing.xs,
+  },
   teamChip: {
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.sm,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.surfaceElevated,
     marginRight: theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
   },
-  teamChipActive: { backgroundColor: theme.colors.primaryMuted },
+  teamChipActive: {
+    backgroundColor: theme.colors.primaryMuted,
+    borderColor: theme.colors.primary,
+  },
   teamChipText: { ...theme.typography.caption, color: theme.colors.textSecondary },
   teamChipTextActive: { color: theme.colors.primary, fontWeight: "600" },
   createBtn: { marginBottom: theme.spacing.lg },
@@ -354,22 +500,57 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     fontStyle: "italic",
   },
+  quickSection: { gap: theme.spacing.md, marginBottom: theme.spacing.lg },
+  quickCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: theme.colors.primary,
+  },
+  quickTitle: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.45,
+    color: theme.colors.textMuted,
+    textTransform: "uppercase",
+    marginBottom: theme.spacing.sm,
+  },
+  weekSectionTitle: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.45,
+    color: theme.colors.textMuted,
+    textTransform: "uppercase",
+    marginBottom: theme.spacing.md,
+  },
   sessionCard: {
     flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
     backgroundColor: theme.colors.card,
-    borderRadius: theme.borderRadius.md,
+    borderRadius: theme.borderRadius.lg,
     padding: theme.spacing.md,
+    paddingLeft: 0,
     borderWidth: 1,
     borderColor: theme.colors.cardBorder,
     marginBottom: theme.spacing.sm,
+    overflow: "hidden",
   },
+  sessionAccent: {
+    width: 4,
+    alignSelf: "stretch",
+    minHeight: 48,
+    backgroundColor: theme.colors.primary,
+    opacity: 0.9,
+    borderTopLeftRadius: theme.borderRadius.lg,
+    borderBottomLeftRadius: theme.borderRadius.lg,
+  },
+  sessionCardPressed: { opacity: 0.88 },
   sessionTimeText: {
     ...theme.typography.caption,
     color: theme.colors.primary,
     fontWeight: "600",
-    minWidth: 90,
+    minWidth: 88,
   },
-  sessionBody: { flex: 1 },
+  sessionBody: { flex: 1, minWidth: 0 },
   sessionTitle: { ...theme.typography.body, color: theme.colors.text },
   sessionLocation: {
     ...theme.typography.caption,
@@ -379,6 +560,30 @@ const styles = StyleSheet.create({
   loading: {
     paddingVertical: theme.spacing.xxl,
     alignItems: "center",
+    gap: theme.spacing.sm,
+    flexDirection: "row",
+    justifyContent: "center",
   },
-  errorText: { ...theme.typography.body, color: theme.colors.error },
+  loadingHint: {
+    ...theme.typography.body,
+    color: theme.colors.textMuted,
+  },
+  errorCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: theme.colors.accent,
+  },
+  errorText: {
+    ...theme.typography.body,
+    color: theme.colors.error,
+    marginBottom: theme.spacing.xs,
+  },
+  errorHint: {
+    ...theme.typography.caption,
+    color: theme.colors.textMuted,
+    lineHeight: 18,
+    marginBottom: theme.spacing.md,
+  },
+  errorRetryBtn: {
+    alignSelf: "flex-start",
+  },
 });

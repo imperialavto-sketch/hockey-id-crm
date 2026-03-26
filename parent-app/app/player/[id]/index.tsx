@@ -14,7 +14,17 @@ import { LinearGradient } from "expo-linear-gradient";
 import { colors, spacing, shadows, radius } from "@/constants/theme";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
-import { getFullPlayerProfile, getAIAnalysis } from "@/services/playerService";
+import {
+  getFullPlayerProfile,
+  getAIAnalysis,
+  getPlayerAttendanceSummary,
+  getPlayerCoachMaterials,
+  type PlayerAttendanceSummary,
+  type LatestSessionEvaluation,
+  type EvaluationSummary,
+  type LatestSessionReport,
+  type ParentPlayerCoachMaterials,
+} from "@/services/playerService";
 import { getVideoAnalyses } from "@/services/videoAnalysisService";
 import { getOrCreateConversation, COACH_MARK_ID } from "@/services/chatService";
 import { Ionicons } from "@expo/vector-icons";
@@ -38,6 +48,18 @@ import {
   getQuickStats as getQuickStatsHelper,
 } from "@/helpers/playerProfileHelpers";
 import { DEMO_PLAYER } from "@/constants/demoPlayer";
+import {
+  CM_COPY,
+  CM_VOICE_LABEL,
+  coachHubReportTitle,
+  coachHubReportPreview,
+  coachHubActionPreview,
+  coachHubActionTitle,
+  coachHubDraftPreview,
+  formatActionItemStatusLabel,
+} from "@/lib/coachMaterialsUi";
+import { PLAYER_PROFILE_COPY } from "@/lib/parentPlayerProfileUi";
+import { PARENT_FLAGSHIP } from "@/lib/parentFlagshipShared";
 import type {
   Player,
   PlayerStats,
@@ -52,25 +74,26 @@ import type {
 const PRESSED_OPACITY = 0.88;
 type ProfileErrorStateKind = "not_found" | "network";
 
-const PROFILE_ERROR_CONTENT: Record<
+const PROFILE_ERROR_DETAILS: Record<
   ProfileErrorStateKind,
   { icon: keyof typeof Ionicons.glyphMap; title: string; subtitle: string }
 > = {
   not_found: {
     icon: "person-outline",
-    title: "Игрок не найден",
-    subtitle: "Проверьте ссылку или выберите другого игрока",
+    title: PLAYER_PROFILE_COPY.notFoundTitle,
+    subtitle: PLAYER_PROFILE_COPY.notFoundSubtitle,
   },
   network: {
     icon: "cloud-offline-outline",
-    title: "Ошибка загрузки",
-    subtitle: "Не удалось получить данные игрока. Проверьте соединение и попробуйте снова",
+    title: PLAYER_PROFILE_COPY.networkErrorTitle,
+    subtitle: PLAYER_PROFILE_COPY.networkErrorSubtitle,
   },
 };
 
 function ProfileSkeleton() {
   return (
     <View style={styles.skeletonContent}>
+      <Text style={styles.profileLoadingHint}>{PLAYER_PROFILE_COPY.loadingHint}</Text>
       <SkeletonBlock height={200} style={styles.skeletonHero} />
       <View style={styles.skeletonStats}>
         {[1, 2, 3, 4].map((i) => (
@@ -116,6 +139,132 @@ function ProfileHeader({
   );
 }
 
+const EMPTY_EVALUATION_SUMMARY: EvaluationSummary = {
+  totalEvaluations: 0,
+  avgEffort: null,
+  avgFocus: null,
+  avgDiscipline: null,
+};
+
+function renderEvaluationSummary(summary: EvaluationSummary) {
+  if (summary.totalEvaluations === 0) {
+    return (
+      <Text style={styles.evalEmpty}>
+        Пока недостаточно данных для средней оценки
+      </Text>
+    );
+  }
+  const avgLine = (label: string, avg: number | null) => {
+    if (avg == null) return null;
+    return (
+      <Text style={styles.evalLine}>
+        {label}: {avg.toFixed(1)}/5
+      </Text>
+    );
+  };
+  return (
+    <View style={styles.evalBlock}>
+      {avgLine("Старание", summary.avgEffort)}
+      {avgLine("Концентрация", summary.avgFocus)}
+      {avgLine("Дисциплина", summary.avgDiscipline)}
+      <Text style={styles.evalSummaryCount}>
+        Тренировок с оценкой: {summary.totalEvaluations}
+      </Text>
+    </View>
+  );
+}
+
+function formatSessionReportUpdatedAt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    return iso.trim();
+  }
+  return d.toLocaleString("ru-RU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function coachMaterialsHasContent(m: ParentPlayerCoachMaterials): boolean {
+  return (
+    m.reports.length > 0 ||
+    m.actions.length > 0 ||
+    m.parentDrafts.length > 0
+  );
+}
+
+function renderTrainerSessionReport(report: LatestSessionReport | null) {
+  if (report == null) {
+    return (
+      <Text style={styles.evalEmpty}>
+        Тренер пока не добавил комментарий
+      </Text>
+    );
+  }
+  const main =
+    report.parentMessage?.trim() ||
+    report.summary?.trim() ||
+    report.coachNote?.trim() ||
+    "";
+  const focus = report.focusAreas?.trim() ?? "";
+  const updatedRaw = report.updatedAt?.trim();
+
+  if (!main && !focus) {
+    return (
+      <Text style={styles.evalEmpty}>
+        Тренер пока не добавил комментарий
+      </Text>
+    );
+  }
+  return (
+    <View style={styles.evalBlockCompact}>
+      {main ? <Text style={styles.reportMain}>{main}</Text> : null}
+      {focus ? (
+        <Text style={[styles.evalNote, !main && styles.evalNoteTightTop]}>
+          На тренировке работали: {focus}
+        </Text>
+      ) : null}
+      {updatedRaw ? (
+        <Text style={styles.reportUpdatedAt}>
+          Обновлено: {formatSessionReportUpdatedAt(updatedRaw)}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function renderLastSessionEvaluation(ev: LatestSessionEvaluation | null) {
+  const scoreLine = (label: string, n?: number) => {
+    if (n == null || n < 1 || n > 5) return null;
+    return (
+      <Text style={styles.evalLine}>
+        {label}: {n}/5
+      </Text>
+    );
+  };
+  const hasScores =
+    (ev?.effort != null && ev.effort >= 1 && ev.effort <= 5) ||
+    (ev?.focus != null && ev.focus >= 1 && ev.focus <= 5) ||
+    (ev?.discipline != null && ev.discipline >= 1 && ev.discipline <= 5);
+  const note = ev?.note?.trim();
+  if (!hasScores && !note) {
+    return (
+      <Text style={styles.evalEmpty}>Пока нет оценки от тренера</Text>
+    );
+  }
+  return (
+    <View style={styles.evalBlock}>
+      {scoreLine("Старание", ev?.effort)}
+      {scoreLine("Концентрация", ev?.focus)}
+      {scoreLine("Дисциплина", ev?.discipline)}
+      {note ? <Text style={styles.evalNote}>{note}</Text> : null}
+    </View>
+  );
+}
+
 function ProfileErrorState({
   type,
   onRetry,
@@ -123,7 +272,7 @@ function ProfileErrorState({
   type: ProfileErrorStateKind;
   onRetry: () => void;
 }) {
-  const content = PROFILE_ERROR_CONTENT[type];
+  const content = PROFILE_ERROR_DETAILS[type];
 
   return (
     <View style={styles.errorContainer}>
@@ -168,9 +317,25 @@ export default function PlayerProfileScreen() {
   const [videoAnalyses, setVideoAnalyses] = useState<VideoAnalysisRequest[]>([]);
   const [videoLoading, setVideoLoading] = useState(false);
   const [aiRequested, setAiRequested] = useState(false);
+  const [attendanceSummary, setAttendanceSummary] =
+    useState<PlayerAttendanceSummary | null>(null);
+  const [latestSessionEvaluation, setLatestSessionEvaluation] =
+    useState<LatestSessionEvaluation | null>(null);
+  const [evaluationSummary, setEvaluationSummary] = useState<EvaluationSummary>(
+    () => ({ ...EMPTY_EVALUATION_SUMMARY })
+  );
+  const [latestSessionReport, setLatestSessionReport] =
+    useState<LatestSessionReport | null>(null);
+  const [coachMaterials, setCoachMaterials] =
+    useState<ParentPlayerCoachMaterials | null>(null);
+  const [coachMaterialsLoading, setCoachMaterialsLoading] = useState(false);
+  const [coachMaterialsError, setCoachMaterialsError] = useState<string | null>(
+    null
+  );
   const mountedRef = useRef(true);
   const profileRequestRef = useRef(0);
   const aiRequestRef = useRef(0);
+  const coachMaterialsFetchGen = useRef(0);
 
   useEffect(() => () => { mountedRef.current = false; }, []);
 
@@ -209,6 +374,9 @@ export default function PlayerProfileScreen() {
     if (canCommit()) {
       setLoading(true);
       setProfileError(null);
+      setLatestSessionEvaluation(null);
+      setEvaluationSummary({ ...EMPTY_EVALUATION_SUMMARY });
+      setLatestSessionReport(null);
     }
 
     try {
@@ -225,6 +393,11 @@ export default function PlayerProfileScreen() {
         setRecommendations(profile.recommendations ?? []);
         setProgressHistory(profile.progressHistory ?? []);
         setAchievements(profile.achievements ?? null);
+        setLatestSessionEvaluation(profile.latestSessionEvaluation ?? null);
+        setEvaluationSummary(
+          profile.evaluationSummary ?? { ...EMPTY_EVALUATION_SUMMARY }
+        );
+        setLatestSessionReport(profile.latestSessionReport ?? null);
         setProfileError(null);
       } else {
         setPlayer(null);
@@ -233,6 +406,9 @@ export default function PlayerProfileScreen() {
         setRecommendations([]);
         setProgressHistory([]);
         setAchievements(null);
+        setLatestSessionEvaluation(null);
+        setEvaluationSummary({ ...EMPTY_EVALUATION_SUMMARY });
+        setLatestSessionReport(null);
         setProfileError("not_found");
       }
     } catch {
@@ -243,6 +419,9 @@ export default function PlayerProfileScreen() {
         setRecommendations([]);
         setProgressHistory([]);
         setAchievements(null);
+        setLatestSessionEvaluation(null);
+        setEvaluationSummary({ ...EMPTY_EVALUATION_SUMMARY });
+        setLatestSessionReport(null);
         setProfileError("network");
       }
     } finally {
@@ -253,6 +432,51 @@ export default function PlayerProfileScreen() {
   useEffect(() => {
     loadProfile();
   }, [loadProfile]);
+
+  useEffect(() => {
+    if (!id || typeof id !== "string" || !user?.id) {
+      setAttendanceSummary(null);
+      return;
+    }
+    let cancelled = false;
+    setAttendanceSummary(null);
+    getPlayerAttendanceSummary(id, user.id)
+      .then((s) => {
+        if (!cancelled) setAttendanceSummary(s);
+      })
+      .catch(() => {
+        if (!cancelled) setAttendanceSummary(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, user?.id]);
+
+  const loadCoachMaterials = useCallback(async () => {
+    if (!id || typeof id !== "string" || !user?.id) return;
+    const gen = ++coachMaterialsFetchGen.current;
+    setCoachMaterialsLoading(true);
+    setCoachMaterialsError(null);
+    try {
+      const m = await getPlayerCoachMaterials(id, user.id);
+      if (!mountedRef.current || gen !== coachMaterialsFetchGen.current) return;
+      setCoachMaterials(m);
+      setCoachMaterialsError(null);
+    } catch {
+      if (!mountedRef.current || gen !== coachMaterialsFetchGen.current) return;
+      setCoachMaterials(null);
+      setCoachMaterialsError(CM_COPY.fetchErrorHub);
+    } finally {
+      if (mountedRef.current && gen === coachMaterialsFetchGen.current) {
+        setCoachMaterialsLoading(false);
+      }
+    }
+  }, [id, user?.id]);
+
+  useEffect(() => {
+    if (!id || typeof id !== "string" || !user?.id || loading) return;
+    void loadCoachMaterials();
+  }, [id, user?.id, loading, loadCoachMaterials]);
 
   // Lazy load video analyses (with unmount guard)
   useEffect(() => {
@@ -365,6 +589,15 @@ export default function PlayerProfileScreen() {
   const schedulePreview = Array.isArray(schedule) ? schedule.slice(0, 3) : [];
   const recommendationsPreview = (recommendations ?? []).slice(0, 4);
 
+  const showCoachMaterialsSection =
+    coachMaterialsLoading ||
+    coachMaterialsError != null ||
+    (coachMaterials != null && coachMaterialsHasContent(coachMaterials));
+
+  const latestCoachReport = coachMaterials?.reports[0];
+  const coachActionsPreview = coachMaterials?.actions.slice(0, 3) ?? [];
+  const latestParentDraft = coachMaterials?.parentDrafts[0];
+
   return (
     <View style={styles.screenWrap}>
       <PlayerScreenBackground />
@@ -403,47 +636,354 @@ export default function PlayerProfileScreen() {
                 <PremiumStatGrid stats={quickStats} />
               </View>
             )}
+            {attendanceSummary != null &&
+            (attendanceSummary.totalSessions > 0 ||
+              attendanceSummary.presentCount > 0 ||
+              attendanceSummary.attendanceRate > 0) ? (
+              <View style={styles.attendanceSummaryWrap}>
+                <Text style={styles.attendanceSummaryPrimary}>
+                  Посещаемость: {attendanceSummary.attendanceRate}%
+                </Text>
+                <Text style={styles.attendanceSummarySecondary}>
+                  {attendanceSummary.presentCount} из{" "}
+                  {attendanceSummary.totalSessions} тренировок
+                </Text>
+              </View>
+            ) : null}
           </Animated.View>
 
-          {/* Развитие навыков (demo only) */}
-        {devAttributes && (
-          <Animated.View entering={screenReveal(STAGGER * 1)}>
-            <SectionCard title="Развитие навыков" style={styles.sectionCard}>
-              <View style={styles.devSkillsRow}>
-                <View style={styles.devSkillCard}>
-                  <Text style={styles.devSkillValue}>{devAttributes.skating}</Text>
-                  <Text style={styles.devSkillLabel}>Катание</Text>
-                </View>
-                <View style={styles.devSkillCard}>
-                  <Text style={styles.devSkillValue}>{devAttributes.shot}</Text>
-                  <Text style={styles.devSkillLabel}>Бросок</Text>
-                </View>
-                <View style={styles.devSkillCard}>
-                  <Text style={styles.devSkillValue}>{devAttributes.passing}</Text>
-                  <Text style={styles.devSkillLabel}>Пас</Text>
-                </View>
-                <View style={styles.devSkillCard}>
-                  <Text style={styles.devSkillValue}>{devAttributes.hockeyIQ}</Text>
-                  <Text style={styles.devSkillLabel}>Хоккейный IQ</Text>
-                </View>
-                <View style={styles.devSkillCard}>
-                  <Text style={styles.devSkillValue}>{devAttributes.discipline}</Text>
-                  <Text style={styles.devSkillLabel}>Дисциплина</Text>
-                </View>
-                <View style={styles.devSkillCard}>
-                  <Text style={styles.devSkillValue}>{devAttributes.physical}</Text>
-                  <Text style={styles.devSkillLabel}>Физика</Text>
-                </View>
-              </View>
+          <Animated.View entering={screenReveal(STAGGER * 0.25)}>
+            <SectionCard title="Последняя тренировка" style={styles.sectionCard}>
+              {renderLastSessionEvaluation(latestSessionEvaluation)}
             </SectionCard>
           </Animated.View>
-        )}
+
+          <Animated.View entering={screenReveal(STAGGER * 0.275)}>
+            <SectionCard title="Комментарий тренера" style={styles.sectionCard}>
+              {renderTrainerSessionReport(latestSessionReport)}
+            </SectionCard>
+          </Animated.View>
+
+          <Animated.View entering={screenReveal(STAGGER * 0.3)}>
+            <SectionCard title="Средняя оценка" style={styles.sectionCard}>
+              {renderEvaluationSummary(evaluationSummary)}
+            </SectionCard>
+          </Animated.View>
+
+          {showCoachMaterialsSection ? (
+            <Animated.View entering={screenReveal(STAGGER * 0.31)}>
+              <SectionCard
+                title="После тренировок"
+                subtitle={
+                  coachMaterialsLoading || coachMaterialsError
+                    ? undefined
+                    : PLAYER_PROFILE_COPY.coachMaterialsSubtitle
+                }
+                style={styles.sectionCard}
+              >
+                {coachMaterialsLoading ? (
+                  <View style={styles.stateBlock}>
+                    <ActivityIndicator size="small" color={colors.accent} />
+                    <Text style={styles.stateBlockText}>
+                      {PLAYER_PROFILE_COPY.materialsLoading}
+                    </Text>
+                  </View>
+                ) : coachMaterialsError ? (
+                  <View>
+                    <Text style={styles.materialsErrorText}>
+                      {coachMaterialsError}
+                    </Text>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.btn,
+                        pressed && { opacity: PRESSED_OPACITY },
+                      ]}
+                      onPress={() => {
+                        triggerHaptic();
+                        void loadCoachMaterials();
+                      }}
+                    >
+                      <Text style={styles.btnText}>Повторить</Text>
+                    </Pressable>
+                  </View>
+                ) : coachMaterials && coachMaterialsHasContent(coachMaterials) ? (
+                  <View>
+                    {latestCoachReport ? (
+                      <Pressable
+                        onPress={() => {
+                          triggerHaptic();
+                          if (id && typeof id === "string") {
+                            router.push(
+                              `/player/${id}/coach-materials/report/${encodeURIComponent(latestCoachReport.id)}`
+                            );
+                          }
+                        }}
+                        style={({ pressed }) => [
+                          styles.materialsPreviewShell,
+                          pressed && { opacity: PRESSED_OPACITY },
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel="Открыть полный отчёт тренера"
+                      >
+                        <View style={styles.materialsSubBlock}>
+                          <View style={styles.materialsSectionHead}>
+                            <Ionicons
+                              name="document-text-outline"
+                              size={18}
+                              color="rgba(255,255,255,0.55)"
+                              style={styles.materialsSectionIcon}
+                            />
+                            <View style={styles.materialsSectionHeadText}>
+                              <Text style={styles.materialsSectionTitle}>
+                                Отчёт о прогрессе
+                              </Text>
+                              <Text style={styles.materialsSectionMicro}>
+                                Итоги и наблюдения тренера с последних занятий.
+                              </Text>
+                            </View>
+                          </View>
+                          {latestCoachReport.voiceNoteId ? (
+                            <Text style={styles.materialsVoiceHint}>
+                              {CM_VOICE_LABEL}
+                            </Text>
+                          ) : null}
+                          <Text
+                            style={styles.materialsItemTitle}
+                            numberOfLines={2}
+                          >
+                            {coachHubReportTitle(latestCoachReport)}
+                          </Text>
+                          <Text
+                            style={styles.materialsItemBody}
+                            numberOfLines={4}
+                          >
+                            {coachHubReportPreview(latestCoachReport)}
+                          </Text>
+                          {latestCoachReport.createdAt ? (
+                            <Text style={styles.materialsDate}>
+                              Добавлено:{" "}
+                              {formatSessionReportUpdatedAt(
+                                latestCoachReport.createdAt
+                              )}
+                            </Text>
+                          ) : null}
+                          <Text style={styles.materialsOpenHint}>
+                            {PLAYER_PROFILE_COPY.materialsOpenHint}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    ) : null}
+
+                    {coachActionsPreview.length > 0 ? (
+                      <View
+                        style={[
+                          styles.materialsSubBlock,
+                          latestCoachReport ? styles.materialsSubBlockFollow : null,
+                        ]}
+                      >
+                        <View style={styles.materialsSectionHead}>
+                          <Ionicons
+                            name="list-outline"
+                            size={18}
+                            color="rgba(255,255,255,0.55)"
+                            style={styles.materialsSectionIcon}
+                          />
+                          <View style={styles.materialsSectionHeadText}>
+                            <Text style={styles.materialsSectionTitle}>
+                              Что сделать дальше
+                            </Text>
+                            <Text style={styles.materialsSectionMicro}>
+                              Задачи и фокус — что повторить дома и на льду.
+                            </Text>
+                          </View>
+                        </View>
+                        {coachActionsPreview.map((a, idx) => (
+                          <Pressable
+                            key={a.id}
+                            onPress={() => {
+                              triggerHaptic();
+                              if (id && typeof id === "string") {
+                                router.push(
+                                  `/player/${id}/coach-materials/action-item/${encodeURIComponent(a.id)}`
+                                );
+                              }
+                            }}
+                            style={({ pressed }) => [
+                              styles.materialsPreviewShell,
+                              idx > 0 ? styles.materialsPreviewStackGap : null,
+                              pressed && { opacity: PRESSED_OPACITY },
+                            ]}
+                            accessibilityRole="button"
+                            accessibilityLabel="Открыть задачу полностью"
+                          >
+                            {a.voiceNoteId ? (
+                              <Text style={styles.materialsVoiceHint}>
+                                {CM_VOICE_LABEL}
+                              </Text>
+                            ) : null}
+                            <Text
+                              style={styles.materialsItemTitle}
+                              numberOfLines={2}
+                            >
+                              {coachHubActionTitle(a)}
+                            </Text>
+                            <Text
+                              style={styles.materialsItemBody}
+                              numberOfLines={3}
+                            >
+                              {coachHubActionPreview(a)}
+                            </Text>
+                            <Text style={styles.materialsMetaMuted}>
+                              Статус: {formatActionItemStatusLabel(a.status)}
+                            </Text>
+                          </Pressable>
+                        ))}
+                        <Text style={styles.materialsOpenHint}>
+                          {PLAYER_PROFILE_COPY.materialsOpenHint}
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    {latestParentDraft ? (
+                      <Pressable
+                        onPress={() => {
+                          triggerHaptic();
+                          if (id && typeof id === "string") {
+                            router.push(
+                              `/player/${id}/coach-materials/parent-draft/${encodeURIComponent(latestParentDraft.id)}`
+                            );
+                          }
+                        }}
+                        style={({ pressed }) => [
+                          styles.materialsPreviewShell,
+                          pressed && { opacity: PRESSED_OPACITY },
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel="Открыть черновик сообщения полностью"
+                      >
+                        <View
+                          style={[
+                            styles.materialsSubBlock,
+                            latestCoachReport || coachActionsPreview.length > 0
+                              ? styles.materialsSubBlockFollow
+                              : null,
+                          ]}
+                        >
+                          <View style={styles.materialsSectionHead}>
+                            <Ionicons
+                              name="chatbubble-ellipses-outline"
+                              size={18}
+                              color="rgba(255,255,255,0.55)"
+                              style={styles.materialsSectionIcon}
+                            />
+                            <View style={styles.materialsSectionHeadText}>
+                              <Text style={styles.materialsSectionTitle}>
+                                Сообщение родителю
+                              </Text>
+                              <Text style={styles.materialsSectionMicro}>
+                                Личный текст от тренера — отдельно от отчёта и задач.
+                              </Text>
+                            </View>
+                          </View>
+                          {latestParentDraft.voiceNoteId ? (
+                            <Text style={styles.materialsVoiceHint}>
+                              {CM_VOICE_LABEL}
+                            </Text>
+                          ) : null}
+                          <Text
+                            style={styles.materialsItemBody}
+                            numberOfLines={5}
+                          >
+                            {coachHubDraftPreview(latestParentDraft)}
+                          </Text>
+                          {latestParentDraft.createdAt ? (
+                            <Text style={styles.materialsDate}>
+                              Добавлено:{" "}
+                              {formatSessionReportUpdatedAt(
+                                latestParentDraft.createdAt
+                              )}
+                            </Text>
+                          ) : null}
+                          <Text style={styles.materialsOpenHint}>
+                            {PLAYER_PROFILE_COPY.materialsOpenHint}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    ) : null}
+
+                    <Pressable
+                      onPress={() => {
+                        triggerHaptic();
+                        if (id && typeof id === "string") {
+                          router.push(`/player/${id}/coach-materials`);
+                        }
+                      }}
+                      style={({ pressed }) => [
+                        styles.materialsHubCta,
+                        pressed && { opacity: PRESSED_OPACITY },
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel="Смотреть все материалы тренера"
+                    >
+                      <Text style={styles.materialsHubCtaText}>
+                        Смотреть все материалы
+                      </Text>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={20}
+                        color={PARENT_FLAGSHIP.chevronMutedIcon}
+                      />
+                    </Pressable>
+
+                    <Text style={styles.materialsFootHint}>
+                      {PLAYER_PROFILE_COPY.materialsFootHint}
+                    </Text>
+                  </View>
+                ) : null}
+              </SectionCard>
+            </Animated.View>
+          ) : null}
+
+          {/* Развитие навыков (demo only) */}
+          {devAttributes && (
+            <Animated.View entering={screenReveal(STAGGER * 1)}>
+              <SectionCard title="Развитие навыков" style={styles.sectionCard}>
+                <View style={styles.devSkillsRow}>
+                  <View style={styles.devSkillCard}>
+                    <Text style={styles.devSkillValue}>{devAttributes.skating}</Text>
+                    <Text style={styles.devSkillLabel}>Катание</Text>
+                  </View>
+                  <View style={styles.devSkillCard}>
+                    <Text style={styles.devSkillValue}>{devAttributes.shot}</Text>
+                    <Text style={styles.devSkillLabel}>Бросок</Text>
+                  </View>
+                  <View style={styles.devSkillCard}>
+                    <Text style={styles.devSkillValue}>{devAttributes.passing}</Text>
+                    <Text style={styles.devSkillLabel}>Пас</Text>
+                  </View>
+                  <View style={styles.devSkillCard}>
+                    <Text style={styles.devSkillValue}>{devAttributes.hockeyIQ}</Text>
+                    <Text style={styles.devSkillLabel}>Хоккейный IQ</Text>
+                  </View>
+                  <View style={styles.devSkillCard}>
+                    <Text style={styles.devSkillValue}>{devAttributes.discipline}</Text>
+                    <Text style={styles.devSkillLabel}>Дисциплина</Text>
+                  </View>
+                  <View style={styles.devSkillCard}>
+                    <Text style={styles.devSkillValue}>{devAttributes.physical}</Text>
+                    <Text style={styles.devSkillLabel}>Физика</Text>
+                  </View>
+                </View>
+              </SectionCard>
+            </Animated.View>
+          )}
 
         {/* Primary actions */}
         <Animated.View
           style={styles.actionsBlock}
           entering={screenReveal(STAGGER * 2)}
         >
+          <Text style={styles.actionsEyebrow}>{PLAYER_PROFILE_COPY.actionsEyebrow}</Text>
           <ActionLinkCard
             icon="card-outline"
             title="Паспорт игрока"
@@ -510,7 +1050,11 @@ export default function PlayerProfileScreen() {
             {chatLoading ? (
               <ActivityIndicator size="small" color={colors.accent} />
             ) : (
-              <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.5)" />
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color={PARENT_FLAGSHIP.chevronMutedIcon}
+              />
             )}
           </View>
         </PressableCard>
@@ -522,7 +1066,9 @@ export default function PlayerProfileScreen() {
           {aiLoading ? (
             <View style={styles.stateBlock}>
               <ActivityIndicator size="small" color={colors.accent} />
-              <Text style={styles.stateBlockText}>Загрузка анализа...</Text>
+              <Text style={styles.stateBlockText}>
+                {PLAYER_PROFILE_COPY.aiAnalysisLoading}
+              </Text>
             </View>
           ) : aiError ? (
             <View>
@@ -855,6 +1401,12 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   scroll: { flex: 1 },
+  profileLoadingHint: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginBottom: spacing.lg,
+    letterSpacing: 0.15,
+  },
   skeletonContent: {
     gap: spacing.xl,
   },
@@ -896,15 +1448,15 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     backgroundColor: colors.surfaceLevel1,
-    borderWidth: 1,
-    borderColor: colors.surfaceLevel1Border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.surfaceLevel2Border,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.md,
   },
   content: {
     paddingHorizontal: spacing.screenPadding,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.md,
     paddingBottom: spacing.screenBottom + 48,
   },
   errorContainer: {
@@ -919,8 +1471,8 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 40,
     backgroundColor: colors.surfaceLevel1,
-    borderWidth: 1,
-    borderColor: colors.surfaceLevel1Border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.surfaceLevel2Border,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.sm,
@@ -942,17 +1494,25 @@ const styles = StyleSheet.create({
   actionsBlock: {
     marginBottom: spacing.lg,
   },
+  actionsEyebrow: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+    marginTop: spacing.xs,
+    letterSpacing: 0.15,
+  },
   chatCard: {
     marginBottom: spacing.xl,
   },
   chatCardInner: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.surfaceLevel1,
-    borderRadius: radius.md,
+    backgroundColor: colors.surfaceLevel2,
+    borderRadius: radius.lg,
     padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.surfaceLevel1Border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.surfaceLevel2Border,
   },
   chatCardPressed: { opacity: PRESSED_OPACITY },
   chatIconWrap: {
@@ -960,9 +1520,11 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 24,
     backgroundColor: "rgba(46, 167, 255, 0.18)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(59,130,246,0.25)",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 14,
+    marginRight: spacing.md,
   },
   chatCardText: { flex: 1 },
   chatCardTitle: {
@@ -998,6 +1560,112 @@ const styles = StyleSheet.create({
   stateBlockText: {
     fontSize: 15,
     color: colors.textSecondary,
+  },
+  materialsErrorText: {
+    fontSize: 14,
+    color: colors.errorText,
+    marginBottom: spacing.md,
+    lineHeight: 20,
+  },
+  materialsSubBlock: {
+    marginBottom: 0,
+  },
+  materialsSubBlockFollow: {
+    marginTop: spacing.lg,
+    paddingTop: spacing.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(255,255,255,0.12)",
+  },
+  materialsSectionHead: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: spacing.sm,
+  },
+  materialsSectionIcon: {
+    marginRight: 10,
+    marginTop: 2,
+  },
+  materialsSectionHeadText: {
+    flex: 1,
+  },
+  materialsSectionTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "rgba(255, 255, 255, 0.92)",
+    lineHeight: 20,
+  },
+  materialsSectionMicro: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: "rgba(255, 255, 255, 0.48)",
+    marginTop: 4,
+  },
+  materialsFootHint: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: "rgba(255, 255, 255, 0.42)",
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(255,255,255,0.1)",
+  },
+  materialsPreviewShell: {
+    borderRadius: radius.lg,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.08)",
+    padding: spacing.md,
+  },
+  materialsPreviewStackGap: {
+    marginTop: spacing.sm,
+  },
+  materialsHubCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(255,255,255,0.1)",
+  },
+  materialsHubCtaText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "rgba(255, 255, 255, 0.88)",
+    flex: 1,
+  },
+  materialsOpenHint: {
+    fontSize: 12,
+    color: "rgba(255, 255, 255, 0.45)",
+    marginTop: spacing.sm,
+  },
+  materialsVoiceHint: {
+    fontSize: 11,
+    color: colors.accent,
+    marginBottom: spacing.xs,
+  },
+  materialsItemTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "rgba(255, 255, 255, 0.95)",
+    lineHeight: 22,
+    marginBottom: 4,
+  },
+  materialsItemBody: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: "rgba(255, 255, 255, 0.78)",
+  },
+  materialsDate: {
+    fontSize: 12,
+    color: "rgba(255, 255, 255, 0.45)",
+    marginTop: spacing.sm,
+  },
+  materialsMetaMuted: {
+    fontSize: 12,
+    color: "rgba(255, 255, 255, 0.45)",
+    marginTop: 4,
   },
   aiErrorText: {
     fontSize: 14,
@@ -1065,7 +1733,7 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   heroSection: {
-    marginBottom: spacing.xxl,
+    marginBottom: spacing.xl,
   },
   heroGlowWrap: {
     position: "relative",
@@ -1082,11 +1750,72 @@ const styles = StyleSheet.create({
   quickStatsWrap: {
     marginTop: spacing.xl,
   },
+  attendanceSummaryWrap: {
+    marginTop: spacing.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    alignItems: "center",
+  },
+  attendanceSummaryPrimary: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.text,
+    textAlign: "center",
+  },
+  attendanceSummarySecondary: {
+    marginTop: spacing.xs,
+    fontSize: 14,
+    color: colors.textMuted,
+    textAlign: "center",
+  },
+  evalBlock: {
+    gap: spacing.sm,
+  },
+  evalBlockCompact: {
+    gap: spacing.xs,
+  },
+  evalLine: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  evalNote: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+  },
+  evalNoteTightTop: {
+    marginTop: 0,
+  },
+  evalEmpty: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textMuted,
+  },
+  reportMain: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.text,
+  },
+  reportUpdatedAt: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+  },
+  evalSummaryCount: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+  },
   sectionCard: {
     backgroundColor: colors.surfaceLevel1,
     borderColor: colors.surfaceLevel1Border,
     ...shadows.level1,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
   devSkillsRow: {
     flexDirection: "row",
@@ -1101,8 +1830,8 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     paddingHorizontal: 12,
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.surfaceLevel1Border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.surfaceLevel2Border,
   },
   devSkillValue: {
     fontSize: 20,
@@ -1152,7 +1881,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingVertical: spacing.md,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.surfaceLevel1Border,
   },
   infoRowLast: { borderBottomWidth: 0 },

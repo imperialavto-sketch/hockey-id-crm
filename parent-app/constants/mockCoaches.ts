@@ -9,6 +9,8 @@ export interface MockCoach {
   photoUrl: string;
   experienceYears: number;
   bio: string;
+  /** Short line for marketplace formats (лёд / зал / …). */
+  formatsLine?: string;
   verified?: boolean;
   documentsChecked?: boolean;
   sessionsCompleted?: number;

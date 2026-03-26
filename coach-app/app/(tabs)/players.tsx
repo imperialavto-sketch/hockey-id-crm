@@ -17,6 +17,11 @@ import { setCoachPlayersCache } from '@/lib/coachPlayersCache';
 import { isAuthRequiredError } from '@/lib/coachAuth';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { theme } from '@/constants/theme';
+import {
+  COACH_PLAYERS_LIST_COPY,
+  COACH_PLAYERS_NETWORK_RETRY_HINT,
+  COACH_PLAYERS_RETRY_CTA,
+} from '@/lib/coachPlayersListUi';
 
 function mapToPlayerCardData(p: CoachPlayerItem): PlayerCardData {
   return {
@@ -120,8 +125,11 @@ export default function PlayersScreen() {
     () => [...new Set(players.map((p) => p.team).filter(Boolean))],
     [players]
   );
-  const teamsSummary =
-    teamNames.length > 0 ? teamNames.join(', ') : 'Нет команд';
+  const teamsSummary = loading
+    ? 'Загружаем…'
+    : teamNames.length > 0
+      ? teamNames.join(', ')
+      : 'Нет команд';
 
   const watchlistCount = playerCards.filter((p) => p.onWatchlist).length;
   const needsFollowUpCount = playerCards.filter(
@@ -132,21 +140,29 @@ export default function PlayersScreen() {
     <ScreenContainer contentContainerStyle={styles.content}>
       <StaggerFadeIn delay={0}>
         <PlayersHero
+          loading={loading}
           totalCount={players.length}
           teamsSummary={teamsSummary}
+          subtitle={
+            !loading && !error && players.length === 0
+              ? COACH_PLAYERS_LIST_COPY.heroEmptySubtitle
+              : undefined
+          }
         />
       </StaggerFadeIn>
 
-      <StaggerFadeIn delay={60}>
-        <DashboardSection title="Обзор">
-          <PlayersOverview
-            watchlistCount={watchlistCount}
-            needsFollowUpCount={needsFollowUpCount}
-          />
-        </DashboardSection>
-      </StaggerFadeIn>
+      {!loading ? (
+        <StaggerFadeIn delay={60}>
+          <DashboardSection title="Обзор">
+            <PlayersOverview
+              watchlistCount={watchlistCount}
+              needsFollowUpCount={needsFollowUpCount}
+            />
+          </DashboardSection>
+        </StaggerFadeIn>
+      ) : null}
 
-      {filterOptions.length > 1 ? (
+      {!loading && filterOptions.length > 1 ? (
         <StaggerFadeIn delay={120}>
           <DashboardSection title="Фильтр">
             <PlayersFilterSegment
@@ -163,16 +179,16 @@ export default function PlayersScreen() {
           {loading ? (
             <View style={styles.loading}>
               <ActivityIndicator size="small" color={theme.colors.primary} />
-              <Text style={styles.loadingText}>Загрузка…</Text>
+              <Text style={styles.loadingText}>{COACH_PLAYERS_LIST_COPY.loadingRoster}</Text>
             </View>
           ) : error ? (
             <View style={styles.emptyBlock}>
               <Text style={styles.errorText}>{error}</Text>
-              <Text style={styles.errorHint}>
-                Проверьте подключение и настройки API.
-              </Text>
+              {error !== 'Требуется авторизация' ? (
+                <Text style={styles.errorHint}>{COACH_PLAYERS_NETWORK_RETRY_HINT}</Text>
+              ) : null}
               <PrimaryButton
-                title="Повторить"
+                title={COACH_PLAYERS_RETRY_CTA}
                 variant="outline"
                 onPress={() => {
                   setLoading(true);
@@ -194,10 +210,15 @@ export default function PlayersScreen() {
             </View>
           ) : filteredPlayers.length === 0 ? (
             <View style={styles.emptyBlock}>
-              <Text style={styles.emptyText}>
+              <Text style={styles.emptyTitle}>
                 {players.length === 0
-                  ? 'Нет игроков. Проверьте, что вы назначены на команду.'
-                  : 'Нет игроков по выбранному фильтру'}
+                  ? COACH_PLAYERS_LIST_COPY.emptyNoPlayersTitle
+                  : COACH_PLAYERS_LIST_COPY.emptyFilterTitle}
+              </Text>
+              <Text style={styles.emptyHint}>
+                {players.length === 0
+                  ? COACH_PLAYERS_LIST_COPY.emptyNoPlayersHint
+                  : COACH_PLAYERS_LIST_COPY.emptyFilterHint}
               </Text>
             </View>
           ) : (
@@ -206,8 +227,6 @@ export default function PlayersScreen() {
                 <PlayerCard
                   player={player}
                   onPress={() => router.push(`/player/${player.id}`)}
-                  onOpenNotes={() => router.push(`/player/${player.id}`)}
-                  onViewProfile={() => router.push(`/player/${player.id}`)}
                 />
               </StaggerFadeIn>
             ))
@@ -247,11 +266,20 @@ const styles = StyleSheet.create({
   retryBtn: { alignSelf: 'flex-start' },
   emptyBlock: {
     paddingVertical: theme.spacing.xl,
+    alignItems: 'center',
+    gap: theme.spacing.sm,
   },
-  emptyText: {
-    ...theme.typography.body,
+  emptyTitle: {
+    ...theme.typography.subtitle,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+  },
+  emptyHint: {
+    ...theme.typography.caption,
     color: theme.colors.textMuted,
     textAlign: 'center',
+    lineHeight: 18,
+    maxWidth: 320,
   },
   bottomSpacer: {
     height: theme.spacing.xl,

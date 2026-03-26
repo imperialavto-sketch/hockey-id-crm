@@ -26,12 +26,13 @@ export async function GET(req: NextRequest) {
 
   try {
     const teamIds = await getAccessibleTeamIds(user!, prisma);
-    if (teamIds.length === 0) {
+    if (teamIds !== null && teamIds.length === 0) {
       return NextResponse.json([]);
     }
 
+    const where = teamIds !== null ? { id: { in: teamIds } } : {};
     const teams = await prisma.team.findMany({
-      where: { id: { in: teamIds } },
+      where,
       include: {
         _count: { select: { players: true } },
         trainings: {

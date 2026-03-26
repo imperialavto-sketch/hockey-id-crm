@@ -39,7 +39,7 @@ export async function GET(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const playerIds = [...new Set(session.observations.map((o) => o.playerId))];
+    const playerIds = Array.from(new Set(session.observations.map((o) => o.playerId)));
     const playerCount = playerIds.length;
     const observationsCount = session._count.observations;
 

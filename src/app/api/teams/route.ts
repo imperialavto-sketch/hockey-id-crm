@@ -58,12 +58,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const rawCoachId = body.coachId ? String(body.coachId).trim() || null : null;
+    if (rawCoachId) {
+      const coachCheck = await prisma.coach.findUnique({
+        where: { id: rawCoachId },
+        select: { isMarketplaceIndependent: true },
+      });
+      if (coachCheck?.isMarketplaceIndependent) {
+        return NextResponse.json(
+          {
+            error:
+              "Нельзя назначить независимого тренера маркетплейса на команду школы",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const team = await prisma.team.create({
       data: {
         name: String(name).trim(),
         ageGroup: String(ageGroup).trim(),
         schoolId: String(schoolId).trim(),
-        coachId: body.coachId ? String(body.coachId).trim() || null : null,
+        coachId: rawCoachId,
       },
       include: { school: true, coach: true },
     });

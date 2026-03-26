@@ -5,13 +5,20 @@ import { theme } from '@/constants/theme';
 type DashboardHeroProps = {
   dateLabel: string;
   teamsSummary: string;
+  /** Одна строка контекста: ростер, сессия, фокус дня */
+  subtitle?: string;
 };
 
-export function DashboardHero({ dateLabel, teamsSummary }: DashboardHeroProps) {
+export function DashboardHero({ dateLabel, teamsSummary, subtitle }: DashboardHeroProps) {
   return (
     <View style={styles.hero}>
       <Text style={styles.eyebrow}>Панель тренера</Text>
       <Text style={styles.title}>Главная</Text>
+      {subtitle ? (
+        <Text style={styles.subtitle} numberOfLines={3}>
+          {subtitle}
+        </Text>
+      ) : null}
       <View style={styles.context}>
         <Text style={styles.date}>{dateLabel}</Text>
         <View style={styles.dot} />
@@ -23,22 +30,22 @@ export function DashboardHero({ dateLabel, teamsSummary }: DashboardHeroProps) {
 
 const styles = StyleSheet.create({
   hero: {
-    marginBottom: theme.spacing.xxl,
+    marginBottom: theme.layout.heroBottom,
+  },
+  subtitle: {
+    ...theme.typography.body,
+    color: theme.colors.textSecondary,
+    lineHeight: 22,
+    marginBottom: theme.spacing.sm,
   },
   eyebrow: {
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 0.5,
+    ...theme.typography.heroEyebrow,
     color: theme.colors.primary,
     marginBottom: theme.spacing.xs,
-    textTransform: 'uppercase',
   },
   title: {
-    fontSize: 32,
-    fontWeight: '700',
-    letterSpacing: -0.8,
+    ...theme.typography.hero,
     color: theme.colors.text,
-    lineHeight: 38,
     marginBottom: theme.spacing.sm,
   },
   context: {
@@ -55,7 +62,7 @@ const styles = StyleSheet.create({
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: theme.colors.textMuted,
+    backgroundColor: theme.colors.border,
   },
   teams: {
     ...theme.typography.body,

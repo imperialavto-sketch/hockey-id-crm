@@ -13,6 +13,7 @@ import {
 import { clearPlayerRelatedStorage } from "@/lib/playerStorage";
 import { isDemoMode } from "@/config/api";
 import { DEMO_AUTH_TOKEN, demoParentUser } from "@/demo/demoAuth";
+import { hasMarketplaceBookingApiAuth } from "@/lib/marketplaceAuth";
 
 const AUTH_STORAGE_KEY = "@hockey_parent_auth";
 const TOKEN_KEY = "token";
@@ -25,8 +26,14 @@ interface AuthSession {
 
 interface AuthContextValue {
   user: ParentUser | null;
+  /** Bearer token for API (parent mobile / demo). */
   token: string | null;
   isAuthenticated: boolean;
+  /**
+   * True when the stored Bearer is accepted by marketplace booking APIs.
+   * In demo mode the synthetic token is excluded; use SMS or CRM parent login for real access.
+   */
+  hasMarketplaceApiAuth: boolean;
   isLoading: boolean;
   /** JWT login: store token and parent from backend. */
   login: (token: string, parent: { id: number; email: string }) => Promise<void>;
@@ -251,6 +258,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     token,
     isAuthenticated: !!token,
+    hasMarketplaceApiAuth: hasMarketplaceBookingApiAuth(token),
     isLoading,
     login,
     logout,

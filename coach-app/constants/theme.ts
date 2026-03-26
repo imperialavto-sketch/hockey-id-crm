@@ -38,11 +38,18 @@ export const theme = {
     xl: 24,
     full: 9999,
   },
+  /** Вертикальный ритм между крупными блоками на экране */
+  layout: {
+    sectionGap: 24,
+    heroBottom: 24,
+    screenBottom: 48,
+  },
   typography: {
     hero: {
       fontSize: 28,
       fontWeight: '700' as const,
       letterSpacing: -0.5,
+      lineHeight: 34,
     },
     title: {
       fontSize: 20,
@@ -59,6 +66,13 @@ export const theme = {
     caption: {
       fontSize: 13,
       fontWeight: '400' as const,
+    },
+    /** Единый kicker под hero (eyebrow) на всех экранах */
+    heroEyebrow: {
+      fontSize: 12,
+      fontWeight: '700' as const,
+      letterSpacing: 0.45,
+      textTransform: 'uppercase' as const,
     },
   },
   safeArea: {

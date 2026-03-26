@@ -11,7 +11,9 @@ export async function GET(req: NextRequest) {
     const specialization = searchParams.get("specialization")?.trim();
     const teamId = searchParams.get("teamId")?.trim();
 
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = {
+      isMarketplaceIndependent: false,
+    };
     if (search) {
       where.OR = [
         { firstName: { contains: search, mode: "insensitive" as const } },
@@ -64,6 +66,7 @@ export async function POST(req: NextRequest) {
         phone: phone ? String(phone).trim() || null : null,
         email: email ? String(email).trim() || null : null,
         specialization: specialization ? String(specialization).trim() || null : null,
+        isMarketplaceIndependent: false,
       },
     });
 

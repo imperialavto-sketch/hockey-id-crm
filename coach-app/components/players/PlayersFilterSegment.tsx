@@ -72,9 +72,12 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.sm,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
   },
   pillSelected: {
     backgroundColor: theme.colors.primaryMuted,
+    borderColor: theme.colors.primary,
   },
   pressed: {
     opacity: 0.85,

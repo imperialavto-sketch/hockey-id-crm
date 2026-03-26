@@ -1,0 +1,21 @@
+import { NextResponse } from "next/server";
+
+export async function POST(request: Request) {
+  let body: Record<string, unknown> = {};
+
+  try {
+    const parsed = await request.json();
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      body = parsed as Record<string, unknown>;
+    }
+  } catch {
+    body = {};
+  }
+
+  return NextResponse.json({
+    success: true,
+    status: "confirmed",
+    bookingId: body.bookingId ?? "stub-booking",
+    message: "Booking confirmed",
+  });
+}

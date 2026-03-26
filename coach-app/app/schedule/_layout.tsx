@@ -17,6 +17,7 @@ export default function ScheduleLayout() {
     >
       <Stack.Screen name="index" options={{ title: "Расписание" }} />
       <Stack.Screen name="create" options={{ title: "Новая тренировка" }} />
+      <Stack.Screen name="[id]" options={{ title: "Тренировка" }} />
     </Stack>
   );
 }

@@ -12,6 +12,10 @@ export function normalizePhone(phone: string): string {
 }
 
 function generateCode(): string {
+  // Dev: predictable code 1234 for E2E / local testing
+  if (process.env.NODE_ENV === "development") {
+    return "1234";
+  }
   return String(Math.floor(100000 + Math.random() * 900000)); // 6-значный
 }
 

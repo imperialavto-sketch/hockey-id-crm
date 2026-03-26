@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
 import Animated from "react-native-reanimated";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
@@ -15,8 +15,25 @@ import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
 import { colors, spacing, typography, radius } from "@/constants/theme";
 import { Ionicons } from "@expo/vector-icons";
+import type { ScheduleItem, Player } from "@/types";
+import {
+  SCHEDULE_COPY,
+  formatScheduleWeekLabel,
+} from "@/lib/parentScheduleUi";
 
-type ScheduleItem = { id: string; day: string; title: string; time: string };
+const PRESSED_OPACITY = 0.88;
+const SECTION_GAP = spacing.lg;
+
+function weekStartMondayLocal(d = new Date()): string {
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  const m = new Date(d);
+  m.setDate(d.getDate() + diff);
+  const y = m.getFullYear();
+  const mo = String(m.getMonth() + 1).padStart(2, "0");
+  const da = String(m.getDate()).padStart(2, "0");
+  return `${y}-${mo}-${da}`;
+}
 
 function ScheduleSkeleton() {
   return (
@@ -29,18 +46,145 @@ function ScheduleSkeleton() {
   );
 }
 
-const SECTION_GAP = 24;
+type ScheduleHeaderProps = {
+  subtitle: string;
+  weekStart: string;
+  onPrevWeek: () => void;
+  onNextWeek: () => void;
+  players: Player[];
+  selectedPlayerId: string | null;
+  onSelectPlayer: (id: string) => void;
+};
+
+function ScheduleHeader({
+  subtitle,
+  weekStart,
+  onPrevWeek,
+  onNextWeek,
+  players,
+  selectedPlayerId,
+  onSelectPlayer,
+}: ScheduleHeaderProps) {
+  const weekHuman = formatScheduleWeekLabel(weekStart);
+  return (
+    <View style={styles.heroSection}>
+      <View style={styles.heroIconWrap}>
+        <Ionicons name="calendar-outline" size={26} color={colors.accent} />
+      </View>
+      <Text style={styles.heroTitle}>{SCHEDULE_COPY.heroTitle}</Text>
+      <Text style={styles.heroSub}>{subtitle}</Text>
+      <View style={styles.weekRow}>
+        <Pressable
+          onPress={() => {
+            triggerHaptic();
+            onPrevWeek();
+          }}
+          style={({ pressed }) => [styles.weekNavBtn, pressed && { opacity: PRESSED_OPACITY }]}
+          hitSlop={12}
+        >
+          <Ionicons name="chevron-back" size={22} color={colors.accent} />
+        </Pressable>
+        <Text style={styles.weekLabel} numberOfLines={2}>
+          Неделя с {weekHuman}
+        </Text>
+        <Pressable
+          onPress={() => {
+            triggerHaptic();
+            onNextWeek();
+          }}
+          style={({ pressed }) => [styles.weekNavBtn, pressed && { opacity: PRESSED_OPACITY }]}
+          hitSlop={12}
+        >
+          <Ionicons name="chevron-forward" size={22} color={colors.accent} />
+        </Pressable>
+      </View>
+      {players.length > 1 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.playerChipsScroll}
+          contentContainerStyle={styles.playerChipsRow}
+        >
+          {players.map((p) => {
+            const active = (selectedPlayerId ?? players[0]?.id) === p.id;
+            return (
+              <Pressable
+                key={p.id}
+                onPress={() => {
+                  triggerHaptic();
+                  onSelectPlayer(p.id);
+                }}
+                style={({ pressed }) => [
+                  styles.playerChip,
+                  active && styles.playerChipActive,
+                  pressed && { opacity: PRESSED_OPACITY },
+                ]}
+              >
+                <Text
+                  style={[styles.playerChipText, active && styles.playerChipTextActive]}
+                  numberOfLines={1}
+                >
+                  {p.name}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+    </View>
+  );
+}
+
+function CoachMarkScheduleCard({
+  effectivePlayerId,
+}: {
+  effectivePlayerId: string | null;
+}) {
+  const router = useRouter();
+  return (
+    <ActionLinkCard
+      icon="sparkles"
+      title={SCHEDULE_COPY.coachMarkTitle}
+      description={SCHEDULE_COPY.coachMarkDescription}
+      onPress={() => {
+        triggerHaptic();
+        const q = effectivePlayerId
+          ? `?playerId=${encodeURIComponent(effectivePlayerId)}&initialMessage=${encodeURIComponent("Составь персональный план тренировок на неделю с учётом расписания")}`
+          : "";
+        router.push(`/chat/${COACH_MARK_ID}${q}` as never);
+      }}
+      variant="accent"
+    />
+  );
+}
 
 export default function ScheduleScreen() {
-  const router = useRouter();
   const { user } = useAuth();
   const mountedRef = useRef(true);
   const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
-  const [playerId, setPlayerId] = useState<string | null>(null);
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const [weekStart, setWeekStart] = useState(() => weekStartMondayLocal());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => () => {
+    mountedRef.current = false;
+  }, []);
+
+  const goPrevWeek = useCallback(() => {
+    const [y, m, d] = weekStart.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() - 7);
+    setWeekStart(weekStartMondayLocal(dt));
+  }, [weekStart]);
+
+  const goNextWeek = useCallback(() => {
+    const [y, m, d] = weekStart.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + 7);
+    setWeekStart(weekStartMondayLocal(dt));
+  }, [weekStart]);
 
   const load = useCallback(async () => {
     if (!user?.id) {
@@ -51,14 +195,18 @@ export default function ScheduleScreen() {
     setLoading(true);
     setError(false);
     try {
-      const [scheduleData, playersData] = await Promise.all([
-        getMeSchedule(),
-        getPlayers(user.id).catch(() => []),
-      ]);
+      const playersData = await getPlayers(user.id).catch(() => []);
+      if (!mountedRef.current) return;
+      const list = Array.isArray(playersData) ? playersData : [];
+      setPlayers(list);
+      const pid =
+        selectedPlayerId && list.some((p) => p.id === selectedPlayerId)
+          ? selectedPlayerId
+          : list[0]?.id ?? null;
+      const scheduleData = await getMeSchedule(pid, weekStart);
       if (!mountedRef.current) return;
       if (mountedRef.current) {
         setSchedule(Array.isArray(scheduleData) ? scheduleData : []);
-        setPlayerId(playersData?.[0]?.id ?? null);
       }
     } catch {
       if (mountedRef.current) {
@@ -68,7 +216,7 @@ export default function ScheduleScreen() {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, selectedPlayerId, weekStart]);
 
   useFocusEffect(
     useCallback(() => {
@@ -76,10 +224,30 @@ export default function ScheduleScreen() {
     }, [load])
   );
 
+  const effectivePlayerId = useMemo(
+    () => selectedPlayerId ?? players[0]?.id ?? null,
+    [selectedPlayerId, players]
+  );
+
+  const headerProps = useMemo(
+    () => ({
+      weekStart,
+      onPrevWeek: goPrevWeek,
+      onNextWeek: goNextWeek,
+      players,
+      selectedPlayerId,
+      onSelectPlayer: setSelectedPlayerId,
+    }),
+    [weekStart, goPrevWeek, goNextWeek, players, selectedPlayerId]
+  );
+
   if (loading) {
     return (
-      <FlagshipScreen>
-        <ScheduleSkeleton />
+      <FlagshipScreen scroll={false}>
+        <View style={styles.loadingWrap}>
+          <Text style={styles.loadingHint}>{SCHEDULE_COPY.loadingHint}</Text>
+          <ScheduleSkeleton />
+        </View>
       </FlagshipScreen>
     );
   }
@@ -87,13 +255,14 @@ export default function ScheduleScreen() {
   if (error) {
     return (
       <FlagshipScreen scroll={false}>
-        <ErrorStateView
-          variant="network"
-          title="Не удалось загрузить расписание"
-          subtitle="Проверьте подключение и попробуйте снова"
-          onAction={load}
-          style={styles.errorWrap}
-        />
+        <View style={styles.errorWrap}>
+          <ErrorStateView
+            variant="network"
+            title={SCHEDULE_COPY.loadErrorTitle}
+            subtitle={SCHEDULE_COPY.loadErrorSubtitle}
+            onAction={load}
+          />
+        </View>
       </FlagshipScreen>
     );
   }
@@ -107,39 +276,20 @@ export default function ScheduleScreen() {
     return (
       <FlagshipScreen>
         <Animated.View entering={screenReveal(0)}>
-          <View style={styles.heroSection}>
-            <View style={styles.heroIconWrap}>
-              <Ionicons name="calendar-outline" size={28} color={colors.accent} />
-            </View>
-            <Text style={styles.heroTitle}>Расписание</Text>
-            <Text style={styles.heroSub}>
-              Тренер может отправлять изменения в приложение
-            </Text>
-          </View>
+          <ScheduleHeader
+            {...headerProps}
+            subtitle={SCHEDULE_COPY.heroSubEmpty}
+          />
         </Animated.View>
         <Animated.View entering={screenReveal(STAGGER)}>
           <View style={styles.emptyCard}>
             <View style={styles.emptyIconWrap}>
-              <Ionicons name="calendar-outline" size={32} color={colors.textMuted} />
+              <Ionicons name="calendar-outline" size={30} color={colors.textMuted} />
             </View>
-            <Text style={styles.emptyTitle}>Пока нет расписания</Text>
-            <Text style={styles.emptySub}>
-              Когда тренер добавит тренировки и игры, они появятся здесь.
-            </Text>
+            <Text style={styles.emptyTitle}>{SCHEDULE_COPY.emptyTitle}</Text>
+            <Text style={styles.emptySub}>{SCHEDULE_COPY.emptySub}</Text>
             <View style={styles.emptyCoachMarkWrap}>
-              <ActionLinkCard
-                icon="sparkles"
-                title="Coach Mark"
-                description="Составь план на эту неделю. Обновляй каждую неделю"
-                onPress={() => {
-                  triggerHaptic();
-                  const q = playerId
-                    ? `?playerId=${encodeURIComponent(playerId)}&initialMessage=${encodeURIComponent("Составь персональный план тренировок на неделю с учётом расписания")}`
-                    : "";
-                  router.push(`/chat/${COACH_MARK_ID}${q}` as never);
-                }}
-                variant="accent"
-              />
+              <CoachMarkScheduleCard effectivePlayerId={effectivePlayerId} />
             </View>
           </View>
         </Animated.View>
@@ -149,44 +299,25 @@ export default function ScheduleScreen() {
 
   return (
     <FlagshipScreen>
-      {/* Hero header */}
       <Animated.View entering={screenReveal(0)}>
-        <View style={styles.heroSection}>
-          <View style={styles.heroIconWrap}>
-            <Ionicons name="calendar-outline" size={28} color={colors.accent} />
-          </View>
-          <Text style={styles.heroTitle}>Расписание</Text>
-          <Text style={styles.heroSub}>
-            Проверяйте расписание — тренер может обновлять тренировки и игры
-          </Text>
-        </View>
+        <ScheduleHeader {...headerProps} subtitle={SCHEDULE_COPY.heroSubWithSchedule} />
       </Animated.View>
 
       <Animated.View entering={screenReveal(STAGGER)}>
-        <ActionLinkCard
-          icon="sparkles"
-          title="Coach Mark"
-          description="Составь план на эту неделю. Обновляй каждую неделю"
-          onPress={() => {
-            triggerHaptic();
-            const q = playerId
-              ? `?playerId=${encodeURIComponent(playerId)}&initialMessage=${encodeURIComponent("Составь персональный план тренировок на неделю с учётом расписания")}`
-              : "";
-            router.push(`/chat/${COACH_MARK_ID}${q}` as never);
-          }}
-          variant="accent"
-        />
+        <CoachMarkScheduleCard effectivePlayerId={effectivePlayerId} />
       </Animated.View>
 
       {today.length > 0 && (
         <Animated.View entering={screenReveal(STAGGER * 2)}>
-          <SectionCard title="Ближайшие" variant="primary" style={styles.sectionCard}>
+          <SectionCard title={SCHEDULE_COPY.sectionUpcoming} variant="primary" style={styles.sectionCard}>
             {today.map((item, index) => (
               <ScheduleItemRow
                 key={item.id}
                 day={item.day}
                 title={item.title}
                 time={item.time}
+                subtitle={item.subtitle}
+                attendance={item.attendance}
                 isLast={index === today.length - 1}
               />
             ))}
@@ -196,13 +327,15 @@ export default function ScheduleScreen() {
 
       {rest.length > 0 && (
         <Animated.View entering={screenReveal(STAGGER * 3)}>
-          <SectionCard title="На неделе" style={styles.sectionCard}>
+          <SectionCard title={SCHEDULE_COPY.sectionWeek} style={styles.sectionCard}>
             {rest.map((item, index) => (
               <ScheduleItemRow
                 key={item.id}
                 day={item.day}
                 title={item.title}
                 time={item.time}
+                subtitle={item.subtitle}
+                attendance={item.attendance}
                 isLast={index === rest.length - 1}
                 muted={item.title === "Выходной"}
               />
@@ -215,26 +348,44 @@ export default function ScheduleScreen() {
 }
 
 const styles = StyleSheet.create({
+  loadingWrap: {
+    flex: 1,
+    paddingHorizontal: spacing.screenPadding,
+    paddingTop: spacing.lg,
+  },
+  loadingHint: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginBottom: spacing.lg,
+    letterSpacing: 0.15,
+  },
   skeletonContent: { gap: SECTION_GAP },
   skeletonHeader: { borderRadius: radius.lg },
   skeletonCta: { borderRadius: radius.md },
   skeletonCard: { borderRadius: radius.lg },
 
-  errorWrap: { flex: 1 },
+  errorWrap: {
+    flex: 1,
+    width: "100%",
+    justifyContent: "center",
+  },
+
   heroSection: {
     marginBottom: SECTION_GAP,
     paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     borderRadius: radius.lg,
     backgroundColor: colors.surfaceLevel2,
-    borderWidth: 1,
-    borderColor: colors.surfaceLevel1Border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.surfaceLevel2Border,
   },
   heroIconWrap: {
     width: 48,
     height: 48,
-    borderRadius: 14,
+    borderRadius: radius.md,
     backgroundColor: colors.accentSoft,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(59,130,246,0.22)",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.md,
@@ -243,40 +394,48 @@ const styles = StyleSheet.create({
     ...typography.h2,
     color: colors.text,
     marginBottom: spacing.xs,
+    letterSpacing: -0.2,
   },
   heroSub: {
     ...typography.caption,
+    fontSize: 14,
+    lineHeight: 20,
     color: colors.textSecondary,
   },
 
   emptyCard: {
     paddingVertical: spacing.xl,
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.lg,
     borderRadius: radius.lg,
     backgroundColor: colors.surfaceLevel1,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.surfaceLevel1Border,
     alignItems: "center",
   },
   emptyIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: colors.surfaceLevel2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.surfaceLevel2Border,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.md,
   },
   emptyTitle: {
     ...typography.section,
+    fontSize: 18,
     color: colors.text,
     marginBottom: spacing.xs,
+    textAlign: "center",
   },
   emptySub: {
     ...typography.bodySmall,
     color: colors.textSecondary,
     textAlign: "center",
     lineHeight: 22,
+    maxWidth: 300,
   },
   emptyCoachMarkWrap: {
     width: "100%",
@@ -287,4 +446,42 @@ const styles = StyleSheet.create({
     marginBottom: SECTION_GAP,
     borderColor: colors.surfaceLevel1Border,
   },
+  weekRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: spacing.md,
+    gap: spacing.sm,
+  },
+  weekNavBtn: {
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: "rgba(59,130,246,0.1)",
+  },
+  weekLabel: {
+    ...typography.caption,
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.text,
+    flex: 1,
+    textAlign: "center",
+    minWidth: 0,
+  },
+  playerChipsScroll: { marginTop: spacing.md, maxHeight: 44 },
+  playerChipsRow: { gap: spacing.sm, paddingVertical: spacing.xs },
+  playerChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceLevel2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.surfaceLevel2Border,
+    marginRight: spacing.sm,
+  },
+  playerChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  playerChipText: { ...typography.caption, color: colors.textSecondary },
+  playerChipTextActive: { color: colors.accent, fontWeight: "600" },
 });

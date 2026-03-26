@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, type ViewStyle } from "react-native";
+import { Pressable, type StyleProp, type ViewStyle } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -15,7 +15,7 @@ interface PressableScaleProps {
   children: React.ReactNode;
   onPress?: () => void;
   disabled?: boolean;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   scale?: number;
 }
 

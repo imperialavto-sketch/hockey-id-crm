@@ -47,12 +47,17 @@ export interface PlayerReportApiItem {
   }>;
 }
 
-/** Map API item to WeeklyReportItem shape (playerId, playerName, summary) */
-export function mapWeeklyApiToItem(api: WeeklyReportApiItem): {
+/** Строка списка weekly reports — только поля, без изменения HTTP-контракта. */
+export interface WeeklyReportItem {
   playerId: string;
   playerName: string;
   summary: string;
-} {
+  updatedAt?: string;
+  avgScore?: number;
+  observationsCount?: number;
+}
+
+export function mapWeeklyApiToItem(api: WeeklyReportApiItem): WeeklyReportItem {
   const summary =
     api.shortSummary ??
     (Array.isArray(api.keyPoints) && api.keyPoints[0]
@@ -66,6 +71,9 @@ export function mapWeeklyApiToItem(api: WeeklyReportApiItem): {
     playerId: api.playerId,
     playerName: api.playerName ?? "Игрок",
     summary: truncated,
+    updatedAt: api.updatedAt,
+    avgScore: api.avgScore,
+    observationsCount: api.observationsCount,
   };
 }
 
@@ -136,9 +144,7 @@ function formatPeriod(updatedAt: string): string {
  */
 const REPORTS_WEEKLY_PATH = "/api/coach/reports/weekly";
 
-export async function getCoachWeeklyReports(): Promise<
-  { playerId: string; playerName: string; summary: string }[]
-> {
+export async function getCoachWeeklyReports(): Promise<WeeklyReportItem[]> {
   if (isEndpointUnavailable(REPORTS_WEEKLY_PATH)) return [];
   try {
     const headers = await getCoachAuthHeaders();
@@ -158,9 +164,24 @@ export async function getCoachWeeklyReports(): Promise<
   }
 }
 
+/** Наблюдение из ответа detail — только для отображения, без смены контракта GET. */
+export type PlayerReportObservationNote = {
+  id: string;
+  noteText?: string;
+  skillKey?: string;
+  score?: number;
+  createdAt?: string;
+};
+
 export interface PlayerReportResult {
   report: PlayerReport;
   playerName: string;
+  /** ISO с сервера — для подписи периода, если валидна */
+  reportUpdatedAt?: string;
+  /** Краткое резюме из API, если пришло отдельно от разобранных блоков */
+  executiveSummary?: string;
+  topSkillKeys?: string[];
+  observationNotes?: PlayerReportObservationNote[];
 }
 
 /**
@@ -181,9 +202,35 @@ export async function getCoachPlayerReport(
       headers,
     });
     if (!res || res.ready === false) return null;
+    const topSkillKeys = Array.isArray(res.topSkillKeys)
+      ? res.topSkillKeys.filter((k): k is string => typeof k === "string" && k.trim().length > 0)
+      : undefined;
+    const rawObs = Array.isArray(res.observations) ? res.observations : [];
+    const observationNotes: PlayerReportObservationNote[] = rawObs
+      .filter((o): o is NonNullable<(typeof rawObs)[number]> => !!o && typeof o.id === "string")
+      .map((o) => ({
+        id: o.id,
+        noteText: typeof o.noteText === "string" ? o.noteText : undefined,
+        skillKey: typeof o.skillKey === "string" ? o.skillKey : undefined,
+        score: typeof o.score === "number" ? o.score : undefined,
+        createdAt: typeof o.createdAt === "string" ? o.createdAt : undefined,
+      }));
+    const short = typeof res.shortSummary === "string" ? res.shortSummary.trim() : "";
+    const report = mapPlayerReportApiToUi(res);
+    const execFromApi = short || undefined;
+    const duplicateOfFirst =
+      !!execFromApi &&
+      report.strengths.length > 0 &&
+      report.strengths[0]?.trim() === execFromApi.trim();
+    const executiveSummary = execFromApi && !duplicateOfFirst ? execFromApi : undefined;
     return {
-      report: mapPlayerReportApiToUi(res),
+      report,
       playerName: res.playerName ?? "Игрок",
+      reportUpdatedAt:
+        typeof res.updatedAt === "string" && res.updatedAt.trim() ? res.updatedAt.trim() : undefined,
+      executiveSummary,
+      topSkillKeys: topSkillKeys && topSkillKeys.length > 0 ? topSkillKeys : undefined,
+      observationNotes: observationNotes.length > 0 ? observationNotes : undefined,
     };
   } catch (e) {
     if (isApi404(e)) markEndpointUnavailable(path);

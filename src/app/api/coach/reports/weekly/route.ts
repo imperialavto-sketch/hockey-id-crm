@@ -54,18 +54,19 @@ export async function GET(req: NextRequest) {
         const improvementAreas = Array.isArray(d.improvementAreas)
           ? d.improvementAreas
           : [];
-        const summary =
+        const summaryRaw =
           d.headline?.trim() ||
           d.parentMessage?.trim() ||
           positives[0] ||
           improvementAreas[0] ||
           "—";
+        const summary = typeof summaryRaw === "string" ? summaryRaw : String(summaryRaw ?? "—");
 
         items.push({
           playerId: d.playerId,
           playerName: d.playerName || "Игрок",
           shortSummary: summary,
-          keyPoints: positives.slice(0, 3),
+          keyPoints: positives.slice(0, 3).map((p) => (typeof p === "string" ? p : String(p ?? ""))),
           updatedAt: s.endedAt?.toISOString() ?? s.startedAt.toISOString(),
           ready: true,
         });

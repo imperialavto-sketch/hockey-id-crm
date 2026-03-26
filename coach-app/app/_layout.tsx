@@ -107,6 +107,146 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="created-reports"
+            options={{
+              headerShown: true,
+              title: "Созданные отчёты",
+              headerBackTitle: "Назад",
+              headerStyle: { backgroundColor: theme.colors.background },
+              headerTintColor: theme.colors.text,
+              headerTitleStyle: {
+                color: theme.colors.text,
+                fontWeight: "600",
+              },
+            }}
+          />
+          <Stack.Screen
+            name="created-reports/[id]"
+            options={{
+              headerShown: true,
+              title: "Отчёт",
+              headerBackTitle: "Назад",
+              headerStyle: { backgroundColor: theme.colors.background },
+              headerTintColor: theme.colors.text,
+              headerTitleStyle: {
+                color: theme.colors.text,
+                fontWeight: "600",
+              },
+            }}
+          />
+          <Stack.Screen
+            name="created-actions"
+            options={{
+              headerShown: true,
+              title: "Созданные задачи",
+              headerBackTitle: "Назад",
+              headerStyle: { backgroundColor: theme.colors.background },
+              headerTintColor: theme.colors.text,
+              headerTitleStyle: {
+                color: theme.colors.text,
+                fontWeight: "600",
+              },
+            }}
+          />
+          <Stack.Screen
+            name="created-actions/[id]"
+            options={{
+              headerShown: true,
+              title: "Задача",
+              headerBackTitle: "Назад",
+              headerStyle: { backgroundColor: theme.colors.background },
+              headerTintColor: theme.colors.text,
+              headerTitleStyle: {
+                color: theme.colors.text,
+                fontWeight: "600",
+              },
+            }}
+          />
+          <Stack.Screen
+            name="created"
+            options={{
+              headerShown: true,
+              title: "Мои материалы",
+              headerBackTitle: "Назад",
+              headerStyle: { backgroundColor: theme.colors.background },
+              headerTintColor: theme.colors.text,
+              headerTitleStyle: {
+                color: theme.colors.text,
+                fontWeight: "600",
+              },
+            }}
+          />
+          <Stack.Screen
+            name="voice-note"
+            options={{
+              headerShown: true,
+              title: "Голосовая заметка",
+              headerBackTitle: "Назад",
+              headerStyle: { backgroundColor: theme.colors.background },
+              headerTintColor: theme.colors.text,
+              headerTitleStyle: {
+                color: theme.colors.text,
+                fontWeight: "600",
+              },
+            }}
+          />
+          <Stack.Screen
+            name="voice-notes"
+            options={{
+              headerShown: true,
+              title: "История голосовых заметок",
+              headerBackTitle: "Назад",
+              headerStyle: { backgroundColor: theme.colors.background },
+              headerTintColor: theme.colors.text,
+              headerTitleStyle: {
+                color: theme.colors.text,
+                fontWeight: "600",
+              },
+            }}
+          />
+          <Stack.Screen
+            name="voice-notes/[id]"
+            options={{
+              headerShown: true,
+              title: "Голосовая заметка",
+              headerBackTitle: "Назад",
+              headerStyle: { backgroundColor: theme.colors.background },
+              headerTintColor: theme.colors.text,
+              headerTitleStyle: {
+                color: theme.colors.text,
+                fontWeight: "600",
+              },
+            }}
+          />
+          <Stack.Screen
+            name="voice-starter/action-item"
+            options={{
+              headerShown: true,
+              title: "Задача из голоса",
+              headerBackTitle: "Назад",
+              headerStyle: { backgroundColor: theme.colors.background },
+              headerTintColor: theme.colors.text,
+              headerTitleStyle: {
+                color: theme.colors.text,
+                fontWeight: "600",
+              },
+            }}
+          />
+          <Stack.Screen
+            name="voice-starter/report-draft"
+            options={{
+              headerShown: true,
+              title: "Черновик отчёта",
+              headerBackTitle: "Назад",
+              headerStyle: { backgroundColor: theme.colors.background },
+              headerTintColor: theme.colors.text,
+              headerTitleStyle: {
+                color: theme.colors.text,
+                fontWeight: "600",
+              },
+            }}
+          />
+          <Stack.Screen
             name="unavailable"
             options={{
               headerShown: true,

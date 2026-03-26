@@ -1,8 +1,18 @@
 /**
  * API config for Hockey ID Coach App.
- * EXPO_PUBLIC_API_URL — canonical backend: Next.js CRM.
- * hockey-server is NOT used by coach-app (parent-app only).
- * Coach routes: /api/auth/login, /api/players/[id]/notes, /api/coach/sessions/sync, etc.
+ *
+ * Источник base URL (в порядке приоритета):
+ * 1. process.env.EXPO_PUBLIC_API_URL (Expo / .env)
+ * 2. иначе http://localhost:3000 (локальная разработка)
+ *
+ * Все запросы идут на один origin: `${API_BASE_URL}/api/...` (см. lib/api.ts).
+ * Бэкенд должен отдавать и auth/coach-маршруты, и тренировки, в том числе:
+ * - GET/POST /api/trainings/:id/evaluations
+ * - GET/POST /api/trainings/:id/report
+ * - GET/POST /api/trainings/:id/attendance (и пр.)
+ *
+ * Если ваш деплой HOCKEY-ID-CRM ещё без evaluations/report, укажите EXPO_PUBLIC_API_URL
+ * на тот хост, где эти маршруты есть (например hockey-server), либо на единый API после слияния.
  */
 
 const ENV = process.env;
@@ -19,6 +29,11 @@ export const isProduction: boolean =
 
 function resolveApiBaseUrl(): string {
   const explicit = ENV.EXPO_PUBLIC_API_URL?.trim();
+  if (isProduction && !explicit) {
+    throw new Error(
+      "[Coach App] EXPO_PUBLIC_API_URL is required for production builds."
+    );
+  }
   return explicit || FALLBACK_URL;
 }
 

@@ -13,6 +13,8 @@ import {
   type CoachMarkPlayerContext,
 } from "@/lib/ai/buildCoachMarkPlayerContext";
 import { buildCoachMarkMemoryContext } from "@/lib/ai/buildCoachMarkMemoryContext";
+import { apiError } from "@/lib/api-error";
+import { checkAiMessageRateLimit } from "@/lib/ai-message-rate-limit";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
@@ -22,29 +24,36 @@ interface HistoryItem {
 }
 
 export async function POST(req: NextRequest) {
+  console.log("[API]", {
+    path: "/api/chat/ai/message",
+    method: "POST",
+    time: new Date().toISOString(),
+  });
+
   const user = await getAuthFromRequest(req);
   if (user?.role !== "PARENT" || !user?.parentId) {
-    return NextResponse.json(
-      { error: "Необходима авторизация" },
-      { status: 401 }
-    );
+    return apiError("UNAUTHORIZED", "Unauthorized", 401);
   }
 
   if (!OPENAI_API_KEY?.trim()) {
-    return NextResponse.json(
-      { error: "AI-ассистент временно недоступен" },
-      { status: 503 }
+    return apiError(
+      "AI_NOT_CONFIGURED",
+      "AI service not configured",
+      500
     );
+  }
+
+  const rateKey = user.parentId;
+
+  if (!checkAiMessageRateLimit(rateKey)) {
+    return apiError("RATE_LIMIT", "Too many requests", 429);
   }
 
   try {
     const body = await req.json().catch(() => ({}));
     const text = body?.text;
     if (!text || typeof text !== "string" || !text.trim()) {
-      return NextResponse.json(
-        { error: "Текст сообщения обязателен" },
-        { status: 400 }
-      );
+      return apiError("VALIDATION_ERROR", "Invalid request", 400);
     }
 
     const rawHistory = body?.history;
@@ -96,35 +105,40 @@ export async function POST(req: NextRequest) {
       { role: "user", content: text.trim() },
     ];
 
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages,
-        temperature: 0.7,
-      }),
-    });
+    const controller = new AbortController();
+    const timeoutMs = 8000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    let res: Response;
+    try {
+      res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages,
+          temperature: 0.7,
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!res.ok) {
       const err = await res.text();
       console.error("OpenAI API error:", res.status, err);
-      return NextResponse.json(
-        { error: "Не удалось получить ответ от AI" },
-        { status: 502 }
-      );
+      return apiError("AI_ERROR", "AI service error", 502);
     }
 
     const json = await res.json();
     const content = json?.choices?.[0]?.message?.content;
     if (!content || typeof content !== "string") {
-      return NextResponse.json(
-        { error: "Пустой ответ от AI" },
-        { status: 502 }
-      );
+      console.error("OpenAI API empty content:", json);
+      return apiError("AI_ERROR", "AI service error", 502);
     }
 
     return NextResponse.json({
@@ -132,13 +146,13 @@ export async function POST(req: NextRequest) {
       isAI: true,
     });
   } catch (error) {
+    const aborted =
+      error instanceof Error && error.name === "AbortError";
+    if (aborted) {
+      console.error("POST /api/chat/ai/message timeout:", error);
+      return apiError("AI_TIMEOUT", "AI service timeout", 503);
+    }
     console.error("POST /api/chat/ai/message failed:", error);
-    return NextResponse.json(
-      {
-        error: "Ошибка при обработке сообщения",
-        details: error instanceof Error ? error.message : "",
-      },
-      { status: 500 }
-    );
+    return apiError("AI_ERROR", "AI service error", 502);
   }
 }

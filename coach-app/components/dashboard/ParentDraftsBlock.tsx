@@ -30,7 +30,7 @@ function ParentDraftsContent({
 }: {
   drafts: ParentDraftItem[];
   loading: boolean;
-  onOpen: (playerId: string) => void;
+  onOpen: (playerId: string | null) => void;
   onCopy: (item: ParentDraftItem) => void;
   onAll: () => void;
   onRetry: () => void;
@@ -92,7 +92,7 @@ function ParentDraftsContent({
       </View>
       {displayList.map((item, i) => (
         <View
-          key={item.playerId}
+          key={item.id}
           style={[blockStyles.row, i > 0 && blockStyles.rowBorder]}
         >
           <Pressable
@@ -109,17 +109,18 @@ function ParentDraftsContent({
           </Pressable>
           <View style={blockStyles.rowActions}>
             <PrimaryButton
-              title="Открыть"
+              title={item.playerId ? "Открыть" : "Без карточки игрока"}
               variant="ghost"
               onPress={() => onOpen(item.playerId)}
+              disabled={!item.playerId}
               style={blockStyles.rowBtn}
               textStyle={blockStyles.rowBtnText}
             />
             <PrimaryButton
-              title={copiedId === item.playerId ? "Скопировано" : "Скопировать"}
+              title={copiedId === item.id ? "Скопировано" : "Скопировать"}
               variant="ghost"
               onPress={() => onCopy(item)}
-              disabled={copiedId === item.playerId}
+              disabled={copiedId === item.id}
               style={blockStyles.rowBtn}
               textStyle={blockStyles.rowBtnText}
             />
@@ -145,7 +146,7 @@ export function ParentDraftsBlock() {
   const handleCopy = async (item: ParentDraftItem) => {
     try {
       await Clipboard.setStringAsync(item.message);
-      setCopiedId(item.playerId);
+      setCopiedId(item.id);
       setTimeout(() => setCopiedId(null), 2000);
     } catch {
       Alert.alert("Ошибка", "Не удалось скопировать");
@@ -171,7 +172,10 @@ export function ParentDraftsBlock() {
     <ParentDraftsContent
       drafts={drafts}
       loading={loading}
-      onOpen={(id) => router.push(`/player/${id}/share-report`)}
+      onOpen={(id) => {
+        if (!id) return;
+        router.push(`/player/${id}/share-report`);
+      }}
       onCopy={handleCopy}
       onAll={() => router.push("/parent-drafts")}
       onRetry={handleRetry}

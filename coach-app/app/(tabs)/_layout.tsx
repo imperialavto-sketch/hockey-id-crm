@@ -1,6 +1,6 @@
 import React from 'react';
-import { SymbolView } from 'expo-symbols';
 import { Tabs } from 'expo-router';
+import { SymbolViewMaterial } from '@/components/SymbolViewMaterial';
 import { theme } from '@/constants/theme';
 
 const tabBarStyle = {
@@ -34,13 +34,10 @@ export default function TabLayout() {
         options={{
           title: 'Главная',
           tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{
-                ios: 'square.grid.2x2.fill',
-                android: 'dashboard',
-                web: 'dashboard',
-              }}
-              tintColor={color}
+            <SymbolViewMaterial
+              sfName="square.grid.2x2.fill"
+              materialName="dashboard"
+              color={color}
               size={24}
             />
           ),
@@ -51,13 +48,10 @@ export default function TabLayout() {
         options={{
           title: 'Команды',
           tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{
-                ios: 'person.3.fill',
-                android: 'group',
-                web: 'group',
-              }}
-              tintColor={color}
+            <SymbolViewMaterial
+              sfName="person.3.fill"
+              materialName="group"
+              color={color}
               size={24}
             />
           ),
@@ -68,13 +62,10 @@ export default function TabLayout() {
         options={{
           title: 'Игроки',
           tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{
-                ios: 'person.2.fill',
-                android: 'people',
-                web: 'people',
-              }}
-              tintColor={color}
+            <SymbolViewMaterial
+              sfName="person.2.fill"
+              materialName="people"
+              color={color}
               size={24}
             />
           ),
@@ -85,13 +76,10 @@ export default function TabLayout() {
         options={{
           title: 'Сообщения',
           tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{
-                ios: 'bubble.left.and.bubble.right.fill',
-                android: 'chat',
-                web: 'chat',
-              }}
-              tintColor={color}
+            <SymbolViewMaterial
+              sfName="bubble.left.and.bubble.right.fill"
+              materialName="chat"
+              color={color}
               size={24}
             />
           ),
@@ -102,13 +90,10 @@ export default function TabLayout() {
         options={{
           title: 'Ещё',
           tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{
-                ios: 'line.3.horizontal',
-                android: 'menu',
-                web: 'menu',
-              }}
-              tintColor={color}
+            <SymbolViewMaterial
+              sfName="line.3.horizontal"
+              materialName="menu"
+              color={color}
               size={24}
             />
           ),

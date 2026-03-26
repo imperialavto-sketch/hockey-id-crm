@@ -16,6 +16,8 @@ import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
 import { colors, spacing, radius, shadows, feedback, typography } from "@/constants/theme";
 import type { Player, PlayerAIAnalysis } from "@/types";
+import { AI_ANALYSIS_COPY } from "@/lib/parentAiAnalysisUi";
+import { PARENT_FLAGSHIP } from "@/lib/parentFlagshipShared";
 
 const PRESSED_OPACITY = feedback.pressedOpacity;
 type ScreenErrorKind = "not_found" | "network";
@@ -80,7 +82,6 @@ function AIAnalysisSkeleton() {
         <SkeletonBlock height={18} style={styles.skeletonInsightLine} />
         <SkeletonBlock height={18} style={styles.skeletonInsightLineWide} />
       </View>
-      <Text style={styles.skeletonHint}>Анализируем данные игрока…</Text>
       {[1, 2, 3].map((item) => (
         <View key={item} style={styles.skeletonSection}>
           <SkeletonBlock height={18} style={styles.skeletonSectionTitle} />
@@ -111,7 +112,7 @@ function AIAnalysisHeader({
       >
         <Ionicons name="arrow-back" size={24} color="#ffffff" />
       </Pressable>
-      <Text style={styles.headerTitle}>AI анализ</Text>
+      <Text style={styles.headerTitle}>{AI_ANALYSIS_COPY.headerTitle}</Text>
       <View style={styles.headerBtn} />
     </View>
   );
@@ -262,7 +263,10 @@ export default function PlayerAIAnalysisScreen() {
   if (loading) {
     return (
       <FlagshipScreen header={header}>
-        <AIAnalysisSkeleton />
+        <View style={styles.loadingWrap}>
+          <Text style={styles.loadingHint}>{AI_ANALYSIS_COPY.loadingHint}</Text>
+          <AIAnalysisSkeleton />
+        </View>
       </FlagshipScreen>
     );
   }
@@ -270,16 +274,22 @@ export default function PlayerAIAnalysisScreen() {
   if (error) {
     return (
       <FlagshipScreen header={header} scroll={false}>
-        <ErrorStateView
-          variant={error === "not_found" ? "notFound" : "network"}
-          title={error === "not_found" ? "Игрок не найден" : "Ошибка загрузки"}
-          subtitle={
-            error === "not_found"
-              ? "Проверьте ссылку или выберите другого игрока"
-              : "Не удалось подготовить AI анализ. Проверьте соединение и попробуйте снова"
-          }
-          onAction={load}
-        />
+        <View style={styles.errorWrap}>
+          <ErrorStateView
+            variant={error === "not_found" ? "notFound" : "network"}
+            title={
+              error === "not_found"
+                ? AI_ANALYSIS_COPY.notFoundTitle
+                : AI_ANALYSIS_COPY.loadErrorTitle
+            }
+            subtitle={
+              error === "not_found"
+                ? AI_ANALYSIS_COPY.notFoundSubtitle
+                : AI_ANALYSIS_COPY.loadErrorSubtitle
+            }
+            onAction={load}
+          />
+        </View>
       </FlagshipScreen>
     );
   }
@@ -289,17 +299,14 @@ export default function PlayerAIAnalysisScreen() {
       <FlagshipScreen header={header} scroll={false}>
         <Animated.View entering={screenReveal(0)} style={styles.emptyHero}>
           <View style={styles.emptyIconWrap}>
-            <Ionicons name="sparkles" size={36} color={colors.accent} />
+            <Ionicons name="sparkles" size={34} color={colors.accent} />
           </View>
-          <Text style={styles.emptyHeroTitle}>AI Анализ</Text>
-          <Text style={styles.emptyHeroSub}>Персональный разбор прогресса игрока</Text>
+          <Text style={styles.emptyHeroTitle}>{AI_ANALYSIS_COPY.emptyScreenTitle}</Text>
+          <Text style={styles.emptyHeroSub}>{AI_ANALYSIS_COPY.emptyScreenSub}</Text>
         </Animated.View>
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>Анализ пока формируется</Text>
-          <Text style={styles.emptySub}>
-            Как только появится достаточно данных и игровых наблюдений, здесь появятся сильные стороны,
-            зоны роста и персональные рекомендации.
-          </Text>
+          <Text style={styles.emptyTitle}>{AI_ANALYSIS_COPY.emptyTitle}</Text>
+          <Text style={styles.emptySub}>{AI_ANALYSIS_COPY.emptySub}</Text>
         </View>
       </FlagshipScreen>
     );
@@ -319,12 +326,9 @@ export default function PlayerAIAnalysisScreen() {
               <Text style={styles.heroBadgeText}>AI инсайт</Text>
             </View>
           </View>
-          <Text style={styles.heroEyebrow}>AI АНАЛИЗ ИГРОКА</Text>
+          <Text style={styles.heroEyebrow}>{AI_ANALYSIS_COPY.heroEyebrow}</Text>
           <Text style={styles.heroTitle}>{player?.name ?? "Игрок"}</Text>
-          <Text style={styles.heroSubtitle}>
-            На основе последних данных и статистики AI выделил ключевые сильные стороны, зоны роста и
-            рекомендации для следующего шага развития.
-          </Text>
+          <Text style={styles.heroSubtitle}>{AI_ANALYSIS_COPY.heroSubtitle}</Text>
           <View style={styles.heroMetaRow}>
             <View style={styles.heroMetaChip}>
               <Ionicons name="analytics-outline" size={14} color={colors.textSecondary} />
@@ -345,7 +349,7 @@ export default function PlayerAIAnalysisScreen() {
               <View style={styles.summaryLeadIcon}>
                 <Ionicons name="bulb-outline" size={18} color={colors.accent} />
               </View>
-              <Text style={styles.summaryLeadText}>Главный вывод по текущему состоянию</Text>
+              <Text style={styles.summaryLeadText}>{AI_ANALYSIS_COPY.summaryLead}</Text>
             </View>
             <Text style={styles.summaryText}>
               {hasAiReportAccess ? analysis.summary : previewSummary}
@@ -446,9 +450,16 @@ export default function PlayerAIAnalysisScreen() {
             );
             router.push(`/chat/${COACH_MARK_ID}?${params.toString()}`);
           }}
+          accessibilityRole="button"
+          accessibilityLabel={AI_ANALYSIS_COPY.coachMarkCta}
         >
           <Ionicons name="sparkles-outline" size={18} color={colors.accent} />
-          <Text style={styles.coachMarkCtaText}>Обсудить выводы с Coach Mark — получить персональные рекомендации</Text>
+          <Text style={styles.coachMarkCtaText}>{AI_ANALYSIS_COPY.coachMarkCta}</Text>
+          <Ionicons
+            name="chevron-forward"
+            size={20}
+            color={PARENT_FLAGSHIP.chevronMutedIcon}
+          />
         </Pressable>
       </Animated.View>
 
@@ -471,6 +482,21 @@ export default function PlayerAIAnalysisScreen() {
 }
 
 const styles = StyleSheet.create({
+  loadingWrap: {
+    paddingHorizontal: spacing.screenPadding,
+    paddingTop: spacing.sm,
+  },
+  loadingHint: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginBottom: spacing.lg,
+    letterSpacing: 0.15,
+  },
+  errorWrap: {
+    flex: 1,
+    width: "100%",
+    justifyContent: "center",
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -478,8 +504,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.screenPadding,
     paddingVertical: 12,
     paddingTop: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.surfaceLevel1Border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255,255,255,0.08)",
   },
   backBtn: {
     width: 40,
@@ -499,22 +525,17 @@ const styles = StyleSheet.create({
     height: 40,
   },
   skeletonContent: {
-    gap: spacing.xl,
+    gap: spacing.lg,
   },
   skeletonHero: {
     borderRadius: radius.lg,
-  },
-  skeletonHint: {
-    ...typography.caption,
-    color: colors.textMuted,
-    textAlign: "center",
   },
   skeletonInsightCard: {
     borderRadius: radius.lg,
     padding: spacing.lg,
     backgroundColor: "rgba(255,255,255,0.03)",
-    borderWidth: 1,
-    borderColor: colors.surfaceLevel1Border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.surfaceLevel2Border,
   },
   skeletonInsightTitle: {
     width: 120,
@@ -534,8 +555,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: spacing.lg,
     backgroundColor: "rgba(255,255,255,0.03)",
-    borderWidth: 1,
-    borderColor: colors.surfaceLevel1Border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.surfaceLevel2Border,
   },
   skeletonSectionTitle: {
     width: 140,
@@ -557,12 +578,12 @@ const styles = StyleSheet.create({
   heroCard: {
     position: "relative",
     overflow: "hidden",
-    marginBottom: spacing.sectionGap,
+    marginBottom: spacing.lg,
     padding: spacing.xl,
     borderRadius: radius.lg,
     backgroundColor: "rgba(255,255,255,0.04)",
     borderColor: colors.surfaceLevel2Border,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     ...shadows.level2,
   },
   heroGradient: {
@@ -581,7 +602,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: 999,
     backgroundColor: colors.accentSoft,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(59,130,246,0.3)",
   },
   heroBadgeText: {
@@ -590,9 +611,9 @@ const styles = StyleSheet.create({
     color: colors.accent,
   },
   heroEyebrow: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1,
+    fontSize: 12,
+    fontWeight: "600",
+    letterSpacing: 0.2,
     color: colors.textMuted,
     marginBottom: spacing.sm,
   },
@@ -622,7 +643,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSoft,
   },
   heroMetaText: {
@@ -631,7 +652,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   sectionCard: {
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
     borderColor: colors.surfaceLevel1Border,
     ...shadows.level1,
   },
@@ -665,7 +686,7 @@ const styles = StyleSheet.create({
     height: 34,
     borderRadius: 17,
     backgroundColor: "rgba(59,130,246,0.12)",
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(59,130,246,0.18)",
     alignItems: "center",
     justifyContent: "center",
@@ -686,9 +707,9 @@ const styles = StyleSheet.create({
     color: colors.accent,
   },
   paywallCard: {
-    marginBottom: spacing.sectionGap,
+    marginBottom: spacing.lg,
     borderColor: "rgba(59,130,246,0.25)",
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     backgroundColor: colors.accentSoft,
     ...shadows.level1,
   },
@@ -697,7 +718,7 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     backgroundColor: "rgba(59,130,246,0.12)",
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(59,130,246,0.18)",
     alignItems: "center",
     justifyContent: "center",
@@ -722,7 +743,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacing.sm,
     backgroundColor: colors.accent,
-    borderRadius: radius.sm,
+    borderRadius: radius.lg,
     paddingVertical: 14,
     paddingHorizontal: spacing.lg,
   },
@@ -736,7 +757,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: spacing.sm,
     paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderSoft,
   },
   listBulletWrap: {
@@ -791,7 +812,7 @@ const styles = StyleSheet.create({
     height: 64,
     borderRadius: radius.lg,
     backgroundColor: colors.accentSoft,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(59,130,246,0.25)",
     alignItems: "center",
     justifyContent: "center",
@@ -812,20 +833,19 @@ const styles = StyleSheet.create({
   coachMarkCta: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
     gap: spacing.sm,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-    backgroundColor: "rgba(59,130,246,0.12)",
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: "rgba(59,130,246,0.25)",
+    paddingVertical: spacing.lg,
+    paddingTop: spacing.lg,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(255,255,255,0.1)",
   },
   coachMarkCtaText: {
+    flex: 1,
     fontSize: 15,
     fontWeight: "600",
-    color: colors.accent,
+    color: "rgba(255,255,255,0.88)",
   },
   refreshBtn: {
     flexDirection: "row",
@@ -833,7 +853,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacing.sm,
     backgroundColor: colors.accent,
-    borderRadius: radius.sm,
+    borderRadius: radius.lg,
     paddingVertical: 14,
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.md,

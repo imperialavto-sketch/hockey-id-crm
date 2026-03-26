@@ -1,7 +1,7 @@
 /**
  * GET /api/player/[id]/progress-history
  * Returns monthly progress snapshots for the player.
- * Auth: CRM (session) or Parent (X-Parent-Id header).
+ * Auth: CRM (session/cookie) or Parent (Bearer token).
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -17,7 +17,6 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    console.log("[progress-history] GET start, playerId:", id);
 
     if (!id) {
       return NextResponse.json(
@@ -34,7 +33,6 @@ export async function GET(
       );
     }
 
-    console.log("[progress-history] auth ok, fetching player...");
     const player = await prisma.player.findUnique({
       where: { id },
       include: { team: true },
@@ -59,13 +57,11 @@ export async function GET(
       if (accessRes) return accessRes;
     }
 
-    console.log("[progress-history] access ok, querying snapshots...");
     const snapshots = await prisma.playerProgressSnapshot.findMany({
       where: { playerId: id },
       orderBy: [{ year: "desc" }, { month: "desc" }],
     });
 
-    console.log("[progress-history] success, count:", snapshots.length);
     return NextResponse.json(
       snapshots.map((s) => ({
         id: s.id,
@@ -86,7 +82,7 @@ export async function GET(
   } catch (error) {
     console.error("[progress-history] GET failed:", error);
     return NextResponse.json(
-      { error: "Ошибка загрузки истории прогресса", details: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Ошибка загрузки истории прогресса" },
       { status: 500 }
     );
   }

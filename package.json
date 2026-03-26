@@ -15,9 +15,11 @@
     "db:seed:settings": "node scripts/seed-settings.js",
     "scrape:players": "node scripts/scrapePlayers.js",
     "db:migrate": "prisma migrate dev",
-    "ip": "bash scripts/print-ip.sh"
+    "ip": "bash scripts/print-ip.sh",
+    "smoke:marketplace-payment": "npx tsx scripts/marketplace-booking-payment-smoke.ts"
   },
   "dependencies": {
+    "@paralleldrive/cuid2": "^3.3.0",
     "@prisma/client": "^5.22.0",
     "axios": "^1.13.6",
     "bcryptjs": "^2.4.3",

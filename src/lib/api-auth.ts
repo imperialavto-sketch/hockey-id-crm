@@ -20,7 +20,10 @@ export interface ApiUser {
   parentId?: string | null;
 }
 
-/** Parent Mobile: header for identifying parent (when no session cookie). */
+/**
+ * x-parent-id: DEPRECATED for auth. Do NOT trust as identity.
+ * Kept for backward compat in logging/audit only. Auth must use Bearer/cookie.
+ */
 export const PARENT_ID_HEADER = "x-parent-id";
 
 function parseSessionToken(raw: string): ApiUser | null {
@@ -47,17 +50,7 @@ function parseSessionToken(raw: string): ApiUser | null {
 export async function getAuthFromRequest(
   req: NextRequest
 ): Promise<ApiUser | null> {
-  const parentIdHeader = req.headers.get(PARENT_ID_HEADER);
-  if (parentIdHeader?.trim()) {
-    return {
-      id: parentIdHeader.trim(),
-      role: "PARENT",
-      schoolId: null,
-      parentId: parentIdHeader.trim(),
-    };
-  }
-
-  // Coach app / mobile: Bearer token (same format as cookie)
+  // Bearer token (coach app, parent mobile) — primary auth source
   const authHeader = req.headers.get("authorization");
   if (authHeader?.toLowerCase().startsWith("bearer ")) {
     const token = authHeader.slice(7).trim();
@@ -65,10 +58,22 @@ export async function getAuthFromRequest(
     if (user) return user;
   }
 
+  // Session cookie (web CRM)
   const cookieStore = await cookies();
   const raw = cookieStore.get(SESSION_COOKIE)?.value;
   if (!raw) return null;
   return parseSessionToken(raw);
+}
+
+/** Create session token for parent (e.g. after verify). Same format as parseSessionToken expects. */
+export function createParentSessionToken(parentId: string): string {
+  const payload = JSON.stringify({
+    id: parentId,
+    role: "PARENT",
+    schoolId: null,
+    parentId,
+  });
+  return Buffer.from(payload, "utf-8").toString("base64url");
 }
 
 export function setSessionCookie(user: ApiUser): string {

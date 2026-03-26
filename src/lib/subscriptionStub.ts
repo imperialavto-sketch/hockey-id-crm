@@ -1,4 +1,14 @@
-import type { SubscriptionPlan } from "@/parent-app/types/subscription";
+/** Server-side stub plan shape. Aligned with parent-app SubscriptionPlan conceptually. */
+export interface SubscriptionPlan {
+  id: string;
+  code: string;
+  name: string;
+  priceMonthly: number;
+  priceYearly: number;
+  features: { id: string; label: string; included?: boolean }[];
+  badge?: string;
+  popular?: boolean;
+}
 
 // Server-side stub plans. Keep in sync with parent-app mock plans conceptually, but defined locally.
 export const SUBSCRIPTION_STUB_PLANS: SubscriptionPlan[] = [
@@ -41,6 +51,19 @@ export const SUBSCRIPTION_STUB_PLANS: SubscriptionPlan[] = [
       { id: "f3", label: "Экстра-отчёты и аналитика", included: true },
     ],
     badge: "Лучшее предложение",
+    popular: false,
+  },
+  {
+    id: "membership_dev_plus",
+    code: "development_plus",
+    name: "Development Plus",
+    priceMonthly: 7990,
+    priceYearly: 95880,
+    features: [
+      { id: "m1", label: "AI Coach Report каждый месяц", included: true },
+      { id: "m2", label: "Персональный development plan", included: true },
+    ],
+    badge: "Membership",
     popular: false,
   },
 ];

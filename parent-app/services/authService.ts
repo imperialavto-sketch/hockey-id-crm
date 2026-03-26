@@ -4,7 +4,7 @@
  * Legacy: requestLoginCode / verifyLoginCode for phone+code (dev fallback).
  */
 
-import { apiFetch, getApiBase, ApiRequestError } from "@/lib/api";
+import { apiFetch, getApiBase } from "@/lib/api";
 import type { ParentUser } from "@/types/auth";
 import { isDemoMode, API_BASE_URL } from "@/config/api";
 import { DEMO_AUTH_TOKEN, demoParentUser } from "@/demo/demoAuth";
@@ -72,16 +72,7 @@ export async function requestLoginCode(phone: string): Promise<void> {
   const apiBase = getApiBase();
   const fullUrl = `${apiBase.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
 
-  if (__DEV__) {
-    console.log("[REQUEST-CODE] full endpoint:", fullUrl);
-    console.log("[authService] requestLoginCode BEFORE REQUEST", {
-      EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL ?? "(not set)",
-      resolvedApiBase: API_BASE_URL,
-      apiBaseUsed: apiBase,
-      fullEndpoint: fullUrl,
-      phone: normalized,
-    });
-  }
+  if (__DEV__) console.log("[auth] request-code", fullUrl);
 
   try {
     const res = await apiFetch<{ ok?: boolean }>(path, {
@@ -89,26 +80,9 @@ export async function requestLoginCode(phone: string): Promise<void> {
       body: JSON.stringify({ phone: normalized }),
       timeoutMs: 30000, // Render cold start ~25s; default 5s too short
     });
-    if (__DEV__) {
-      console.log("[authService] requestLoginCode AFTER RESPONSE", {
-        path,
-        status: "200",
-        responseBody: res,
-      });
-    }
   } catch (e) {
-    if (__DEV__) {
-      console.warn("[authService] requestLoginCode CATCH", {
-        error: e,
-        message: e instanceof Error ? e.message : String(e),
-        stack: e instanceof Error ? e.stack : undefined,
-        status: e instanceof ApiRequestError ? e.status : undefined,
-      });
-      if (e instanceof Error) {
-        throw new Error(e.message);
-      }
-    }
-    throw new Error("Не удалось отправить код. Попробуйте позже.");
+    if (__DEV__) console.warn("[auth] request-code failed:", e instanceof Error ? e.message : e);
+    throw new Error(e instanceof Error ? e.message : "Не удалось отправить код. Попробуйте позже.");
   }
 }
 
@@ -141,15 +115,7 @@ export async function verifyLoginCode(phone: string, code: string): Promise<Veri
   const fullUrl = `${apiBase.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
   const requestBody = { phone: normalized, code: trimmedCode };
 
-  if (__DEV__) {
-    console.log("[VERIFY] full endpoint:", fullUrl);
-    console.log("[authService] verifyLoginCode BEFORE REQUEST", {
-      fullEndpoint: fullUrl,
-      method: "POST",
-      requestBody,
-      EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL ?? "(not set)",
-    });
-  }
+  if (__DEV__) console.log("[auth] verify", fullUrl);
 
   try {
     const res = await apiFetch<VerifyLoginResponse>(path, {
@@ -157,15 +123,6 @@ export async function verifyLoginCode(phone: string, code: string): Promise<Veri
       body: JSON.stringify(requestBody),
       timeoutMs: 30000, // Render cold start ~25s; default 5s too short
     });
-    if (__DEV__) {
-      console.log("[authService] verifyLoginCode AFTER RESPONSE", {
-        path,
-        status: "200",
-        parsedJson: res,
-        hasUser: !!res?.user,
-        hasToken: !!res?.token,
-      });
-    }
     if (!res?.user) {
       throw new Error("Не удалось выполнить вход");
     }
@@ -180,14 +137,7 @@ export async function verifyLoginCode(phone: string, code: string): Promise<Veri
       token,
     };
   } catch (e) {
-    if (__DEV__) {
-      console.warn("[authService] verifyLoginCode CATCH", {
-        error: e,
-        message: e instanceof Error ? e.message : String(e),
-        stack: e instanceof Error ? e.stack : undefined,
-        status: e instanceof ApiRequestError ? e.status : undefined,
-      });
-    }
+    if (__DEV__) console.warn("[auth] verify failed:", e instanceof Error ? e.message : e);
     if (e instanceof Error && e.message.includes("сервер не вернул токен")) {
       throw e;
     }

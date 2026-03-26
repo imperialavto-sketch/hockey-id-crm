@@ -28,8 +28,9 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  school School? @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  team   Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  school                 School? @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  team                   Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  linkedMarketplaceCoach Coach?  @relation("UserMarketplaceCoach")
 }
 
 model UserSettings {
@@ -180,7 +181,8 @@ model TrainingSession {
   teamId          String
   groupId         String
   coachId         String
-  type            String   // hockey | ofp | game | individual
+  type            String   @default("ice") // ice | ofp
+  subType         String?  // optional: skating, strength, cardio, etc.
   startAt         DateTime
   endAt           DateTime
   locationName    String?
@@ -191,9 +193,75 @@ model TrainingSession {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  team  Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  group TeamGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  coach Coach     @relation(fields: [coachId], references: [id], onDelete: Restrict)
+  team                 Team                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  group                TeamGroup             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  coach                Coach                 @relation(fields: [coachId], references: [id], onDelete: Restrict)
+  trainingAttendances  TrainingAttendance[]
+  playerSessionEvaluations PlayerSessionEvaluation[]
+  playerSessionReports     PlayerSessionReport[]
+  sessionReport            TrainingSessionReport?
+}
+
+model TrainingAttendance {
+  id         String   @id @default(cuid())
+  trainingId String
+  playerId   String
+  status     String // present | absent
+  createdAt  DateTime @default(now())
+
+  training TrainingSession @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  player   Player          @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([trainingId, playerId])
+}
+
+model PlayerSessionEvaluation {
+  id          String   @id @default(cuid())
+  trainingId  String
+  playerId    String
+  effort      Int?
+  focus       Int?
+  discipline  Int?
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  training TrainingSession @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  player   Player          @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([trainingId, playerId])
+}
+
+// Общий отчёт тренера по тренировке (один на TrainingSession).
+model TrainingSessionReport {
+  id             String   @id @default(cuid())
+  trainingId     String   @unique
+  summary        String?
+  focusAreas     String?
+  coachNote      String?
+  parentMessage  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  training TrainingSession @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+}
+
+// Текстовый отчёт тренера по игроку на конкретной тренировке (TrainingSession).
+model PlayerSessionReport {
+  id            String   @id @default(cuid())
+  trainingId    String
+  playerId      String
+  summary       String?
+  focusAreas    String?
+  coachNote     String?
+  parentMessage String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  training TrainingSession @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  player   Player          @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([trainingId, playerId])
 }
 
 model TeamFeedPost {
@@ -215,15 +283,24 @@ model TeamFeedPost {
 }
 
 model Coach {
-  id             String   @id @default(cuid())
-  firstName      String
-  lastName       String
-  phone          String?
-  email          String?
-  specialization String?
-  photoUrl       String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                         String   @id @default(cuid())
+  firstName                  String
+  lastName                   String
+  phone                      String?
+  email                      String?
+  specialization             String?
+  photoUrl                   String?
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+  isMarketplaceIndependent   Boolean  @default(false)
+  linkedUserId               String?  @unique
+  linkedUser                 User?    @relation("UserMarketplaceCoach", fields: [linkedUserId], references: [id], onDelete: SetNull)
+  displayName                String?
+  city                       String?
+  bio                        String?
+  specialties                Json     @default("[]")
+  formats                    Json     @default("[]")
+  priceFrom                  Int?
 
   teams                Team[]
   coachRatings         CoachRating[]
@@ -232,6 +309,26 @@ model Coach {
   chatConversations    ChatConversation[]
   groupAssignments     PlayerGroupAssignment[]
   trainingSessions     TrainingSession[]
+  coachAvailabilities  CoachAvailability[]
+  marketplaceBookingRequests CoachBookingRequest[] @relation("IndependentCoachBookings")
+  marketplaceSlotBookings    MarketplaceSlotBooking[]
+}
+
+model CoachAvailability {
+  id        String   @id @default(cuid())
+  coachId   String
+  date      DateTime
+  startTime String
+  endTime   String
+  price     Int
+  type      String
+  isBooked  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  coach                Coach                   @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  marketplaceBookings MarketplaceSlotBooking[]
+
+  @@index([coachId, date])
 }
 
 model ChatConversation {
@@ -402,7 +499,10 @@ model Player {
   notifications Notification[]
   messages      Message[]
   aiAnalyses    AiAnalysis[]
-  groupAssignments PlayerGroupAssignment[]
+  groupAssignments    PlayerGroupAssignment[]
+  trainingAttendances TrainingAttendance[]
+  playerSessionEvaluations PlayerSessionEvaluation[]
+  playerSessionReports     PlayerSessionReport[]
 }
 
 model PlayerProgressSnapshot {
@@ -693,19 +793,47 @@ model CoachService {
 }
 
 model CoachBookingRequest {
-  id            String   @id @default(cuid())
-  coachId       String
-  parentId      String?
-  parentName    String
-  parentPhone   String
-  playerId      String?
-  message       String
-  preferredDate DateTime?
-  status        String   @default("new")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                   String    @id @default(cuid())
+  coachId              String?
+  independentCoachId   String?
+  parentId             String?
+  parentName           String
+  parentPhone          String
+  playerId             String?
+  message              String
+  preferredDate        DateTime?
+  status               String    @default("new")
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  coach CoachProfile @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  coach             CoachProfile? @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  independentCoach  Coach?        @relation("IndependentCoachBookings", fields: [independentCoachId], references: [id], onDelete: Cascade)
+}
+
+// Marketplace reservation for CoachAvailability (independent coaches only).
+model MarketplaceSlotBooking {
+  id             String   @id @default(cuid())
+  slotId         String
+  coachId        String
+  bookerUserId   String
+  status         String   @default("pending")
+  parentName     String
+  parentPhone    String
+  playerId       String?
+  message        String?
+  paymentStatus     String    @default("unpaid")
+  paymentMethod     String?
+  paidAt            DateTime?
+  paymentReference  String?
+  amountSnapshot    Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  slot  CoachAvailability @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  coach Coach             @relation(fields: [coachId], references: [id], onDelete: Cascade)
+
+  @@index([bookerUserId, createdAt])
+  @@index([coachId, status])
 }
 
 model Subscription {
@@ -789,5 +917,66 @@ model CoachSessionParentDraft {
   focusSkills      Json     // string[]
 
   coachSession CoachSession @relation(fields: [coachSessionId], references: [id], onDelete: Cascade)
+}
+
+/// Coach-created report text (voice / manual create flows)
+model Report {
+  id          String     @id @default(cuid())
+  coachId     String
+  playerId    String?
+  title       String
+  content     String
+  createdAt   DateTime   @default(now())
+  voiceNoteId String?
+  voiceNote   VoiceNote? @relation(fields: [voiceNoteId], references: [id], onDelete: SetNull)
+}
+
+/// Coach-created action item (task / follow-up)
+model ActionItem {
+  id          String     @id @default(cuid())
+  coachId     String
+  playerId    String?
+  title       String
+  description String
+  status      String     @default("open")
+  createdAt   DateTime   @default(now())
+  voiceNoteId String?
+  voiceNote   VoiceNote? @relation(fields: [voiceNoteId], references: [id], onDelete: SetNull)
+}
+
+/// Coach-created parent message draft (standalone, not synced session draft)
+model ParentDraft {
+  id          String     @id @default(cuid())
+  coachId     String
+  playerId    String?
+  text        String
+  createdAt   DateTime   @default(now())
+  voiceNoteId String?
+  voiceNote   VoiceNote? @relation(fields: [voiceNoteId], references: [id], onDelete: SetNull)
+}
+
+/// Persisted coach voice notes (audio upload + STT transcript + lightweight analysis)
+model VoiceNote {
+  id             String   @id @default(cuid())
+  coachId         String
+  playerId        String?
+  transcript      String
+  summary         String?
+  highlightsJson  Json?
+  suggestionsJson Json?
+  /// Client-side AI analysis snapshot (structured); not computed on server.
+  analysisJson    Json?
+  uploadId        String?
+  audioFileName   String?
+  audioMimeType   String?
+  audioSizeBytes  Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  reports       Report[]
+  actionItems   ActionItem[]
+  parentDrafts  ParentDraft[]
+
+  @@unique([coachId, uploadId])
 }
 

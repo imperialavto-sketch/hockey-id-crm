@@ -58,6 +58,7 @@ import { triggerHaptic } from "@/lib/haptics";
 import { trackCoachMarkEvent } from "@/lib/coachMarkAnalytics";
 import { ApiRequestError } from "@/lib/api";
 import { colors, spacing, typography, radius, radii, inputStyles } from "@/constants/theme";
+import { PARENT_FLAGSHIP } from "@/lib/parentFlagshipShared";
 import type { ChatMessage } from "@/types/chat";
 
 /** Props for ChatMessageBubble. Kept inline for co-location; extract if reused. */
@@ -247,12 +248,14 @@ const ChatListEmpty = memo(function ChatListEmpty({
         />
       </View>
       <Text style={styles.emptyTitle}>
-        {isCoachMark ? "Привет! Я Coach Mark — ваш персональный AI-тренер" : "Сообщений пока нет"}
+        {isCoachMark
+          ? "Coach Mark — ваш AI-помощник по хоккею"
+          : "Пока нет сообщений"}
       </Text>
       <Text style={styles.emptySub}>
         {isCoachMark
-          ? "Советы по технике, мотивации, планы на неделю. Возвращайтесь раз в неделю — продолжим с учётом прогресса."
-          : "Напишите первым"}
+          ? "Техника, мотивация и планы на неделю. Заглядывайте сюда регулярно — продолжим с учётом прогресса."
+          : "Напишите первое сообщение — ответ появится здесь."}
       </Text>
       {isCoachMark && (
         <>
@@ -279,7 +282,7 @@ const ChatListEmpty = memo(function ChatListEmpty({
             ))}
           </View>
           <Text style={styles.memoryHint}>
-            Долгое нажатие на ответ — сохранить в память, чтобы Coach Mark учитывал это в следующих разговорах
+            Долгое нажатие на ответ — в заметки или в память Coach Mark для следующих диалогов
           </Text>
           {coachMarkLoadFailed && (
             <View style={styles.retryWrap}>
@@ -738,13 +741,15 @@ export default function ChatConversationScreen() {
 
   if (!user?.id) {
     return (
-      <FlagshipScreen scroll={false}>
-        <View style={styles.emptyContainer}>
+      <FlagshipScreen scroll={false} safeAreaEdges={["top", "bottom"]}>
+        <View style={styles.authGate}>
           <View style={styles.emptyIconWrap}>
             <Ionicons name="person-outline" size={32} color={colors.textMuted} />
           </View>
-          <Text style={styles.emptyTitle}>Требуется вход</Text>
-          <Text style={styles.emptySub}>Авторизуйтесь для общения</Text>
+          <Text style={styles.emptyTitle}>Нужен вход</Text>
+          <Text style={styles.emptySub}>
+            Авторизуйтесь, чтобы писать в чат и видеть ответы тренера
+          </Text>
         </View>
       </FlagshipScreen>
     );
@@ -765,7 +770,7 @@ export default function ChatConversationScreen() {
     () => [
       styles.inputRow,
       { paddingBottom: composerBottomPadding },
-      sending && styles.inputRowSending,
+      sending ? styles.inputRowSending : undefined,
     ],
     [composerBottomPadding, sending]
   );
@@ -821,14 +826,15 @@ export default function ChatConversationScreen() {
     >
       {loading ? (
         <View style={styles.skeletonWrap}>
+          <Text style={styles.skeletonHint}>Загружаем диалог…</Text>
           <ChatThreadSkeleton />
         </View>
       ) : loadError ? (
         <Animated.View entering={FadeIn.duration(300)} style={styles.errorWrap}>
           <ErrorStateView
             variant="network"
-            title="Не удалось загрузить чат"
-            subtitle="Проверьте подключение и попробуйте снова"
+            title="Чат не загрузился"
+            subtitle={PARENT_FLAGSHIP.networkRetrySubtitle}
             onAction={load}
           />
         </Animated.View>
@@ -894,8 +900,8 @@ export default function ChatConversationScreen() {
                 scale={0.96}
                 style={[
                   styles.sendBtn,
-                  (!input.trim() || sending) && styles.sendBtnDisabled,
-                  sending && styles.sendBtnSending,
+                  !input.trim() || sending ? styles.sendBtnDisabled : undefined,
+                  sending ? styles.sendBtnSending : undefined,
                 ]}
               >
                 {sending ? (
@@ -916,7 +922,7 @@ export default function ChatConversationScreen() {
   );
 
   return (
-    <FlagshipScreen scroll={false} safeAreaEdges={["top"]}>
+    <FlagshipScreen scroll={false} safeAreaEdges={["top", "bottom"]}>
       <View style={styles.wrap}>
         {chatContent}
       </View>
@@ -932,18 +938,34 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.1)",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.12)",
   },
   flex: {
     flex: 1,
+  },
+  authGate: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.xxxl,
   },
   skeletonWrap: {
     flex: 1,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xl,
+  },
+  skeletonHint: {
+    ...typography.captionSmall,
+    fontSize: 13,
+    color: colors.textMuted,
+    marginBottom: spacing.lg,
+    letterSpacing: 0.15,
   },
   skeletonContent: {
     gap: spacing.lg,
@@ -960,8 +982,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    padding: spacing.lg,
-    paddingTop: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xl,
   },
   emptyList: {
@@ -972,7 +994,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md + 2,
     borderRadius: radius.lg,
-    marginBottom: spacing.sm + 2,
+    marginBottom: spacing.md,
   },
   bubblePressed: {
     opacity: PRESSED_OPACITY,
@@ -1035,36 +1057,37 @@ const styles = StyleSheet.create({
     ...typography.captionSmall,
     fontSize: 11,
     color: colors.textMuted,
-    marginTop: spacing.sm,
+    marginTop: spacing.xs + 2,
+    opacity: 0.92,
   },
 
   inputRow: {
     flexDirection: "row",
     alignItems: "flex-end",
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    gap: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.surfaceLevel1Border,
-    backgroundColor: colors.bgDeep,
+    paddingTop: spacing.md,
+    gap: spacing.sm + 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(255,255,255,0.08)",
+    backgroundColor: colors.surfaceLevel1,
   },
   inputRowSending: {
-    opacity: 0.94,
+    opacity: 0.92,
   },
   input: {
     flex: 1,
-    backgroundColor: inputStyles.backgroundColor,
-    borderRadius: inputStyles.radius,
-    paddingHorizontal: inputStyles.paddingHorizontal,
-    paddingVertical: 16,
-    paddingTop: 16,
-    minHeight: 48,
+    backgroundColor: colors.surfaceLevel2,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 14,
+    paddingTop: 14,
+    minHeight: 50,
     fontSize: inputStyles.fontSize,
     lineHeight: 23,
     color: colors.textPrimary,
     maxHeight: 120,
-    borderWidth: inputStyles.borderWidth,
-    borderColor: inputStyles.borderColor,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.surfaceLevel2Border,
   },
   inputDisabled: {
     opacity: 0.7,
@@ -1074,11 +1097,12 @@ const styles = StyleSheet.create({
     height: 48,
     minWidth: 48,
     minHeight: 48,
-    borderRadius: 14,
+    borderRadius: radius.lg,
     backgroundColor: colors.accent,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 0,
+    marginBottom: 1,
   },
   sendBtnDisabled: {
     backgroundColor: colors.surfaceLevel2,
@@ -1100,6 +1124,8 @@ const styles = StyleSheet.create({
     height: 64,
     borderRadius: 32,
     backgroundColor: colors.surfaceLevel2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.surfaceLevel2Border,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.xl,
@@ -1140,6 +1166,8 @@ const styles = StyleSheet.create({
 
   errorWrap: {
     flex: 1,
+    width: "100%",
+    justifyContent: "center",
   },
   retryWrap: {
     marginTop: spacing.xl,
@@ -1150,10 +1178,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.lg,
-    backgroundColor: colors.surfaceLevel1,
-    borderTopWidth: 1,
-    borderTopColor: colors.surfaceLevel1Border,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.surfaceLevel2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(255,255,255,0.08)",
   },
   inlineErrorRetryWrap: {
     flexShrink: 0,

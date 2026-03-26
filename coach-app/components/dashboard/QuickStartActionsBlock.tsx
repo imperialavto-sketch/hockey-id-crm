@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { getResumeSessionSummary, COACH_INPUT_ROUTE } from "@/lib/resumeSessionHelpers";
+import { VOICE_NOTE_ROUTE } from "@/lib/voiceMvp";
 import { theme } from "@/constants/theme";
 
 type QuickAction = {
@@ -36,7 +37,13 @@ export function QuickStartActionsBlock() {
     route: COACH_INPUT_ROUTE,
   };
 
-  const actions = [sessionAction, ...STATIC_ACTIONS];
+  const voiceAction: QuickAction = {
+    id: "voice",
+    label: "Голосовая заметка",
+    route: VOICE_NOTE_ROUTE,
+  };
+
+  const actions = [sessionAction, voiceAction, ...STATIC_ACTIONS];
 
   const handlePress = (route: string) => {
     router.push(route as Parameters<typeof router.push>[0]);

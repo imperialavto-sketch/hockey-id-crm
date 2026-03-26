@@ -1,21 +1,23 @@
 /**
  * POST /api/parent/push/register
  * Register Expo push token for authenticated parent.
- * Auth: x-parent-id header.
+ * Auth: Bearer token required.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getAuthFromRequest, PARENT_ID_HEADER } from "@/lib/api-auth";
+import { getAuthFromRequest } from "@/lib/api-auth";
 
 export async function POST(req: NextRequest) {
-  const parentId = req.headers.get(PARENT_ID_HEADER)?.trim();
-  if (!parentId) {
+  const user = await getAuthFromRequest(req);
+  if (!user || user.role !== "PARENT" || !user.parentId) {
     return NextResponse.json(
-      { error: "Необходима авторизация (x-parent-id)" },
+      { error: "Необходима авторизация" },
       { status: 401 }
     );
   }
+
+  const parentId = user.parentId;
 
   try {
     const parent = await prisma.parent.findUnique({

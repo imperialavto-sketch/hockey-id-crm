@@ -1,13 +1,20 @@
 /**
  * POST /api/marketplace/booking-request — create parent booking request.
- * Auth: x-parent-id header optional (for linking parentId).
+ * PUBLIC: no auth required. Form collects parentName, parentPhone.
+ * When Bearer token present, parentId is linked from validated session.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAuthFromRequest } from "@/lib/api-auth";
+import { apiError } from "@/lib/api-error";
 
 export async function POST(req: NextRequest) {
+  console.log("[API]", {
+    path: "/api/marketplace/booking-request",
+    method: "POST",
+    time: new Date().toISOString(),
+  });
   try {
     const parent = (await getAuthFromRequest(req))?.parentId ?? null;
 
@@ -22,36 +29,40 @@ export async function POST(req: NextRequest) {
     } = body;
 
     if (!coachId || typeof parentName !== "string" || typeof parentPhone !== "string") {
-      return NextResponse.json(
-        { error: "Укажите тренера, имя и телефон" },
-        { status: 400 }
+      return apiError(
+        "VALIDATION_ERROR",
+        "Укажите тренера, имя и телефон",
+        400
       );
     }
 
     const nameTrim = parentName.trim();
     const phoneTrim = parentPhone.trim();
     if (!nameTrim) {
-      return NextResponse.json(
-        { error: "Введите имя родителя" },
-        { status: 400 }
-      );
+      return apiError("VALIDATION_ERROR", "Введите имя родителя", 400);
     }
     if (!phoneTrim) {
-      return NextResponse.json(
-        { error: "Введите номер телефона" },
-        { status: 400 }
-      );
+      return apiError("VALIDATION_ERROR", "Введите номер телефона", 400);
     }
 
-    const coach = await prisma.coachProfile.findFirst({
+    const coachProfile = await prisma.coachProfile.findFirst({
       where: { id: coachId, isPublished: true },
     });
+    const independentCoach =
+      !coachProfile &&
+      (await prisma.coach.findFirst({
+        where: {
+          id: coachId,
+          isMarketplaceIndependent: true,
+          displayName: { not: null },
+        },
+      }));
 
-    if (!coach) {
-      return NextResponse.json(
-        { error: "Тренер не найден" },
-        { status: 404 }
-      );
+    const indieOk =
+      independentCoach && (independentCoach.displayName ?? "").trim().length > 0;
+
+    if (!coachProfile && !indieOk) {
+      return apiError("NOT_FOUND", "Тренер не найден", 404);
     }
 
     const messageStr = typeof message === "string" ? message.trim() : "";
@@ -60,7 +71,8 @@ export async function POST(req: NextRequest) {
 
     const booking = await prisma.coachBookingRequest.create({
       data: {
-        coachId,
+        coachId: coachProfile ? coachId : undefined,
+        independentCoachId: indieOk ? coachId : undefined,
         parentId: parent ?? undefined,
         parentName: nameTrim,
         parentPhone: phoneTrim,
@@ -77,13 +89,7 @@ export async function POST(req: NextRequest) {
       message: "Заявка отправлена",
     });
   } catch (error) {
-    console.error("POST /api/marketplace/booking-request failed:", error);
-    return NextResponse.json(
-      {
-        error: "Не удалось отправить заявку",
-        details: error instanceof Error ? error.message : "",
-      },
-      { status: 500 }
-    );
+    console.error("POST /api/marketplace/booking-request error:", error);
+    return apiError("INTERNAL_ERROR", "Internal server error", 500);
   }
 }

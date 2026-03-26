@@ -1,15 +1,18 @@
 /**
  * GET /api/schedule?date=YYYY-MM-DD&teamId=
  * GET /api/schedule?weekStartDate=YYYY-MM-DD&teamId=
- * Schedule MVP — training sessions. Weekly planning model.
- * date: single day. weekStartDate: Monday of week, returns 7 days.
- * Auth: requireCrmRole. teamId optional; defaults to coach's team.
+ * Schedule MVP — TrainingSession (backward-compatible для CRM; coach-app → /api/coach/schedule).
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireCrmRole } from "@/lib/api-rbac";
 import { getAccessibleTeamIds } from "@/lib/data-scope";
+import { parseDateParamUTC, weekRangeFromParam } from "@/lib/schedule-week";
+import {
+  findTrainingSessionsForTeamWeek,
+  toCoachTrainingSessionDto,
+} from "@/lib/coach-training-session-dto";
 
 function canAccessTeam(
   accessibleIds: string[] | null,
@@ -17,21 +20,6 @@ function canAccessTeam(
 ): boolean {
   if (accessibleIds === null) return true;
   return accessibleIds.includes(teamId);
-}
-
-function parseDateParam(dateStr: string): Date | null {
-  const d = new Date(dateStr + "T00:00:00.000Z");
-  return isNaN(d.getTime()) ? null : d;
-}
-
-/** Normalize to Monday 00:00 UTC */
-function toWeekStart(d: Date): Date {
-  const day = d.getUTCDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  const monday = new Date(d);
-  monday.setUTCDate(d.getUTCDate() + diff);
-  monday.setUTCHours(0, 0, 0, 0);
-  return monday;
 }
 
 export async function GET(req: NextRequest) {
@@ -52,14 +40,6 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const parsed = parseDateParam(inputStr);
-  if (!parsed) {
-    return NextResponse.json(
-      { error: "Неверный формат даты" },
-      { status: 400 }
-    );
-  }
-
   const teamIds = await getAccessibleTeamIds(user!, prisma);
   const teamId = teamIdParam || (teamIds && teamIds.length === 1 ? teamIds[0] : null);
 
@@ -76,11 +56,25 @@ export async function GET(req: NextRequest) {
 
   let rangeStart: Date;
   let rangeEnd: Date;
+
   if (isWeekly) {
-    rangeStart = toWeekStart(parsed);
-    rangeEnd = new Date(rangeStart);
-    rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 7);
+    const range = weekRangeFromParam(inputStr);
+    if (!range) {
+      return NextResponse.json(
+        { error: "Неверный формат даты" },
+        { status: 400 }
+      );
+    }
+    rangeStart = range.rangeStart;
+    rangeEnd = range.rangeEnd;
   } else {
+    const parsed = parseDateParamUTC(inputStr);
+    if (!parsed) {
+      return NextResponse.json(
+        { error: "Неверный формат даты" },
+        { status: 400 }
+      );
+    }
     rangeStart = new Date(parsed);
     rangeStart.setUTCHours(0, 0, 0, 0);
     rangeEnd = new Date(rangeStart);
@@ -88,37 +82,12 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const sessions = await prisma.trainingSession.findMany({
-      where: {
-        teamId,
-        status: { not: "cancelled" },
-        startAt: { gte: rangeStart, lt: rangeEnd },
-      },
-      include: {
-        group: { select: { id: true, name: true, level: true } },
-        coach: { select: { id: true, firstName: true, lastName: true } },
-      },
-      orderBy: { startAt: "asc" },
-    });
-
-    const items = sessions.map((s) => ({
-      id: s.id,
-      teamId: s.teamId,
-      groupId: s.groupId,
-      group: s.group,
-      coachId: s.coachId,
-      coach: s.coach,
-      type: s.type,
-      startAt: s.startAt.toISOString(),
-      endAt: s.endAt.toISOString(),
-      locationName: s.locationName,
-      locationAddress: s.locationAddress,
-      notes: s.notes,
-      status: s.status,
-      sessionStatus: s.sessionStatus,
-    }));
-
-    return NextResponse.json(items);
+    const rows = await findTrainingSessionsForTeamWeek(
+      teamId,
+      rangeStart,
+      rangeEnd
+    );
+    return NextResponse.json(rows.map(toCoachTrainingSessionDto));
   } catch (error) {
     console.error("GET /api/schedule failed:", error);
     return NextResponse.json(

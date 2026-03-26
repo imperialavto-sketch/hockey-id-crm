@@ -11,12 +11,17 @@ import { isEndpointUnavailable, markEndpointUnavailable } from "@/lib/endpointAv
 
 /** API response for parent draft item */
 export interface ParentDraftApiItem {
-  playerId: string;
+  id?: string;
+  source?: "parent_draft" | "session_draft";
+  playerId: string | null;
   playerName: string;
+  text?: string;
   shortSummary?: string;
   messagePreview?: string;
   updatedAt?: string;
   ready?: boolean;
+  /** Только для standalone ParentDraft; у session_draft не приходит. */
+  voiceNoteId?: string | null;
 }
 
 /** API response for share report */
@@ -43,7 +48,16 @@ const PARENT_DRAFTS_PATH = "/api/coach/parent-drafts";
  * Returns [] on 404 (endpoint absent). Throws on other errors.
  */
 export async function getCoachParentDrafts(): Promise<
-  { playerId: string; playerName: string; message: string; preview: string }[]
+  {
+    id: string;
+    playerId: string | null;
+    playerName: string;
+    message: string;
+    preview: string;
+    updatedAt?: string | null;
+    source?: "parent_draft" | "session_draft" | null;
+    voiceNoteId?: string | null;
+  }[]
 > {
   if (isEndpointUnavailable(PARENT_DRAFTS_PATH)) return [];
   try {
@@ -53,14 +67,29 @@ export async function getCoachParentDrafts(): Promise<
       headers,
     });
     const items = Array.isArray(raw) ? raw : [];
-    const ready = items.filter((r) => r?.playerId && r.ready !== false);
-    return ready.map((api) => {
-      const text = api.messagePreview ?? api.shortSummary ?? "—";
+    const ready = items.filter((r) => r && r.ready !== false);
+    return ready.map((api, idx) => {
+      const text = api.text ?? api.messagePreview ?? api.shortSummary ?? "—";
+      const id =
+        (typeof api.id === "string" && api.id.trim()) ||
+        `${api.source ?? "legacy"}_${api.playerId ?? "none"}_${idx}`;
+      const voiceNoteIdStandalone =
+        api.source === "session_draft"
+          ? undefined
+          : typeof api.voiceNoteId === "string"
+            ? api.voiceNoteId.trim() || null
+            : api.voiceNoteId === null
+              ? null
+              : undefined;
       return {
-        playerId: api.playerId,
+        id,
+        playerId: api.playerId ?? null,
         playerName: api.playerName ?? "Игрок",
         message: text,
         preview: truncate(text, 80),
+        updatedAt: api.updatedAt ?? null,
+        source: api.source ?? null,
+        ...(voiceNoteIdStandalone !== undefined ? { voiceNoteId: voiceNoteIdStandalone } : {}),
       };
     });
   } catch (e) {
@@ -74,28 +103,60 @@ export async function getCoachParentDrafts(): Promise<
 
 const shareReportPrefix = "/api/coach/players/";
 
+/** Outcome of GET share-report (same payload; richer client typing only). */
+export type CoachShareReportResult =
+  | {
+      kind: "ready";
+      playerName: string;
+      message: string;
+      shortSummary?: string;
+      keyPoints?: string[];
+      recommendations?: string[];
+      updatedAt?: string;
+    }
+  | { kind: "not_ready" }
+  | { kind: "failed" };
+
+function nonEmptyStrings(arr: unknown): string[] | undefined {
+  if (!Array.isArray(arr)) return undefined;
+  const out = arr.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+  return out.length > 0 ? out : undefined;
+}
+
 /**
  * Fetch share report for a player.
- * Returns null on error, 404, or ready=false.
+ * `not_ready`: нет текста, 404, endpoint выключен, ready=false.
+ * `failed`: сетевая/серверная ошибка (не 404).
  */
-export async function getCoachShareReport(
-  playerId: string
-): Promise<{ playerName: string; message: string } | null> {
+export async function getCoachShareReport(playerId: string): Promise<CoachShareReportResult> {
   const path = `${shareReportPrefix}${encodeURIComponent(playerId)}/share-report`;
-  if (isEndpointUnavailable(path)) return null;
+  if (isEndpointUnavailable(path)) return { kind: "not_ready" };
   try {
     const headers = await getCoachAuthHeaders();
     const res = await apiFetch<ShareReportApiItem | null>(path, {
       method: "GET",
       headers,
     });
-    if (!res || res.ready === false || !res.message) return null;
+    const msg = typeof res?.message === "string" ? res.message.trim() : "";
+    if (!res || res.ready === false || !msg) return { kind: "not_ready" };
+    const shortSummary =
+      typeof res.shortSummary === "string" && res.shortSummary.trim() ? res.shortSummary.trim() : undefined;
+    const updatedAt =
+      typeof res.updatedAt === "string" && res.updatedAt.trim() ? res.updatedAt.trim() : undefined;
     return {
-      playerName: res.playerName ?? "Игрок",
-      message: res.message,
+      kind: "ready",
+      playerName: res.playerName?.trim() || "Игрок",
+      message: msg,
+      shortSummary,
+      keyPoints: nonEmptyStrings(res.keyPoints),
+      recommendations: nonEmptyStrings(res.recommendations),
+      updatedAt,
     };
   } catch (e) {
-    if (isApi404(e)) markEndpointUnavailable(path);
-    return null;
+    if (isApi404(e)) {
+      markEndpointUnavailable(path);
+      return { kind: "not_ready" };
+    }
+    return { kind: "failed" };
   }
 }

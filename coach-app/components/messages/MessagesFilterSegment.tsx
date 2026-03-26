@@ -2,7 +2,13 @@ import React from 'react';
 import { StyleSheet, Text, Pressable, ScrollView } from 'react-native';
 import { theme } from '@/constants/theme';
 
-export type MessagesFilterOption = 'all' | 'parents' | 'teams' | 'unread';
+export type MessagesFilterOption =
+  | 'all'
+  | 'parents'
+  | 'teams'
+  | 'unread'
+  | 'awaitingReply'
+  | 'needsReaction';
 
 type MessagesFilterSegmentProps = {
   value: MessagesFilterOption;
@@ -14,6 +20,8 @@ const OPTIONS: { value: MessagesFilterOption; label: string }[] = [
   { value: 'all', label: 'Все' },
   { value: 'parents', label: 'Родители' },
   { value: 'teams', label: 'Команды' },
+  { value: 'needsReaction', label: 'Есть ответ' },
+  { value: 'awaitingReply', label: 'Ждём ответа' },
   { value: 'unread', label: 'Непрочитанные' },
 ];
 
@@ -71,9 +79,12 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.sm,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
   },
   pillSelected: {
     backgroundColor: theme.colors.primaryMuted,
+    borderColor: theme.colors.primary,
   },
   pressed: {
     opacity: 0.85,

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import type { LucideIcon } from "lucide-react";
 import {
   UserCircle,
   Users,
@@ -14,18 +15,19 @@ import {
   Star,
   ChevronRight,
   Loader2,
-  Plus,
-  BarChart3,
   UserPlus,
+  BarChart3,
   CalendarPlus,
   MessageSquare,
   Zap,
+  Clock,
 } from "lucide-react";
 import { Card } from "@/components/Card";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
+import { CRM_DASHBOARD_COPY } from "@/lib/crmDashboardCopy";
 
-const ACTIVITY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+const ACTIVITY_ICONS: Record<string, LucideIcon> = {
   create_player: UserPlus,
   create_training: CalendarPlus,
   payment_updated: Wallet,
@@ -79,6 +81,12 @@ interface ActivityLog {
   createdAt: string;
 }
 
+async function parseOkJson(r: Response): Promise<unknown> {
+  const data = await r.json().catch(() => null);
+  if (!r.ok) throw new Error("fetch failed");
+  return data;
+}
+
 function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);
   const now = new Date();
@@ -86,10 +94,82 @@ function formatRelativeTime(dateStr: string): string {
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMins / 60);
   const diffDays = Math.floor(diffHours / 24);
+  if (diffMins < 1) return "только что";
   if (diffMins < 60) return `${diffMins} мин. назад`;
   if (diffHours < 24) return `${diffHours} ч. назад`;
   if (diffDays < 7) return `${diffDays} дн. назад`;
   return date.toLocaleDateString("ru-RU", { day: "2-digit", month: "short" });
+}
+
+function PanelHeader({
+  kicker,
+  title,
+  hint,
+  action,
+}: {
+  kicker?: string;
+  title: string;
+  hint?: string;
+  action?: { href: string; label: string };
+}) {
+  return (
+    <div className="border-b border-white/[0.08] bg-white/[0.02] px-5 py-4 sm:px-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          {kicker ? (
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{kicker}</p>
+          ) : null}
+          <h2 className="font-display text-base font-semibold tracking-tight text-white sm:text-lg">{title}</h2>
+          {hint ? <p className="mt-1 text-xs leading-relaxed text-slate-600">{hint}</p> : null}
+        </div>
+        {action ? (
+          <Link
+            href={action.href}
+            className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-slate-400 transition-colors hover:text-neon-blue"
+          >
+            {action.label}
+            <ChevronRight className="h-4 w-4 opacity-50" aria-hidden />
+          </Link>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function DashboardStatCard({
+  label,
+  children,
+  icon: Icon,
+  href,
+  canNavigate,
+}: {
+  label: string;
+  children: React.ReactNode;
+  icon: LucideIcon;
+  href?: string;
+  canNavigate?: boolean;
+}) {
+  const inner = (
+    <Card className="group flex min-h-[128px] flex-col justify-between rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 transition-colors hover:border-white/[0.12] hover:bg-white/[0.03] sm:min-h-[140px] sm:p-6">
+      <div className="flex flex-1 items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</p>
+          <div className="mt-2 min-w-0 font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">{children}</div>
+        </div>
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] text-slate-500 transition-colors group-hover:border-white/[0.12] group-hover:text-slate-300">
+          <Icon className="h-5 w-5" aria-hidden />
+        </div>
+      </div>
+    </Card>
+  );
+  if (href && canNavigate) {
+    return (
+      <Link href={href} className="block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20">
+        {inner}
+      </Link>
+    );
+  }
+  return inner;
 }
 
 export default function DashboardPage() {
@@ -99,26 +179,75 @@ export default function DashboardPage() {
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [activity, setActivity] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
 
-  useEffect(() => {
+  const loadDashboard = useCallback(() => {
+    setLoading(true);
+    setFetchError(false);
     Promise.all([
-      fetch("/api/dashboard/summary").then((r) => r.json()),
-      fetch("/api/dashboard/upcoming-trainings").then((r) => r.json()),
-      fetch("/api/dashboard/recent-activity").then((r) => r.json()),
+      fetch("/api/dashboard/summary").then(parseOkJson),
+      fetch("/api/dashboard/upcoming-trainings").then(parseOkJson),
+      fetch("/api/dashboard/recent-activity").then(parseOkJson),
     ])
       .then(([s, t, a]) => {
-        setSummary(s);
-        setTrainings(Array.isArray(t) ? t : []);
-        setActivity(Array.isArray(a) ? a : []);
+        setSummary(s as Summary);
+        setTrainings(Array.isArray(t) ? (t as Training[]) : []);
+        setActivity(Array.isArray(a) ? (a as ActivityLog[]) : []);
+        setFetchError(false);
       })
-      .catch(() => {})
+      .catch(() => {
+        setFetchError(true);
+        setSummary(null);
+        setTrainings([]);
+        setActivity([]);
+      })
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-12 w-12 animate-spin text-neon-blue" />
+      <div className="overflow-x-hidden px-4 py-6 sm:px-6 md:px-8">
+        <div className="mx-auto max-w-7xl space-y-8">
+          <Card className="rounded-2xl border-white/[0.08] p-0">
+            <div className="flex min-h-[40vh] flex-col items-center justify-center gap-4 py-16">
+              <Loader2 className="h-10 w-10 animate-spin text-neon-blue" aria-hidden />
+              <div className="text-center">
+                <p className="font-display text-base font-semibold text-white">{CRM_DASHBOARD_COPY.loadingTitle}</p>
+                <p className="mt-1 text-sm text-slate-500">{CRM_DASHBOARD_COPY.loadingHint}</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className="overflow-x-hidden px-4 py-6 sm:px-6 md:px-8">
+        <div className="mx-auto max-w-7xl space-y-8">
+          <div
+            className="flex flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"
+            role="alert"
+          >
+            <div>
+              <p className="font-medium text-amber-100">{CRM_DASHBOARD_COPY.errorTitle}</p>
+              <p className="mt-0.5 text-sm text-amber-200/80">{CRM_DASHBOARD_COPY.errorHint}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => loadDashboard()}
+              className="shrink-0 rounded-xl border border-amber-400/40 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/15"
+            >
+              {CRM_DASHBOARD_COPY.retryCta}
+            </button>
+          </div>
+          <p className="text-sm text-slate-500">{CRM_DASHBOARD_COPY.errorRecoverHint}</p>
+        </div>
       </div>
     );
   }
@@ -145,25 +274,58 @@ export default function DashboardPage() {
     { href: "/analytics", label: "Открыть аналитику", icon: BarChart3, mod: "analytics" as const, needCreate: false },
   ].filter((a) => (a.needCreate ? canCreate(a.mod) : canView(a.mod)));
 
+  const firstName = user?.name?.split(" ")[0] ?? CRM_DASHBOARD_COPY.heroGreetingFallback;
+
+  const hubLinks = [
+    { href: "/schedule", label: CRM_DASHBOARD_COPY.hubNavSchedule, mod: "schedule" as const },
+    { href: "/trainings", label: CRM_DASHBOARD_COPY.hubNavTrainings, mod: "schedule" as const },
+    { href: "/teams", label: CRM_DASHBOARD_COPY.hubNavTeams, mod: "teams" as const },
+    { href: "/players", label: CRM_DASHBOARD_COPY.hubNavPlayers, mod: "players" as const },
+  ].filter((l) => canView(l.mod));
+
   return (
     <div className="overflow-x-hidden px-4 py-6 sm:px-6 md:px-8">
-      <div className="mx-auto max-w-7xl space-y-10">
-        {/* Hero */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
-          <div>
-            <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl lg:text-4xl">
-              С возвращением, {user?.name?.split(" ")[0] ?? "Администратор"}
-            </h1>
-            <p className="mt-2 text-sm text-slate-500 sm:text-base">
-              Обзор вашей хоккейной школы
-            </p>
+      <div className="mx-auto max-w-7xl space-y-8">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between lg:gap-8">
+          <div className="min-w-0 flex-1 space-y-4">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-neon-blue/90">
+                {CRM_DASHBOARD_COPY.heroEyebrow}
+              </p>
+              <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-white sm:text-3xl lg:text-4xl">
+                С возвращением, {firstName}
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-400 sm:text-base">
+                {CRM_DASHBOARD_COPY.heroSubtitle}
+              </p>
+            </div>
+            {hubLinks.length > 0 ? (
+              <nav aria-label="CRM" className="flex flex-wrap gap-x-1 gap-y-2 text-sm">
+                {hubLinks.map((l, i) => (
+                  <span key={l.href} className="inline-flex items-center">
+                    {i > 0 ? <span className="mx-2 text-slate-600" aria-hidden>·</span> : null}
+                    <Link
+                      href={l.href}
+                      className="inline-flex items-center gap-1 font-medium text-slate-400 transition-colors hover:text-neon-blue"
+                    >
+                      {l.label}
+                      <ChevronRight className="h-3.5 w-3.5 opacity-40" aria-hidden />
+                    </Link>
+                  </span>
+                ))}
+              </nav>
+            ) : null}
           </div>
-          <div className="flex shrink-0 items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-            <div className="text-right">
-              <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+          <div className="flex shrink-0 items-stretch overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.04]">
+            <div className="w-1 shrink-0 bg-gradient-to-b from-neon-blue/80 to-neon-cyan/50" aria-hidden />
+            <div className="px-5 py-3.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                {CRM_DASHBOARD_COPY.roleChipLabel}
+              </p>
+              <p className="mt-0.5 text-sm font-semibold text-white">
                 {ROLE_LABELS[user?.role ?? ""] ?? user?.role}
               </p>
-              <p className="text-sm font-medium text-white">
+              <p className="mt-2 text-xs text-slate-500">
                 {new Date().toLocaleDateString("ru-RU", {
                   weekday: "long",
                   day: "numeric",
@@ -174,215 +336,194 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* KPI */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-5 lg:grid-cols-3 xl:grid-cols-4">
-          <Card className="group flex min-h-[150px] flex-col justify-between overflow-hidden rounded-2xl border-neon-blue/20 p-5 transition-all duration-300 hover:border-neon-blue/50 hover:shadow-[0_0_30px_rgba(0,212,255,0.12)] sm:p-6">
-            <div className="flex flex-1 items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Игроки</p>
-                <p className="mt-2 font-display text-2xl font-bold text-white sm:text-3xl">{s.playersCount}</p>
-              </div>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neon-blue/15 backdrop-blur-sm">
-                <UserCircle className="h-5 w-5 text-neon-blue sm:h-6 sm:w-6" />
-              </div>
-            </div>
-          </Card>
-          <Card className="group flex min-h-[150px] flex-col justify-between overflow-hidden rounded-2xl border-neon-pink/20 p-5 transition-all duration-300 hover:border-neon-pink/50 hover:shadow-[0_0_30px_rgba(255,0,170,0.12)] sm:p-6">
-            <div className="flex flex-1 items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Команды</p>
-                <p className="mt-2 font-display text-2xl font-bold text-white sm:text-3xl">{s.teamsCount}</p>
-              </div>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neon-pink/15 backdrop-blur-sm">
-                <Users className="h-5 w-5 text-neon-pink sm:h-6 sm:w-6" />
-              </div>
-            </div>
-          </Card>
-          <Card className="group flex min-h-[150px] flex-col justify-between overflow-hidden rounded-2xl border-neon-cyan/20 p-5 transition-all duration-300 hover:border-neon-cyan/50 hover:shadow-[0_0_30px_rgba(0,245,255,0.12)] sm:p-6">
-            <div className="flex flex-1 items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Тренеры</p>
-                <p className="mt-2 font-display text-2xl font-bold text-white sm:text-3xl">{s.coachesCount}</p>
-              </div>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neon-cyan/15 backdrop-blur-sm">
-                <GraduationCap className="h-5 w-5 text-neon-cyan sm:h-6 sm:w-6" />
-              </div>
-            </div>
-          </Card>
-          <Card className="group flex min-h-[150px] flex-col justify-between overflow-hidden rounded-2xl border-neon-purple/20 p-5 transition-all duration-300 hover:border-neon-purple/50 hover:shadow-[0_0_30px_rgba(191,0,255,0.12)] sm:p-6">
-            <div className="flex flex-1 items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Тренировки</p>
-                <p className="mt-2 font-display text-2xl font-bold text-white sm:text-3xl">
+        <Card className="overflow-hidden rounded-2xl border-white/[0.08] p-0">
+          <div className="border-b border-white/[0.08] bg-white/[0.02] px-5 py-4 sm:px-6">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              {CRM_DASHBOARD_COPY.statsKicker}
+            </p>
+            <h2 className="font-display text-base font-semibold tracking-tight text-white sm:text-lg">
+              {CRM_DASHBOARD_COPY.statsTitle}
+            </h2>
+            <p className="mt-1 text-xs leading-relaxed text-slate-600">{CRM_DASHBOARD_COPY.statsHint}</p>
+          </div>
+          <div className="p-4 sm:p-5">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+              <DashboardStatCard
+                label={CRM_DASHBOARD_COPY.statPlayers}
+                icon={UserCircle}
+                href="/players"
+                canNavigate={canView("players")}
+              >
+                {s.playersCount}
+              </DashboardStatCard>
+              <DashboardStatCard
+                label={CRM_DASHBOARD_COPY.statTeams}
+                icon={Users}
+                href="/teams"
+                canNavigate={canView("teams")}
+              >
+                {s.teamsCount}
+              </DashboardStatCard>
+              <DashboardStatCard
+                label={CRM_DASHBOARD_COPY.statCoaches}
+                icon={GraduationCap}
+                href="/coaches"
+                canNavigate={canView("coaches")}
+              >
+                {s.coachesCount}
+              </DashboardStatCard>
+              <DashboardStatCard
+                label={CRM_DASHBOARD_COPY.statTrainingsMonth}
+                icon={Calendar}
+                href="/trainings"
+                canNavigate={canView("schedule")}
+              >
+                <>
                   {s.trainingsThisMonth}
-                  <span className="text-lg font-normal text-slate-500 sm:text-xl"> / мес.</span>
-                </p>
-              </div>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neon-purple/15 backdrop-blur-sm">
-                <Calendar className="h-5 w-5 text-neon-purple sm:h-6 sm:w-6" />
-              </div>
-            </div>
-          </Card>
-          <Card className="group flex min-h-[150px] flex-col justify-between overflow-hidden rounded-2xl border-neon-green/20 p-5 transition-all duration-300 hover:border-neon-green/50 hover:shadow-[0_0_30px_rgba(0,255,136,0.12)] sm:p-6">
-            <div className="flex flex-1 items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Посещаемость</p>
-                <p className="mt-2 font-display text-2xl font-bold text-neon-green sm:text-3xl">{s.avgAttendance}%</p>
-              </div>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neon-green/15 backdrop-blur-sm">
-                <TrendingUp className="h-5 w-5 text-neon-green sm:h-6 sm:w-6" />
-              </div>
-            </div>
-          </Card>
-          <Card className="group flex min-h-[150px] flex-col justify-between overflow-hidden rounded-2xl border-neon-green/20 p-5 transition-all duration-300 hover:border-neon-green/50 hover:shadow-[0_0_30px_rgba(0,255,136,0.12)] sm:p-6">
-            <div className="flex flex-1 items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Оплачено</p>
-                <p className="mt-2 font-display text-xl font-bold text-neon-green sm:text-2xl">
+                  <span className="text-lg font-normal text-slate-500 sm:text-xl">
+                    {CRM_DASHBOARD_COPY.statTrainingsMonthSuffix}
+                  </span>
+                </>
+              </DashboardStatCard>
+              <DashboardStatCard label={CRM_DASHBOARD_COPY.statAttendance} icon={TrendingUp} href="/schedule" canNavigate={canView("schedule")}>
+                {s.avgAttendance}%
+              </DashboardStatCard>
+              <DashboardStatCard
+                label={CRM_DASHBOARD_COPY.statPaid}
+                icon={Wallet}
+                href="/finance"
+                canNavigate={canView("finance")}
+              >
+                <span className="text-xl sm:text-2xl">
                   {s.paidAmount?.toLocaleString("ru")}
-                  <span className="text-base font-normal text-slate-500 sm:text-lg"> ₽</span>
-                </p>
-              </div>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neon-green/15 backdrop-blur-sm">
-                <Wallet className="h-5 w-5 text-neon-green sm:h-6 sm:w-6" />
-              </div>
-            </div>
-          </Card>
-          <Card className="group flex min-h-[150px] flex-col justify-between overflow-hidden rounded-2xl border-amber-500/20 p-5 transition-all duration-300 hover:border-amber-500/50 hover:shadow-[0_0_30px_rgba(245,158,11,0.12)] sm:p-6">
-            <div className="flex flex-1 items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Задолженность</p>
-                <p className="mt-2 font-display text-xl font-bold text-amber-400 sm:text-2xl">
+                  <span className="text-base font-normal text-slate-500 sm:text-lg">{CRM_DASHBOARD_COPY.currencySuffix}</span>
+                </span>
+              </DashboardStatCard>
+              <DashboardStatCard
+                label={CRM_DASHBOARD_COPY.statDebt}
+                icon={AlertCircle}
+                href="/finance"
+                canNavigate={canView("finance")}
+              >
+                <span className="text-xl text-amber-200 sm:text-2xl">
                   {s.debtAmount?.toLocaleString("ru")}
-                  <span className="text-base font-normal text-slate-500 sm:text-lg"> ₽</span>
-                </p>
-              </div>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 backdrop-blur-sm">
-                <AlertCircle className="h-5 w-5 text-amber-400 sm:h-6 sm:w-6" />
-              </div>
+                  <span className="text-base font-normal text-slate-500 sm:text-lg">{CRM_DASHBOARD_COPY.currencySuffix}</span>
+                </span>
+              </DashboardStatCard>
+              <DashboardStatCard
+                label={CRM_DASHBOARD_COPY.statRecs}
+                icon={Star}
+                href="/analytics"
+                canNavigate={canView("analytics")}
+              >
+                {s.recommendationsCount}
+              </DashboardStatCard>
             </div>
-          </Card>
-          <Card className="group flex min-h-[150px] flex-col justify-between overflow-hidden rounded-2xl border-neon-pink/20 p-5 transition-all duration-300 hover:border-neon-pink/50 hover:shadow-[0_0_30px_rgba(255,0,170,0.12)] sm:p-6">
-            <div className="flex flex-1 items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Рекомендации</p>
-                <p className="mt-2 font-display text-2xl font-bold text-white sm:text-3xl">{s.recommendationsCount}</p>
-              </div>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neon-pink/15 backdrop-blur-sm">
-                <Star className="h-5 w-5 text-neon-pink sm:h-6 sm:w-6" />
-              </div>
-            </div>
-          </Card>
-        </div>
+          </div>
+        </Card>
 
-        {/* Sections */}
         <div className="grid gap-6 lg:grid-cols-2">
-          {/* Ближайшие тренировки */}
-          <Card className="overflow-hidden rounded-2xl border-white/10">
-            <div className="border-b border-white/10 px-5 py-4 sm:px-6">
-              <div className="flex items-center justify-between">
-                <h2 className="font-display text-base font-semibold text-white sm:text-lg">
-                  Ближайшие тренировки
-                </h2>
-                <Link
-                  href="/schedule"
-                  className="inline-flex items-center gap-1 text-sm font-medium text-neon-blue transition-colors hover:text-neon-cyan"
-                >
-                  Расписание <ChevronRight className="h-4 w-4" />
-                </Link>
-              </div>
-            </div>
-            <div className="p-4 sm:p-5">
+          <Card className="overflow-hidden rounded-2xl border-white/[0.08] p-0">
+            <PanelHeader
+              kicker={CRM_DASHBOARD_COPY.sectionTrainingsKicker}
+              title={CRM_DASHBOARD_COPY.sectionTrainingsTitle}
+              hint={CRM_DASHBOARD_COPY.sectionTrainingsHint}
+              action={{ href: "/schedule", label: CRM_DASHBOARD_COPY.sectionTrainingsLink }}
+            />
+            <div className="p-0">
               {trainings.length > 0 ? (
-                <div className="space-y-3">
+                <div className="divide-y divide-white/[0.08]">
                   {trainings.map((t) => {
                     const d = new Date(t.startTime);
+                    const end = t.endTime ? new Date(t.endTime) : null;
                     return (
                       <Link
                         key={t.id}
                         href={`/trainings/${t.id}`}
-                        className="flex items-start gap-4 rounded-xl border border-white/10 bg-white/5 p-4 transition-all hover:border-neon-blue/30 hover:bg-neon-blue/5"
+                        className="group flex items-start gap-3 px-4 py-4 transition-colors hover:bg-white/[0.03] sm:gap-4 sm:px-6 sm:py-4"
                       >
-                        <div className="flex shrink-0 flex-col items-center rounded-lg bg-neon-blue/10 px-3 py-2">
-                          <span className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                        <div className="flex shrink-0 flex-col items-center rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-2">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                             {d.toLocaleDateString("ru-RU", { weekday: "short" })}
                           </span>
-                          <span className="font-display text-lg font-bold text-neon-blue">
-                            {d.getDate()}
-                          </span>
-                          <span className="text-xs text-slate-500">
-                            {d.toLocaleDateString("ru-RU", { month: "short" })}
-                          </span>
+                          <span className="font-display text-lg font-bold text-white">{d.getDate()}</span>
+                          <span className="text-[10px] text-slate-500">{d.toLocaleDateString("ru-RU", { month: "short" })}</span>
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="font-medium text-white">{t.title}</p>
-                          <p className="mt-0.5 text-sm text-slate-500">
-                            {d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
-                            {" · "}
-                            {t.team?.name ?? "—"}
+                          <p className="font-medium text-white transition-colors group-hover:text-neon-blue">{t.title}</p>
+                          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-slate-500">
+                            <span className="inline-flex items-center gap-1">
+                              <Clock className="h-3.5 w-3.5 opacity-70" aria-hidden />
+                              {d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
+                              {end
+                                ? ` – ${end.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`
+                                : null}
+                            </span>
+                            <span className="text-slate-600" aria-hidden>
+                              ·
+                            </span>
+                            <span className="truncate">{t.team?.name ?? "—"}</span>
                           </p>
-                          {t.team?.coach && (
-                            <p className="text-xs text-slate-600">
+                          {t.team?.coach ? (
+                            <p className="mt-0.5 text-xs text-slate-600">
                               {t.team.coach.firstName} {t.team.coach.lastName}
                             </p>
-                          )}
-                          {t.location && (
+                          ) : null}
+                          {t.location ? (
                             <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
-                              <MapPin className="h-3.5 w-3.5" />
-                              {t.location}
+                              <MapPin className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+                              <span className="truncate">{t.location}</span>
                             </p>
-                          )}
+                          ) : null}
                         </div>
-                        <ChevronRight className="h-5 w-5 shrink-0 text-slate-500" />
+                        <ChevronRight
+                          className="mt-1 h-5 w-5 shrink-0 text-slate-500 opacity-40 transition-opacity group-hover:text-neon-blue group-hover:opacity-100"
+                          aria-hidden
+                        />
                       </Link>
                     );
                   })}
                 </div>
               ) : (
-                <div className="py-12 text-center">
-                  <Calendar className="mx-auto h-12 w-12 text-slate-600" />
-                  <p className="mt-3 text-sm text-slate-500">Ближайших тренировок нет</p>
+                <div className="px-4 py-14 text-center sm:px-6">
+                  <Calendar className="mx-auto h-11 w-11 text-slate-600" aria-hidden />
+                  <p className="mt-3 text-sm font-medium text-slate-400">{CRM_DASHBOARD_COPY.sectionTrainingsEmpty}</p>
+                  <p className="mx-auto mt-1 max-w-xs text-xs leading-relaxed text-slate-600">
+                    {CRM_DASHBOARD_COPY.sectionTrainingsEmptyHint}
+                  </p>
                 </div>
               )}
             </div>
           </Card>
 
-          {/* Последние действия */}
-          <Card className="overflow-hidden rounded-2xl border-white/10">
-            <div className="border-b border-white/10 px-5 py-4 sm:px-6">
-              <div className="flex items-center justify-between">
-                <h2 className="font-display text-base font-semibold text-white sm:text-lg">
-                  Последние действия
-                </h2>
-                <Link
-                  href="/analytics"
-                  className="inline-flex items-center gap-1 text-sm font-medium text-neon-blue transition-colors hover:text-neon-cyan"
-                >
-                  Аналитика <ChevronRight className="h-4 w-4" />
-                </Link>
-              </div>
-            </div>
+          <Card className="overflow-hidden rounded-2xl border-white/[0.08] p-0">
+            <PanelHeader
+              kicker={CRM_DASHBOARD_COPY.sectionActivityKicker}
+              title={CRM_DASHBOARD_COPY.sectionActivityTitle}
+              hint={CRM_DASHBOARD_COPY.sectionActivityHint}
+              action={
+                canView("analytics")
+                  ? { href: "/analytics", label: CRM_DASHBOARD_COPY.sectionActivityLink }
+                  : undefined
+              }
+            />
             <div className="max-h-80 overflow-y-auto p-4 sm:p-5">
               {activity.length > 0 ? (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {activity.slice(0, 10).map((a) => {
                     const Icon = ACTIVITY_ICONS[a.type] ?? Zap;
                     return (
                       <div
                         key={a.id}
-                        className="flex gap-3 rounded-lg border border-white/5 bg-white/5 p-3 transition-colors hover:border-white/10"
+                        className="flex gap-3 rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-3 transition-colors hover:border-white/[0.1] hover:bg-white/[0.03]"
                       >
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-neon-blue/20 bg-neon-blue/10">
-                          <Icon className="h-4 w-4 text-neon-blue" />
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-slate-500">
+                          <Icon className="h-4 w-4" aria-hidden />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-white">
-                            {ACTIVITY_LABELS[a.type] ?? a.type}
-                          </p>
+                          <p className="text-sm font-medium text-white">{ACTIVITY_LABELS[a.type] ?? a.type}</p>
                           <p className="text-xs text-slate-500">{a.message}</p>
-                          <p className="mt-0.5 text-xs text-slate-600">
-                            {formatRelativeTime(a.createdAt)}
-                          </p>
+                          <p className="mt-0.5 text-xs text-slate-600">{formatRelativeTime(a.createdAt)}</p>
                         </div>
                       </div>
                     );
@@ -390,128 +531,131 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="py-12 text-center">
-                  <Zap className="mx-auto h-12 w-12 text-slate-600" />
-                  <p className="mt-3 text-sm text-slate-500">Пока нет активности</p>
+                  <Zap className="mx-auto h-11 w-11 text-slate-600" aria-hidden />
+                  <p className="mt-3 text-sm font-medium text-slate-400">{CRM_DASHBOARD_COPY.sectionActivityEmpty}</p>
+                  <p className="mx-auto mt-1 max-w-xs text-xs leading-relaxed text-slate-600">
+                    {CRM_DASHBOARD_COPY.sectionActivityEmptyHint}
+                  </p>
                 </div>
               )}
             </div>
           </Card>
 
-          {/* Финансовая сводка */}
-          <Card className="rounded-2xl border-white/10">
-            <div className="border-b border-white/10 px-5 py-4 sm:px-6">
-              <h2 className="font-display text-base font-semibold text-white sm:text-lg">
-                Финансы
-              </h2>
-            </div>
+          <Card className="overflow-hidden rounded-2xl border-white/[0.08] p-0">
+            <PanelHeader
+              kicker={CRM_DASHBOARD_COPY.sectionFinanceKicker}
+              title={CRM_DASHBOARD_COPY.sectionFinanceTitle}
+              hint={CRM_DASHBOARD_COPY.sectionFinanceHint}
+            />
             <div className="space-y-4 p-5 sm:p-6">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-500">Оплачено за месяц</span>
-                <span className="font-mono font-semibold text-neon-green">
-                  {s.paidAmount?.toLocaleString("ru")} ₽
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-slate-500">{CRM_DASHBOARD_COPY.sectionFinancePaid}</span>
+                <span className="font-mono text-sm font-semibold text-slate-200">
+                  {s.paidAmount?.toLocaleString("ru")}
+                  {CRM_DASHBOARD_COPY.currencySuffix}
                 </span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-500">Задолженность</span>
-                <span className="font-mono font-semibold text-amber-400">
-                  {s.debtAmount?.toLocaleString("ru")} ₽
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-slate-500">{CRM_DASHBOARD_COPY.sectionFinanceDebt}</span>
+                <span className="font-mono text-sm font-semibold text-amber-200/90">
+                  {s.debtAmount?.toLocaleString("ru")}
+                  {CRM_DASHBOARD_COPY.currencySuffix}
                 </span>
               </div>
               <div>
                 <div className="mb-1 flex justify-between text-xs text-slate-500">
-                  <span>Доля оплат</span>
+                  <span>{CRM_DASHBOARD_COPY.sectionFinanceShare}</span>
                   <span>{paymentPct}%</span>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                <div className="h-2 overflow-hidden rounded-full bg-white/[0.08]">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-neon-green to-emerald-400 transition-all duration-500"
+                    className="h-full rounded-full bg-gradient-to-r from-emerald-500/80 to-emerald-400/60 transition-all duration-500"
                     style={{ width: `${paymentPct}%` }}
                   />
                 </div>
               </div>
-              <Link
-                href="/finance"
-                className="mt-2 block text-center text-sm font-medium text-neon-blue hover:text-neon-cyan"
-              >
-                Перейти в финансы →
-              </Link>
+              {canView("finance") ? (
+                <Link
+                  href="/finance"
+                  className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-slate-400 transition-colors hover:text-neon-blue"
+                >
+                  {CRM_DASHBOARD_COPY.sectionFinanceCta}
+                  <ChevronRight className="h-4 w-4 opacity-50" aria-hidden />
+                </Link>
+              ) : null}
             </div>
           </Card>
 
-          {/* Рекомендации тренеров */}
-          <Card className="rounded-2xl border-white/10">
-            <div className="border-b border-white/10 px-5 py-4 sm:px-6">
-              <h2 className="font-display text-base font-semibold text-white sm:text-lg">
-                Рекомендации тренеров
-              </h2>
-            </div>
+          <Card className="overflow-hidden rounded-2xl border-white/[0.08] p-0">
+            <PanelHeader
+              kicker={CRM_DASHBOARD_COPY.sectionRecsKicker}
+              title={CRM_DASHBOARD_COPY.sectionRecsTitle}
+              hint={CRM_DASHBOARD_COPY.sectionRecsHint}
+            />
             <div className="p-5 sm:p-6">
-              <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-4">
+              <div className="flex flex-col gap-4 rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 transition-colors hover:border-white/[0.1] sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-neon-pink/15">
-                    <Star className="h-6 w-6 text-neon-pink" />
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] text-slate-500">
+                    <Star className="h-5 w-5" aria-hidden />
                   </div>
                   <div>
-                    <p className="font-display text-2xl font-bold text-white">
-                      {s.recommendationsCount}
-                    </p>
-                    <p className="text-sm text-slate-500">рекомендаций в этом месяце</p>
+                    <p className="font-display text-2xl font-bold text-white">{s.recommendationsCount}</p>
+                    <p className="text-sm text-slate-500">{CRM_DASHBOARD_COPY.sectionRecsSubtitle}</p>
                   </div>
                 </div>
-                <Link
-                  href="/analytics"
-                  className="text-sm font-medium text-neon-blue hover:text-neon-cyan"
-                >
-                  Смотреть
-                </Link>
+                {canView("analytics") ? (
+                  <Link
+                    href="/analytics"
+                    className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-slate-400 transition-colors hover:text-neon-blue"
+                  >
+                    {CRM_DASHBOARD_COPY.sectionRecsCta}
+                    <ChevronRight className="h-4 w-4 opacity-50" aria-hidden />
+                  </Link>
+                ) : null}
               </div>
             </div>
           </Card>
         </div>
 
-        {/* Быстрые действия */}
-        <div>
-          <h2 className="mb-4 font-display text-base font-semibold text-white sm:text-lg">
-            Быстрые действия
-          </h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            {quickActions.map(({ href, label, icon: Icon }, idx) => {
-              const colors = [
-                "border-neon-blue/30 hover:border-neon-blue/60 hover:bg-neon-blue/10 hover:shadow-[0_0_20px_rgba(0,212,255,0.15)]",
-                "border-neon-pink/30 hover:border-neon-pink/60 hover:bg-neon-pink/10 hover:shadow-[0_0_20px_rgba(255,0,170,0.15)]",
-                "border-neon-purple/30 hover:border-neon-purple/60 hover:bg-neon-purple/10 hover:shadow-[0_0_20px_rgba(191,0,255,0.15)]",
-                "border-neon-green/30 hover:border-neon-green/60 hover:bg-neon-green/10 hover:shadow-[0_0_20px_rgba(0,255,136,0.15)]",
-                "border-neon-cyan/30 hover:border-neon-cyan/60 hover:bg-neon-cyan/10 hover:shadow-[0_0_20px_rgba(0,245,255,0.15)]",
-              ];
-              const iconColors = [
-                "text-neon-blue",
-                "text-neon-pink",
-                "text-neon-purple",
-                "text-neon-green",
-                "text-neon-cyan",
-              ];
-              const c = colors[idx % colors.length];
-              const ic = iconColors[idx % iconColors.length];
-              return (
-                <Link
-                  key={label}
-                  href={href}
-                  className={`group flex items-center gap-3 rounded-xl border bg-white/5 px-4 py-3 transition-all duration-300 ${c}`}
-                >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/10 transition-colors group-hover:bg-white/20">
-                    <Icon className={`h-5 w-5 ${ic}`} />
-                  </div>
-                  <span className="font-medium text-white">{label}</span>
-                </Link>
-              );
-            })}
-          </div>
-          {quickActions.length === 0 && (
-            <p className="rounded-xl border border-white/10 bg-white/5 py-8 text-center text-sm text-slate-500">
-              Нет доступных быстрых действий
+        <Card className="overflow-hidden rounded-2xl border-white/[0.08] p-0">
+          <div className="border-b border-white/[0.08] bg-white/[0.02] px-5 py-4 sm:px-6">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              {CRM_DASHBOARD_COPY.quickActionsKicker}
             </p>
-          )}
-        </div>
+            <h2 className="font-display text-base font-semibold tracking-tight text-white sm:text-lg">
+              {CRM_DASHBOARD_COPY.quickActionsTitle}
+            </h2>
+            <p className="mt-1 text-xs leading-relaxed text-slate-600">{CRM_DASHBOARD_COPY.quickActionsHint}</p>
+          </div>
+          <div className="p-4 sm:p-5">
+            {quickActions.length > 0 ? (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                {quickActions.map(({ href, label, icon: Icon }) => (
+                  <Link
+                    key={label}
+                    href={href}
+                    className="group flex items-center justify-between gap-3 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3 transition-colors hover:border-white/[0.12] hover:bg-white/[0.04]"
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-slate-500 transition-colors group-hover:text-slate-300">
+                        <Icon className="h-4 w-4" aria-hidden />
+                      </span>
+                      <span className="truncate font-medium text-white">{label}</span>
+                    </span>
+                    <ChevronRight
+                      className="h-4 w-4 shrink-0 text-slate-500 opacity-40 transition-opacity group-hover:text-neon-blue group-hover:opacity-100"
+                      aria-hidden
+                    />
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-xl border border-white/[0.08] bg-white/[0.02] py-10 text-center text-sm text-slate-500">
+                {CRM_DASHBOARD_COPY.quickActionsEmpty}
+              </p>
+            )}
+          </div>
+        </Card>
       </div>
     </div>
   );

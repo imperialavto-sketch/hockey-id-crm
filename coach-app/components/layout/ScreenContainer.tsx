@@ -22,7 +22,7 @@ export function ScreenContainer({
     styles.container,
     {
       paddingTop: insets.top + theme.spacing.md,
-      paddingBottom: insets.bottom + theme.spacing.md,
+      paddingBottom: insets.bottom + theme.layout.screenBottom,
       paddingHorizontal: theme.spacing.md,
     },
     style,
@@ -36,7 +36,7 @@ export function ScreenContainer({
           styles.content,
           {
             paddingTop: insets.top + theme.spacing.md,
-            paddingBottom: insets.bottom + theme.spacing.xl,
+            paddingBottom: insets.bottom + theme.layout.screenBottom,
           },
           contentContainerStyle,
         ]}
