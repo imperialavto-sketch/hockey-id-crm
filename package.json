@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "bash scripts/dev.sh",
+    "clean:next": "rm -rf .next",
+    "dev:clean": "npm run clean:next && npm run dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -11,12 +13,21 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:seed": "npx tsx prisma/seed.ts",
+    "db:seed:demo": "npx tsx prisma/seed.ts",
+    "db:seed:login-recovery": "npx tsx prisma/seed-login-recovery.ts",
+    "db:reset:user": "npx tsx prisma/seed-single-user.ts",
     "db:seed:full": "node scripts/seed-full.js",
     "db:seed:settings": "node scripts/seed-settings.js",
     "scrape:players": "node scripts/scrapePlayers.js",
     "db:migrate": "prisma migrate dev",
     "ip": "bash scripts/print-ip.sh",
-    "smoke:marketplace-payment": "npx tsx scripts/marketplace-booking-payment-smoke.ts"
+    "set-local-ip": "node scripts/set-local-ip.js",
+    "dev:coach": "npm run set-local-ip && cd coach-app && npx expo start --clear",
+    "dev:parent": "npm run set-local-ip && cd parent-app && npx expo start --clear",
+    "qa:marketplace-payment": "npx tsx scripts/marketplace-booking-payment-check.ts",
+    "qa:prod": "npx tsx scripts/prod-check.ts",
+    "auth:audit-passwords": "npx tsx scripts/audit-user-passwords.ts",
+    "test:live-training-parse": "npx tsx src/lib/live-training/parse-live-training-text.selftest.ts"
   },
   "dependencies": {
     "@paralleldrive/cuid2": "^3.3.0",
@@ -33,19 +44,19 @@
     "react-dom": "^18.3.1",
     "recharts": "^3.8.0",
     "stripe": "^20.4.1",
-    "tailwind-merge": "^2.6.1"
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwind-merge": "^2.6.1",
+    "tailwindcss": "^3.4.15"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.9.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
-    "autoprefixer": "^10.4.20",
     "eslint": "^8.57.1",
     "eslint-config-next": "14.2.18",
-    "postcss": "^8.4.49",
     "prisma": "^5.22.0",
-    "tailwindcss": "^3.4.15",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }
