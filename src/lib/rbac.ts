@@ -8,7 +8,8 @@ export type UserRole =
   | "SCHOOL_MANAGER"
   | "MAIN_COACH"
   | "COACH"
-  | "PARENT";
+  | "PARENT"
+  | "EXTERNAL_COACH";
 
 export type Module =
   | "dashboard"
@@ -84,6 +85,19 @@ const PERMISSIONS: Record<UserRole, Record<Module, ModulePermissions>> = {
     settings: { view: false, create: false, edit: false, delete: false },
   },
   PARENT: {
+    dashboard: { view: false, create: false, edit: false, delete: false },
+    school: { view: false, create: false, edit: false, delete: false },
+    teams: { view: false, create: false, edit: false, delete: false },
+    players: { view: false, create: false, edit: false, delete: false },
+    coaches: { view: false, create: false, edit: false, delete: false },
+    schedule: { view: false, create: false, edit: false, delete: false },
+    finance: { view: false, create: false, edit: false, delete: false },
+    analytics: { view: false, create: false, edit: false, delete: false },
+    communications: { view: false, create: false, edit: false, delete: false },
+    marketplace: { view: false, create: false, edit: false, delete: false },
+    settings: { view: false, create: false, edit: false, delete: false },
+  },
+  EXTERNAL_COACH: {
     dashboard: { view: false, create: false, edit: false, delete: false },
     school: { view: false, create: false, edit: false, delete: false },
     teams: { view: false, create: false, edit: false, delete: false },
@@ -195,6 +209,7 @@ export const NAV_BY_ROLE: Record<UserRole, { href: string; module?: Module }[]> 
     { href: "/communications", module: "communications" },
   ],
   PARENT: [{ href: "/parent" }],
+  EXTERNAL_COACH: [{ href: "/external-coach" }],
 };
 
 // --- Helpers ---

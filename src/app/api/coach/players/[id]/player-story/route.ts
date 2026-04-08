@@ -1,0 +1,46 @@
+/**
+ * GET /api/coach/players/[id]/player-story
+ * PHASE 14: компактная operational «линия развития» из live-training агрегатов.
+ */
+
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { requireCrmRole } from "@/lib/api-rbac";
+import { getAccessiblePlayerIds } from "@/lib/data-scope";
+import { getCoachPlayerStory } from "@/lib/live-training/get-coach-player-story";
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { user, res } = await requireCrmRole(_req);
+  if (res) return res;
+
+  const { id } = await params;
+  if (!id?.trim()) {
+    return NextResponse.json({ error: "ID игрока обязателен" }, { status: 400 });
+  }
+
+  const playerId = id.trim();
+
+  const accessibleIds = await getAccessiblePlayerIds(user!, prisma);
+  if (accessibleIds !== null && !accessibleIds.includes(playerId)) {
+    return NextResponse.json({ error: "Нет доступа к игроку" }, { status: 403 });
+  }
+
+  const exists = await prisma.player.findUnique({
+    where: { id: playerId },
+    select: { id: true },
+  });
+  if (!exists) {
+    return NextResponse.json({ error: "Игрок не найден" }, { status: 404 });
+  }
+
+  try {
+    const data = await getCoachPlayerStory(playerId);
+    return NextResponse.json(data);
+  } catch (e) {
+    console.error("GET .../player-story failed:", e);
+    return NextResponse.json({ error: "Не удалось загрузить историю" }, { status: 500 });
+  }
+}

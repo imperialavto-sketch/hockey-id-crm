@@ -3,7 +3,15 @@ export type AppNotificationType =
   | "schedule_update"
   | "ai_analysis_ready"
   | "achievement_unlocked"
-  | "general";
+  | "general"
+  | "parent_chat_message"
+  | "parent_peer_message"
+  | "team_parent_channel_message"
+  | "coach_team_parent_channel_message"
+  | "team_announcement"
+  | "new_report"
+  | "progress_update"
+  | "training_report_published";
 
 export interface AppNotificationItem {
   id: string;

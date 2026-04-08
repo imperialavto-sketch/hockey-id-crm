@@ -7,49 +7,46 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserRole {
-  SCHOOL_ADMIN
-  MAIN_COACH
-  COACH
-  SCHOOL_MANAGER
-  PARENT
-}
-
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String
-  role      UserRole
-  schoolId  String?
-  phone     String?
-  teamId    String?
-  status    String   @default("Активен")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  school                 School? @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  team                   Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  linkedMarketplaceCoach Coach?  @relation("UserMarketplaceCoach")
+  id                     String                 @id @default(cuid())
+  email                  String                 @unique
+  password               String
+  name                   String
+  role                   UserRole
+  schoolId               String?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  phone                  String?
+  status                 String                 @default("Активен")
+  teamId                 String?
+  arenaExternalCoachKey  String?                @unique
+  BehaviorLog            BehaviorLog[]
+  linkedMarketplaceCoach Coach?                 @relation("UserMarketplaceCoach")
+  GameEvent              GameEvent[]
+  OFPResult              OFPResult[]
+  PlayerTrainingReport   PlayerTrainingReport[]
+  SkillProgress          SkillProgress[]
+  school                 School?                @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  team                   Team?                  @relation(fields: [teamId], references: [id])
 }
 
 model UserSettings {
-  id                  String   @id @default(cuid())
-  userId              String   @unique
-  name                String?
-  email               String?
-  avatarUrl           String?
-  emailNotifications  Boolean  @default(true)
-  pushNotifications   Boolean  @default(true)
-  smsNotifications    Boolean  @default(false)
-  theme               String   @default("dark")
-  colorScheme         String   @default("neon")
-  googleCalendarSync  Boolean  @default(false)
-  paymentSystem       String?
-  analyticsService    String?
-  twoFactorEnabled    Boolean  @default(false)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  name               String?
+  email              String?
+  avatarUrl          String?
+  emailNotifications Boolean  @default(true)
+  pushNotifications  Boolean  @default(true)
+  smsNotifications   Boolean  @default(false)
+  theme              String   @default("dark")
+  colorScheme        String   @default("neon")
+  googleCalendarSync Boolean  @default(false)
+  paymentSystem      String?
+  analyticsService   String?
+  twoFactorEnabled   Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model LoginHistory {
@@ -63,40 +60,37 @@ model LoginHistory {
 model School {
   id          String   @id @default(cuid())
   name        String
-  logoUrl     String?
-  city        String?
-  country     String?
   address     String?
   phone       String?
   email       String?
-  description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  users  User[]  @relation()
-  teams  Team[]
+  city        String?
+  country     String?
+  description String?
+  logoUrl     String?
+  teams       Team[]
+  users       User[]
 }
 
 model Role {
-  id         String   @id @default(cuid())
-  name       String
-  systemRole String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
+  id          String       @id @default(cuid())
+  name        String
+  systemRole  String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
   permissions Permission[]
 }
 
 model Permission {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   roleId    String
   module    String
-  canView   Boolean  @default(true)
-  canCreate Boolean  @default(false)
-  canEdit   Boolean  @default(false)
-  canDelete Boolean  @default(false)
-
-  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  canView   Boolean @default(true)
+  canCreate Boolean @default(false)
+  canEdit   Boolean @default(false)
+  canDelete Boolean @default(false)
+  role      Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
 }
 
 model SystemSetting {
@@ -112,154 +106,159 @@ model SystemSetting {
 }
 
 model NotificationSetting {
-  id               String   @id @default(cuid())
-  userId           String?
-  schoolId         String?
-  emailEnabled     Boolean  @default(true)
-  pushEnabled      Boolean  @default(true)
-  systemEnabled    Boolean  @default(true)
-  newMessages      Boolean  @default(true)
-  newPayments      Boolean  @default(true)
-  overduePayments  Boolean  @default(true)
-  newTrainings     Boolean  @default(true)
-  scheduleChanges  Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id              String   @id @default(cuid())
+  userId          String?
+  schoolId        String?
+  emailEnabled    Boolean  @default(true)
+  pushEnabled     Boolean  @default(true)
+  systemEnabled   Boolean  @default(true)
+  newMessages     Boolean  @default(true)
+  newPayments     Boolean  @default(true)
+  overduePayments Boolean  @default(true)
+  newTrainings    Boolean  @default(true)
+  scheduleChanges Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model Team {
-  id        String   @id @default(cuid())
-  name      String
-  ageGroup  String
-  schoolId  String
-  coachId   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  school       School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  coach        Coach?         @relation(fields: [coachId], references: [id], onDelete: SetNull)
-  trainings    Training[]
-  players      Player[]
-  users        User[]
-  feedPosts    TeamFeedPost[]
-  groups       TeamGroup[]
-  trainingSessions TrainingSession[]
+  id                             String                           @id @default(cuid())
+  name                           String
+  ageGroup                       String
+  schoolId                       String
+  createdAt                      DateTime                         @default(now())
+  updatedAt                      DateTime                         @updatedAt
+  coachId                        String?
+  LiveTrainingPlayerSignal       LiveTrainingPlayerSignal[]
+  LiveTrainingSession            LiveTrainingSession[]
+  LiveTrainingSessionReportDraft LiveTrainingSessionReportDraft[]
+  ParentTeamAnnouncementRead     ParentTeamAnnouncementRead[]
+  players                        Player[]
+  coach                          Coach?                           @relation(fields: [coachId], references: [id])
+  school                         School                           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  feedPosts                      TeamFeedPost[]
+  groups                         TeamGroup[]
+  trainings                      Training[]
+  trainingSessions               TrainingSession[]
+  users                          User[]
 }
 
 model TeamGroup {
-  id        String   @id @default(cuid())
-  teamId    String
-  name      String   // A, B, C или "Сильные"
-  level     Int      @default(1) // 1, 2, 3
-  sortOrder Int      @default(0) // для сортировки
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  team               Team                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  assignments        PlayerGroupAssignment[]
-  trainingSessions   TrainingSession[]
+  id               String                  @id @default(cuid())
+  teamId           String
+  name             String
+  level            Int                     @default(1)
+  sortOrder        Int                     @default(0)
+  isActive         Boolean                 @default(true)
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  color            String?
+  Player           Player[]
+  assignments      PlayerGroupAssignment[]
+  team             Team                    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  Training         Training[]
+  trainingSessions TrainingSession[]
 }
 
 model PlayerGroupAssignment {
-  id                 String   @id @default(cuid())
-  playerId           String
-  groupId            String
-  weekStartDate      DateTime // Monday 00:00 UTC
-  assignedByCoachId  String?
-  createdAt          DateTime @default(now())
-
-  player  Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  group   TeamGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  coach   Coach?    @relation(fields: [assignedByCoachId], references: [id], onDelete: SetNull)
+  id                String    @id @default(cuid())
+  playerId          String
+  groupId           String
+  weekStartDate     DateTime
+  assignedByCoachId String?
+  createdAt         DateTime  @default(now())
+  coach             Coach?    @relation(fields: [assignedByCoachId], references: [id])
+  group             TeamGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  player            Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
   @@unique([playerId, weekStartDate])
 }
 
 model TrainingSession {
-  id              String   @id @default(cuid())
-  teamId          String
-  groupId         String
-  coachId         String
-  type            String   @default("ice") // ice | ofp
-  subType         String?  // optional: skating, strength, cardio, etc.
-  startAt         DateTime
-  endAt           DateTime
-  locationName    String?
-  locationAddress String?
-  notes           String?
-  status          String   @default("scheduled") // scheduled | cancelled | moved
-  sessionStatus   String   @default("planned")   // planned | active | finished
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  team                 Team                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  group                TeamGroup             @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  coach                Coach                 @relation(fields: [coachId], references: [id], onDelete: Restrict)
-  trainingAttendances  TrainingAttendance[]
-  playerSessionEvaluations PlayerSessionEvaluation[]
-  playerSessionReports     PlayerSessionReport[]
-  sessionReport            TrainingSessionReport?
+  id                             String                           @id @default(cuid())
+  teamId                         String
+  groupId                        String?
+  coachId                        String
+  type                           String                           @default("ice")
+  startAt                        DateTime
+  endAt                          DateTime
+  locationName                   String?
+  locationAddress                String?
+  notes                          String?
+  status                         String                           @default("scheduled")
+  sessionStatus                  String                           @default("planned")
+  createdAt                      DateTime                         @default(now())
+  updatedAt                      DateTime                         @updatedAt
+  subType                        String?
+  arenaNextTrainingFocus         String?
+  BehaviorLog                    BehaviorLog[]
+  GameEvent                      GameEvent[]
+  LiveTrainingSession            LiveTrainingSession[]
+  OFPResult                      OFPResult[]
+  playerSessionEvaluations       PlayerSessionEvaluation[]
+  playerSessionReports           PlayerSessionReport[]
+  PlayerSessionStructuredMetrics PlayerSessionStructuredMetrics[]
+  PlayerTrainingReport           PlayerTrainingReport[]
+  trainingAttendances            TrainingAttendance[]
+  coach                          Coach                            @relation(fields: [coachId], references: [id])
+  group                          TeamGroup?                       @relation(fields: [groupId], references: [id])
+  team                           Team                             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  TrainingSessionCoachJournal    TrainingSessionCoachJournal[]
+  sessionReport                  TrainingSessionReport?
 }
 
 model TrainingAttendance {
-  id         String   @id @default(cuid())
+  id         String          @id @default(cuid())
   trainingId String
   playerId   String
-  status     String // present | absent
-  createdAt  DateTime @default(now())
-
-  training TrainingSession @relation(fields: [trainingId], references: [id], onDelete: Cascade)
-  player   Player          @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  status     String
+  createdAt  DateTime        @default(now())
+  player     Player          @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  training   TrainingSession @relation(fields: [trainingId], references: [id], onDelete: Cascade)
 
   @@unique([trainingId, playerId])
 }
 
 model PlayerSessionEvaluation {
-  id          String   @id @default(cuid())
-  trainingId  String
-  playerId    String
-  effort      Int?
-  focus       Int?
-  discipline  Int?
-  note        String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  training TrainingSession @relation(fields: [trainingId], references: [id], onDelete: Cascade)
-  player   Player          @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  id         String          @id @default(cuid())
+  trainingId String
+  playerId   String
+  effort     Int?
+  focus      Int?
+  discipline Int?
+  note       String?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  player     Player          @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  training   TrainingSession @relation(fields: [trainingId], references: [id], onDelete: Cascade)
 
   @@unique([trainingId, playerId])
 }
 
-// Общий отчёт тренера по тренировке (один на TrainingSession).
 model TrainingSessionReport {
-  id             String   @id @default(cuid())
-  trainingId     String   @unique
-  summary        String?
-  focusAreas     String?
-  coachNote      String?
-  parentMessage  String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  training TrainingSession @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  id            String          @id @default(cuid())
+  trainingId    String          @unique
+  summary       String?
+  focusAreas    String?
+  coachNote     String?
+  parentMessage String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  training      TrainingSession @relation(fields: [trainingId], references: [id], onDelete: Cascade)
 }
 
-// Текстовый отчёт тренера по игроку на конкретной тренировке (TrainingSession).
 model PlayerSessionReport {
-  id            String   @id @default(cuid())
+  id            String          @id @default(cuid())
   trainingId    String
   playerId      String
   summary       String?
   focusAreas    String?
   coachNote     String?
   parentMessage String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  training TrainingSession @relation(fields: [trainingId], references: [id], onDelete: Cascade)
-  player   Player          @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  player        Player          @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  training      TrainingSession @relation(fields: [trainingId], references: [id], onDelete: Cascade)
 
   @@unique([trainingId, playerId])
 }
@@ -278,107 +277,130 @@ model TeamFeedPost {
   publishedAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-
-  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  isPublished Boolean   @default(true)
+  team        Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
 }
 
 model Coach {
-  id                         String   @id @default(cuid())
-  firstName                  String
-  lastName                   String
-  phone                      String?
-  email                      String?
-  specialization             String?
-  photoUrl                   String?
-  createdAt                  DateTime @default(now())
-  updatedAt                  DateTime @updatedAt
-  isMarketplaceIndependent   Boolean  @default(false)
-  linkedUserId               String?  @unique
-  linkedUser                 User?    @relation("UserMarketplaceCoach", fields: [linkedUserId], references: [id], onDelete: SetNull)
-  displayName                String?
-  city                       String?
-  bio                        String?
-  specialties                Json     @default("[]")
-  formats                    Json     @default("[]")
-  priceFrom                  Int?
-
-  teams                Team[]
-  coachRatings         CoachRating[]
-  trainingJournal      TrainingJournal[]
-  parentInvites        ParentInvite[]
-  chatConversations    ChatConversation[]
-  groupAssignments     PlayerGroupAssignment[]
-  trainingSessions     TrainingSession[]
-  coachAvailabilities  CoachAvailability[]
-  marketplaceBookingRequests CoachBookingRequest[] @relation("IndependentCoachBookings")
-  marketplaceSlotBookings    MarketplaceSlotBooking[]
+  id                          String                        @id @default(cuid())
+  firstName                   String
+  lastName                    String
+  phone                       String?
+  email                       String?
+  specialization              String?
+  createdAt                   DateTime                      @default(now())
+  updatedAt                   DateTime                      @updatedAt
+  photoUrl                    String?
+  displayName                 String?
+  city                        String?
+  bio                         String?
+  specialties                 Json                          @default("[]")
+  formats                     Json                          @default("[]")
+  priceFrom                   Int?
+  isMarketplaceIndependent    Boolean                       @default(false)
+  linkedUserId                String?                       @unique
+  BehaviorLog                 BehaviorLog[]
+  chatConversations           ChatConversation[]
+  linkedUser                  User?                         @relation("UserMarketplaceCoach", fields: [linkedUserId], references: [id])
+  coachAvailabilities         CoachAvailability[]
+  marketplaceBookingRequests  CoachBookingRequest[]         @relation("IndependentCoachBookings")
+  coachPushDevices            CoachPushDevice[]
+  coachRatings                CoachRating[]
+  GameEvent                   GameEvent[]
+  marketplaceSlotBookings     MarketplaceSlotBooking[]
+  OFPResult                   OFPResult[]
+  parentInvites               ParentInvite[]
+  groupAssignments            PlayerGroupAssignment[]
+  PlayerTrainingReport        PlayerTrainingReport[]
+  SkillProgress               SkillProgress[]
+  teams                       Team[]
+  trainingJournal             TrainingJournal[]
+  trainingSessions            TrainingSession[]
+  TrainingSessionCoachJournal TrainingSessionCoachJournal[]
 }
 
 model CoachAvailability {
-  id        String   @id @default(cuid())
-  coachId   String
-  date      DateTime
-  startTime String
-  endTime   String
-  price     Int
-  type      String
-  isBooked  Boolean  @default(false)
-  createdAt DateTime @default(now())
-
-  coach                Coach                   @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  id                  String                   @id @default(cuid())
+  coachId             String
+  date                DateTime
+  startTime           String
+  endTime             String
+  price               Int
+  type                String
+  isBooked            Boolean                  @default(false)
+  createdAt           DateTime                 @default(now())
+  coach               Coach                    @relation(fields: [coachId], references: [id], onDelete: Cascade)
   marketplaceBookings MarketplaceSlotBooking[]
 
   @@index([coachId, date])
 }
 
 model ChatConversation {
-  id        String   @id @default(cuid())
+  id        String        @id @default(cuid())
   playerId  String
   parentId  String
   coachId   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  player   Player       @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  parent   Parent       @relation(fields: [parentId], references: [id], onDelete: Cascade)
-  coach    Coach        @relation(fields: [coachId], references: [id], onDelete: Cascade)
-  messages ChatMessage[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  coach     Coach         @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  parent    Parent        @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  player    Player        @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  messages  ChatMessage[]
 
   @@unique([playerId, parentId, coachId])
 }
 
 model ChatMessage {
-  id             String    @id @default(cuid())
+  id             String           @id @default(cuid())
   conversationId String
-  senderType     String    // "parent" | "coach"
+  senderType     String
   senderId       String
   text           String
   readAt         DateTime?
-  createdAt      DateTime  @default(now())
-
-  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime         @default(now())
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  reports        ChatMessageReport[]
 }
 
-enum AttendanceStatus {
-  PRESENT
-  ABSENT
-  LATE
-  EXCUSED
+model ChatMessageReport {
+  id                 String   @id @default(cuid())
+  messageId          String
+  reporterParentId   String
+  reason             String?
+  status             String   @default("open")
+  createdAt          DateTime @default(now())
+
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([reporterParentId])
+}
+
+model ParentPeerBlock {
+  id                String   @id @default(cuid())
+  blockerParentId   String
+  blockedParentId   String
+  teamContextId     String
+  createdAt         DateTime @default(now())
+
+  @@unique([blockerParentId, blockedParentId, teamContextId])
+  @@index([teamContextId])
 }
 
 model Training {
-  id           String   @id @default(cuid())
-  title        String
-  startTime    DateTime
-  endTime      DateTime
-  location     String?
-  teamId       String
-  notes        String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  team        Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  id          String            @id @default(cuid())
+  title       String
+  startTime   DateTime
+  endTime     DateTime
+  location    String?
+  teamId      String
+  notes       String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  groupId     String?
   attendances Attendance[]
+  TeamGroup   TeamGroup?        @relation(fields: [groupId], references: [id])
+  team        Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
   journal     TrainingJournal[]
 }
 
@@ -388,44 +410,95 @@ model Attendance {
   playerId   String
   status     AttendanceStatus
   comment    String?
-
-  training Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
-  player   Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player     Player           @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  training   Training         @relation(fields: [trainingId], references: [id], onDelete: Cascade)
 
   @@unique([trainingId, playerId])
 }
 
 model Parent {
-  id               String             @id @default(cuid())
-  firstName        String
-  lastName         String
-  phone            String?            @unique
-  email            String?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  pushToken        String?
-  players          Player[]
-  parentPlayers    ParentPlayer[]
-  notifications    Notification[]
-  messages         Message[]
-  chatConversations ChatConversation[]
-  pushDevices      PushDevice[]
+  id                         String                       @id @default(cuid())
+  firstName                  String
+  lastName                   String
+  phone                      String?                      @unique
+  email                      String?
+  createdAt                  DateTime                     @default(now())
+  updatedAt                  DateTime                     @updatedAt
+  pushToken                  String?
+  ArenaChatConversation      ArenaChatConversation?
+  chatConversations          ChatConversation[]
+  messages                   Message[]
+  notifications              Notification[]
+  parentPlayers              ParentPlayer[]
+  ParentTeamAnnouncementRead ParentTeamAnnouncementRead[]
+  players                    Player[]
+  pushDevices                PushDevice[]
 }
 
 model PushDevice {
-  id             String    @id @default(cuid())
-  parentId       String
-  expoPushToken  String
-  platform       String
-  appVersion     String?
-  isActive       Boolean   @default(true)
-  lastUsedAt     DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  parent Parent @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  id            String    @id @default(cuid())
+  parentId      String
+  expoPushToken String
+  platform      String
+  appVersion    String?
+  isActive      Boolean   @default(true)
+  lastUsedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  parent        Parent    @relation(fields: [parentId], references: [id], onDelete: Cascade)
 
   @@unique([parentId, expoPushToken])
+}
+
+model CoachPushDevice {
+  id            String    @id @default(cuid())
+  coachId       String
+  expoPushToken String
+  platform      String
+  appVersion    String?
+  isActive      Boolean   @default(true)
+  lastUsedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  coach         Coach     @relation(fields: [coachId], references: [id], onDelete: Cascade)
+
+  @@unique([coachId, expoPushToken])
+}
+
+/// Arena / external-coach flow (string playerId/parentId; no FK by design in app layer).
+model ExternalTrainingRequest {
+  id               String    @id @default(cuid())
+  playerId         String
+  parentId         String
+  coachId          String
+  status           String
+  skillKey         String?
+  severity         Float?
+  reasonSummary    String?
+  isFallback       Boolean   @default(false)
+  proposedDate     DateTime?
+  proposedLocation String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([parentId, createdAt])
+  @@index([playerId, createdAt])
+}
+
+model ExternalTrainingReport {
+  id          String   @id @default(cuid())
+  requestId   String
+  playerId    String
+  coachId     String
+  summary     String
+  focusAreas  Json?
+  resultNotes String?
+  nextSteps   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([playerId, createdAt])
+  @@index([requestId])
 }
 
 model ParentPlayer {
@@ -434,9 +507,8 @@ model ParentPlayer {
   playerId  String
   relation  String?
   createdAt DateTime @default(now())
-
-  parent Parent @relation(fields: [parentId], references: [id], onDelete: Cascade)
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  parent    Parent   @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
   @@unique([parentId, playerId])
 }
@@ -448,79 +520,89 @@ model ParentInvite {
   teamId           String?
   invitedByUserId  String
   invitedByCoachId String?
-  status           String    @default("pending") // pending | accepted
+  status           String    @default("pending")
   createdAt        DateTime  @default(now())
   acceptedAt       DateTime?
-
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  coach  Coach? @relation(fields: [invitedByCoachId], references: [id], onDelete: SetNull)
+  coach            Coach?    @relation(fields: [invitedByCoachId], references: [id])
+  player           Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }
 
 model Player {
-  id                  String    @id @default(cuid())
-  firstName           String
-  lastName            String
-  birthYear           Int
-  birthDate           DateTime?
-  position            String
-  grip                String
-  height              Int?
-  weight              Int?
-  photoUrl            String?
-  city                String?
-  country             String?
-  internationalRating Int?
-  teamId              String?
-  parentId            String?
-  status              String    @default("Активен")
-  comment             String?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-
-  team          Team?            @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  parent        Parent?          @relation(fields: [parentId], references: [id], onDelete: SetNull)
-  parentPlayers ParentPlayer[]
-  parentInvites ParentInvite[]
-  profile      PlayerProfile?   @relation()
-  stats        PlayerStat[]
-  notes        PlayerNote[]
-  attendances  Attendance[]
-  passport     Passport?
-  teamHistory  TeamHistory[]
-  medical      Medical?
-  skills       Skills?
-  achievements Achievement[]
-  videos       Video[]
-  videoAnalyses PlayerVideoAnalysis[]
-  payments      PlayerPayment[]
-  chatConversations ChatConversation[]
-  coachRatings       CoachRating[]
-  progressSnapshots  PlayerProgressSnapshot[]
-  notifications Notification[]
-  messages      Message[]
-  aiAnalyses    AiAnalysis[]
-  groupAssignments    PlayerGroupAssignment[]
-  trainingAttendances TrainingAttendance[]
-  playerSessionEvaluations PlayerSessionEvaluation[]
-  playerSessionReports     PlayerSessionReport[]
+  id                             String                           @id @default(cuid())
+  firstName                      String
+  lastName                       String
+  birthYear                      Int
+  position                       String
+  grip                           String
+  status                         String                           @default("Активен")
+  comment                        String?
+  createdAt                      DateTime                         @default(now())
+  updatedAt                      DateTime                         @updatedAt
+  teamId                         String?
+  birthDate                      DateTime?
+  height                         Int?
+  weight                         Int?
+  city                           String?
+  country                        String?
+  internationalRating            Int?
+  parentId                       String?
+  photoUrl                       String?
+  groupId                        String?
+  achievements                   Achievement[]
+  attendances                    Attendance[]
+  BehaviorLog                    BehaviorLog[]
+  chatConversations              ChatConversation[]
+  coachRatings                   CoachRating[]
+  GameEvent                      GameEvent[]
+  LiveTrainingEvent              LiveTrainingEvent[]
+  LiveTrainingObservationDraft   LiveTrainingObservationDraft[]
+  LiveTrainingPlayerSignal       LiveTrainingPlayerSignal[]
+  medical                        Medical?
+  messages                       Message[]
+  notifications                  Notification[]
+  OFPResult                      OFPResult[]
+  parentInvites                  ParentInvite[]
+  parentPlayers                  ParentPlayer[]
+  passport                       Passport?
+  TeamGroup                      TeamGroup?                       @relation(fields: [groupId], references: [id])
+  parent                         Parent?                          @relation(fields: [parentId], references: [id])
+  team                           Team?                            @relation(fields: [teamId], references: [id])
+  groupAssignments               PlayerGroupAssignment[]
+  PlayerIndex                    PlayerIndex[]
+  notes                          PlayerNote[]
+  payments                       PlayerPayment[]
+  profile                        PlayerProfile?
+  progressSnapshots              PlayerProgressSnapshot[]
+  playerSessionEvaluations       PlayerSessionEvaluation[]
+  playerSessionReports           PlayerSessionReport[]
+  PlayerSessionStructuredMetrics PlayerSessionStructuredMetrics[]
+  stats                          PlayerStat[]
+  PlayerStatsSnapshot            PlayerStatsSnapshot[]
+  PlayerTrainingReport           PlayerTrainingReport[]
+  videoAnalyses                  PlayerVideoAnalysis[]
+  SkillProgress                  SkillProgress[]
+  skills                         Skills?
+  teamHistory                    TeamHistory[]
+  trainingAttendances            TrainingAttendance[]
+  videos                         Video[]
+  aiAnalyses                     AiAnalysis[]
 }
 
 model PlayerProgressSnapshot {
-  id               String   @id @default(cuid())
-  playerId         String
-  month            Int
-  year             Int
-  games            Int     @default(0)
-  goals            Int     @default(0)
-  assists          Int     @default(0)
-  points           Int     @default(0)
+  id                String   @id @default(cuid())
+  playerId          String
+  month             Int
+  year              Int
+  games             Int      @default(0)
+  goals             Int      @default(0)
+  assists           Int      @default(0)
+  points            Int      @default(0)
   attendancePercent Int?
-  coachComment     String?
-  focusArea        String?
-  trend            String? // up | stable | down
-  createdAt        DateTime @default(now())
-
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  coachComment      String?
+  focusArea         String?
+  trend             String?
+  createdAt         DateTime @default(now())
+  player            Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
   @@unique([playerId, month, year])
 }
@@ -535,46 +617,42 @@ model Passport {
   internationalID String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player          Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }
 
 model TeamHistory {
-  id       String   @id @default(cuid())
-  playerId String
-  teamName String
-  season   String
-  league   String
-  coach    String?
-  stats    Json?
+  id        String   @id @default(cuid())
+  playerId  String
+  teamName  String
+  season    String
+  league    String
+  coach     String?
+  stats     Json?
   createdAt DateTime @default(now())
-
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }
 
 model Medical {
-  id          String   @id @default(cuid())
-  playerId    String   @unique
-  lastCheckup DateTime?
-  injuries    Json?
+  id           String    @id @default(cuid())
+  playerId     String    @unique
+  lastCheckup  DateTime?
+  injuries     Json?
   restrictions String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  player       Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }
 
 model Skills {
-  id            String   @id @default(cuid())
-  playerId      String   @unique
-  speed         Int?
-  shotAccuracy  Int?
-  dribbling     Int?
-  stamina       Int?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  playerId     String   @unique
+  speed        Int?
+  shotAccuracy Int?
+  dribbling    Int?
+  stamina      Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  player       Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }
 
 model Achievement {
@@ -582,34 +660,31 @@ model Achievement {
   playerId    String
   title       String
   year        Int
-  description String?
   createdAt   DateTime @default(now())
-
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  description String?
+  player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }
 
 model Video {
-  id       String   @id @default(cuid())
-  playerId String
-  title    String
-  url      String
+  id        String   @id @default(cuid())
+  playerId  String
+  title     String
+  url       String
   createdAt DateTime @default(now())
-
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }
 
 model PlayerVideoAnalysis {
-  id             String   @id @default(cuid())
-  playerId       String
-  videoUrl       String
-  analysisText   String?
-  strengths      Json     @default("[]") // string[]
-  growthAreas    Json     @default("[]") // string[]
-  recommendations Json   @default("[]") // string[]
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  id              String   @id @default(cuid())
+  playerId        String
+  videoUrl        String
+  analysisText    String?
+  strengths       Json     @default("[]")
+  growthAreas     Json     @default("[]")
+  recommendations Json     @default("[]")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  player          Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }
 
 model PlayerProfile {
@@ -621,34 +696,31 @@ model PlayerProfile {
   shoots       String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player       Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }
 
 model PlayerStat {
-  id        String @id @default(cuid())
-  playerId  String
-  season    String
-  games     Int    @default(0)
-  goals     Int    @default(0)
-  assists   Int    @default(0)
-  points    Int    @default(0)
-  pim       Int    @default(0)
-
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  playerId String
+  season   String
+  games    Int    @default(0)
+  goals    Int    @default(0)
+  assists  Int    @default(0)
+  points   Int    @default(0)
+  pim      Int    @default(0)
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }
 
 model AiAnalysis {
   id              String   @id @default(cuid())
   playerId        String
   summary         String
-  strengths       Json     @default("[]") // string[]
-  weaknesses      Json     @default("[]") // string[]
-  recommendations Json     @default("[]") // string[]
+  strengths       Json     @default("[]")
+  weaknesses      Json     @default("[]")
+  recommendations Json     @default("[]")
   score           Float?
   createdAt       DateTime @default(now())
-
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player          Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
   @@map("ai_analyses")
 }
@@ -658,33 +730,24 @@ model PlayerNote {
   playerId  String
   note      String
   createdAt DateTime @default(now())
-
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }
 
 model PlayerPayment {
-  id                   String    @id @default(cuid())
-  playerId             String
-  month                Int
-  year                 Int
-  amount               Int       @default(0)
-  status               String    @default("Не оплачено")
-  paidAt               DateTime?
-  comment              String?
+  id                    String    @id @default(cuid())
+  playerId              String
+  month                 Int
+  year                  Int
+  amount                Int       @default(0)
+  status                String    @default("Не оплачено")
+  paidAt                DateTime?
+  createdAt             DateTime  @default(now())
+  comment               String?
+  stripeCheckoutUrl     String?
+  stripeCustomerId      String?
   stripePaymentIntentId String?
-  stripeCustomerId     String?
-  stripeCheckoutUrl    String?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @default(now()) @updatedAt
-
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
-}
-
-enum NotificationType {
-  TRAINING_NEW
-  SCHEDULE_CHANGE
-  PAYMENT_DUE
-  PAYMENT_RECEIVED
+  updatedAt             DateTime  @default(now()) @updatedAt
+  player                Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }
 
 model Notification {
@@ -699,9 +762,9 @@ model Notification {
   emailSent Boolean          @default(false)
   pushSent  Boolean          @default(false)
   createdAt DateTime         @default(now())
-
-  player Player? @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  parent Parent? @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  data      Json?
+  parent    Parent?          @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  player    Player?          @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }
 
 model CoachRating {
@@ -710,12 +773,11 @@ model CoachRating {
   playerId       String
   rating         Int
   recommendation String?
-  comment        String?
   createdAt      DateTime @default(now())
+  comment        String?
   updatedAt      DateTime @default(now()) @updatedAt
-
-  coach  Coach  @relation(fields: [coachId], references: [id], onDelete: Cascade)
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  coach          Coach    @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  player         Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }
 
 model TrainingJournal {
@@ -728,24 +790,22 @@ model TrainingJournal {
   teamComment String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  training Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
-  coach    Coach    @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  coach       Coach    @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  training    Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
 
   @@unique([trainingId, coachId])
 }
 
 model Message {
-  id        String   @id @default(cuid())
-  parentId  String
-  playerId  String
-  fromParent Boolean @default(true)
-  body      String
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now())
-
-  parent Parent @relation(fields: [parentId], references: [id], onDelete: Cascade)
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  parentId   String
+  playerId   String
+  fromParent Boolean  @default(true)
+  body       String
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  parent     Parent   @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  player     Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }
 
 model ActivityLog {
@@ -759,100 +819,94 @@ model ActivityLog {
 }
 
 model CoachProfile {
-  id              String   @id @default(cuid())
+  id              String                @id @default(cuid())
   fullName        String
-  slug            String   @unique
+  slug            String                @unique
   city            String
   bio             String?
-  specialties     Json     // string[]
-  experienceYears Int      @default(0)
-  priceFrom       Int      @default(0)
+  specialties     Json
+  experienceYears Int                   @default(0)
+  priceFrom       Int                   @default(0)
   rating          Float?
-  trainingFormats Json     // string[]
+  trainingFormats Json
   photoUrl        String?
-  isPublished     Boolean  @default(false)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  services  CoachService[]
-  bookings  CoachBookingRequest[]
+  isPublished     Boolean               @default(false)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  bookings        CoachBookingRequest[]
+  services        CoachService[]
 }
 
 model CoachService {
-  id              String   @id @default(cuid())
+  id              String       @id @default(cuid())
   coachId         String
   title           String
   category        String
   description     String?
-  durationMinutes Int      @default(60)
-  price           Int      @default(0)
+  durationMinutes Int          @default(60)
+  price           Int          @default(0)
   format          String
-  createdAt       DateTime @default(now())
-
-  coach CoachProfile @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  createdAt       DateTime     @default(now())
+  coach           CoachProfile @relation(fields: [coachId], references: [id], onDelete: Cascade)
 }
 
 model CoachBookingRequest {
-  id                   String    @id @default(cuid())
-  coachId              String?
-  independentCoachId   String?
-  parentId             String?
-  parentName           String
-  parentPhone          String
-  playerId             String?
-  message              String
-  preferredDate        DateTime?
-  status               String    @default("new")
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-
-  coach             CoachProfile? @relation(fields: [coachId], references: [id], onDelete: Cascade)
-  independentCoach  Coach?        @relation("IndependentCoachBookings", fields: [independentCoachId], references: [id], onDelete: Cascade)
+  id                 String        @id @default(cuid())
+  coachId            String?
+  parentId           String?
+  parentName         String
+  parentPhone        String
+  playerId           String?
+  message            String
+  preferredDate      DateTime?
+  status             String        @default("new")
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  independentCoachId String?
+  coach              CoachProfile? @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  independentCoach   Coach?        @relation("IndependentCoachBookings", fields: [independentCoachId], references: [id], onDelete: Cascade)
 }
 
-// Marketplace reservation for CoachAvailability (independent coaches only).
 model MarketplaceSlotBooking {
-  id             String   @id @default(cuid())
-  slotId         String
-  coachId        String
-  bookerUserId   String
-  status         String   @default("pending")
-  parentName     String
-  parentPhone    String
-  playerId       String?
-  message        String?
-  paymentStatus     String    @default("unpaid")
-  paymentMethod     String?
-  paidAt            DateTime?
-  paymentReference  String?
-  amountSnapshot    Int?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  slot  CoachAvailability @relation(fields: [slotId], references: [id], onDelete: Cascade)
-  coach Coach             @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  id               String            @id @default(cuid())
+  slotId           String
+  coachId          String
+  bookerUserId     String
+  status           String            @default("pending")
+  parentName       String
+  parentPhone      String
+  playerId         String?
+  message          String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  paymentStatus    String            @default("unpaid")
+  paymentMethod    String?
+  paidAt           DateTime?
+  paymentReference String?
+  amountSnapshot   Int?
+  coach            Coach             @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  slot             CoachAvailability @relation(fields: [slotId], references: [id], onDelete: Cascade)
 
   @@index([bookerUserId, createdAt])
   @@index([coachId, status])
 }
 
 model Subscription {
-  id                 String   @id @default(cuid())
-  parentId           String   @unique
+  id                 String                      @id @default(cuid())
+  parentId           String                      @unique
   planCode           String
   status             String
   billingInterval    String
   currentPeriodStart DateTime
   currentPeriodEnd   DateTime
-  cancelAtPeriodEnd  Boolean  @default(false)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-  billingRecords SubscriptionBillingRecord[]
+  cancelAtPeriodEnd  Boolean                     @default(false)
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+  billingRecords     SubscriptionBillingRecord[]
 }
 
 model SubscriptionBillingRecord {
-  id             String   @id @default(cuid())
+  id             String        @id @default(cuid())
   parentId       String
   subscriptionId String?
   date           DateTime
@@ -861,20 +915,19 @@ model SubscriptionBillingRecord {
   currency       String
   status         String
   type           String
-  createdAt      DateTime @default(now())
-
-  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+  createdAt      DateTime      @default(now())
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
 }
 
 // Coach mobile app — session sync from Session Capture
 model CoachSession {
   id          String    @id @default(cuid())
-  sessionId   String    @unique // Client or server: session_xxx / sess_xxx
+  sessionId   String    @unique
   title       String
   startedAt   DateTime
-  endedAt     DateTime? // null = active session
-  teamId      String?   // For live session scoping
-  coachUserId String?   // From auth; may be demo user id
+  endedAt     DateTime?
+  teamId      String?
+  coachUserId String?
   createdAt   DateTime  @default(now())
 
   observations CoachSessionObservation[]
@@ -883,24 +936,24 @@ model CoachSession {
 }
 
 model CoachSessionObservation {
-  id              String   @id @default(cuid())
-  coachSessionId  String
-  playerId        String
-  playerName      String
-  skillType       String
-  impact          String   // positive | neutral | negative
-  note            String?
-  createdAtTs     DateTime // From payload (ms) → DateTime
+  id             String   @id @default(cuid())
+  coachSessionId String
+  playerId       String
+  playerName     String
+  skillType      String
+  impact         String
+  note           String?
+  createdAtTs    DateTime
 
   coachSession CoachSession @relation(fields: [coachSessionId], references: [id], onDelete: Cascade)
 }
 
 model CoachSessionPlayerSnapshot {
-  id              String    @id @default(cuid())
-  coachSessionId  String
-  playerId        String
-  skills          Json      // [{ skillType, score, trend, confidence }]
-  lastUpdatedAt   DateTime?
+  id             String    @id @default(cuid())
+  coachSessionId String
+  playerId       String
+  skills         Json
+  lastUpdatedAt  DateTime?
 
   coachSession CoachSession @relation(fields: [coachSessionId], references: [id], onDelete: Cascade)
 }
@@ -912,9 +965,9 @@ model CoachSessionParentDraft {
   playerName       String
   headline         String
   parentMessage    String
-  positives        Json     // string[]
-  improvementAreas Json     // string[]
-  focusSkills      Json     // string[]
+  positives        Json
+  improvementAreas Json
+  focusSkills      Json
 
   coachSession CoachSession @relation(fields: [coachSessionId], references: [id], onDelete: Cascade)
 }
@@ -928,20 +981,24 @@ model Report {
   content     String
   createdAt   DateTime   @default(now())
   voiceNoteId String?
-  voiceNote   VoiceNote? @relation(fields: [voiceNoteId], references: [id], onDelete: SetNull)
+  voiceNote   VoiceNote? @relation(fields: [voiceNoteId], references: [id])
 }
 
 /// Coach-created action item (task / follow-up)
 model ActionItem {
-  id          String     @id @default(cuid())
-  coachId     String
-  playerId    String?
-  title       String
-  description String
-  status      String     @default("open")
-  createdAt   DateTime   @default(now())
-  voiceNoteId String?
-  voiceNote   VoiceNote? @relation(fields: [voiceNoteId], references: [id], onDelete: SetNull)
+  id                      String     @id @default(cuid())
+  coachId                 String
+  playerId                String?
+  title                   String
+  description             String
+  status                  String     @default("open")
+  createdAt               DateTime   @default(now())
+  voiceNoteId             String?
+  liveTrainingCandidateId String?
+  voiceNote               VoiceNote? @relation(fields: [voiceNoteId], references: [id])
+
+  @@unique([coachId, liveTrainingCandidateId])
+  @@index([coachId, liveTrainingCandidateId])
 }
 
 /// Coach-created parent message draft (standalone, not synced session draft)
@@ -952,31 +1009,568 @@ model ParentDraft {
   text        String
   createdAt   DateTime   @default(now())
   voiceNoteId String?
-  voiceNote   VoiceNote? @relation(fields: [voiceNoteId], references: [id], onDelete: SetNull)
+  voiceNote   VoiceNote? @relation(fields: [voiceNoteId], references: [id])
 }
 
 /// Persisted coach voice notes (audio upload + STT transcript + lightweight analysis)
 model VoiceNote {
-  id             String   @id @default(cuid())
+  id              String        @id @default(cuid())
   coachId         String
   playerId        String?
   transcript      String
   summary         String?
   highlightsJson  Json?
   suggestionsJson Json?
-  /// Client-side AI analysis snapshot (structured); not computed on server.
-  analysisJson    Json?
   uploadId        String?
   audioFileName   String?
   audioMimeType   String?
   audioSizeBytes  Int?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  reports       Report[]
-  actionItems   ActionItem[]
-  parentDrafts  ParentDraft[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  /// Client-side AI analysis snapshot (structured); not computed on server.
+  analysisJson    Json?
+  actionItems     ActionItem[]
+  parentDrafts    ParentDraft[]
+  reports         Report[]
 
   @@unique([coachId, uploadId])
 }
 
+model ArenaChatConversation {
+  id               String             @id @default(cuid())
+  parentId         String             @unique
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime @updatedAt
+  Parent           Parent             @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  ArenaChatMessage ArenaChatMessage[]
+
+  @@index([parentId])
+}
+
+model ArenaChatMessage {
+  id                    String                @id @default(cuid())
+  conversationId        String
+  senderType            String
+  senderId              String?
+  text                  String
+  createdAt             DateTime              @default(now())
+  ArenaChatConversation ArenaChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([conversationId])
+}
+
+model BehaviorLog {
+  id                String             @id @default(cuid())
+  playerId          String
+  trainingSessionId String?
+  type              BehaviorLogType
+  intensity         BehaviorIntensity?
+  note              String
+  source            StatsSource
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime @updatedAt
+  createdByUserId   String?
+  createdByCoachId  String?
+  Coach             Coach?             @relation(fields: [createdByCoachId], references: [id])
+  User              User?              @relation(fields: [createdByUserId], references: [id])
+  Player            Player             @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  TrainingSession   TrainingSession?   @relation(fields: [trainingSessionId], references: [id])
+
+  @@index([playerId, createdAt])
+  @@index([playerId, trainingSessionId])
+  @@index([trainingSessionId])
+}
+
+model ExternalCoach {
+  id                          String                        @id @default(cuid())
+  name                        String
+  skills                      String[]                      @default([])
+  isActive                    Boolean                       @default(true)
+  createdAt                   DateTime                      @default(now())
+  updatedAt                   DateTime @updatedAt
+  ExternalCoachRecommendation ExternalCoachRecommendation[]
+
+  @@index([isActive])
+}
+
+model ExternalCoachFeedback {
+  id                          String                      @id @default(cuid())
+  recommendationId            String                      @unique
+  summary                     String
+  focusAreas                  String[]                    @default([])
+  createdAt                   DateTime                    @default(now())
+  ExternalCoachRecommendation ExternalCoachRecommendation @relation(fields: [recommendationId], references: [id], onDelete: Cascade)
+
+  @@index([recommendationId])
+}
+
+model ExternalCoachRecommendation {
+  id                    String                 @id @default(cuid())
+  liveSessionId         String
+  playerId              String?
+  externalCoachId       String
+  triggerType           String                 @default("extra_training")
+  status                String                 @default("pending")
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime @updatedAt
+  ExternalCoachFeedback ExternalCoachFeedback?
+  ExternalCoach         ExternalCoach          @relation(fields: [externalCoachId], references: [id], onDelete: Cascade)
+  LiveTrainingSession   LiveTrainingSession    @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+
+  @@index([liveSessionId, externalCoachId, playerId], map: "ExternalCoachRecommendation_liveSessionId_externalCoachId_playe")
+  @@index([liveSessionId])
+}
+
+model GameEvent {
+  id                String           @id @default(cuid())
+  playerId          String
+  trainingSessionId String?
+  type              GameEventType
+  value             Decimal?         @db.Decimal(14, 4)
+  note              String?
+  source            StatsSource
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  createdByUserId   String?
+  createdByCoachId  String?
+  Coach             Coach?           @relation(fields: [createdByCoachId], references: [id])
+  User              User?            @relation(fields: [createdByUserId], references: [id])
+  Player            Player           @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  TrainingSession   TrainingSession? @relation(fields: [trainingSessionId], references: [id])
+
+  @@index([playerId, createdAt])
+  @@index([playerId, trainingSessionId])
+  @@index([trainingSessionId])
+}
+
+model LiveTrainingEvent {
+  id                           String                            @id @default(cuid())
+  sessionId                    String
+  sourceType                   LiveTrainingEventSourceType       @default(manual_stub)
+  rawText                      String
+  normalizedText               String?
+  playerId                     String?
+  playerNameRaw                String?
+  eventType                    String                            @default("observation")
+  category                     String?
+  sentiment                    LiveTrainingObservationSentiment?
+  confidence                   Float?
+  needsReview                  Boolean                           @default(false)
+  payloadJson                  Json?
+  createdAt                    DateTime                          @default(now())
+  updatedAt                    DateTime @updatedAt
+  clientMutationId             String?
+  Player                       Player?                           @relation(fields: [playerId], references: [id])
+  LiveTrainingSession          LiveTrainingSession               @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  LiveTrainingObservationDraft LiveTrainingObservationDraft?
+  LiveTrainingPlayerSignal     LiveTrainingPlayerSignal[]
+
+  @@unique([sessionId, clientMutationId])
+  @@index([sessionId, createdAt])
+}
+
+model LiveTrainingObservationDraft {
+  id                       String                           @id @default(cuid())
+  sessionId                String
+  playerId                 String?
+  playerNameRaw            String?
+  sourceText               String
+  category                 String
+  sentiment                LiveTrainingObservationSentiment
+  confidence               Float?
+  needsReview              Boolean                          @default(false)
+  createdAt                DateTime                         @default(now())
+  updatedAt                DateTime @updatedAt
+  ingestProvenanceJson     Json?
+  deletedAt                DateTime?
+  liveTrainingEventId      String?                          @unique
+  LiveTrainingEvent        LiveTrainingEvent?               @relation(fields: [liveTrainingEventId], references: [id])
+  Player                   Player?                          @relation(fields: [playerId], references: [id])
+  LiveTrainingSession      LiveTrainingSession              @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  LiveTrainingPlayerSignal LiveTrainingPlayerSignal?
+
+  @@index([sessionId, deletedAt])
+  @@index([sessionId])
+}
+
+model LiveTrainingPlayerSignal {
+  id                             String                           @id @default(cuid())
+  playerId                       String
+  teamId                         String
+  coachId                        String
+  liveTrainingSessionId          String
+  liveTrainingObservationDraftId String                           @unique
+  liveTrainingEventId            String?
+  sourceType                     String                           @default("live_training")
+  metricDomain                   String
+  metricKey                      String
+  signalDirection                LiveTrainingObservationSentiment
+  signalStrength                 Int                              @default(1)
+  evidenceText                   String
+  metadataJson                   Json?
+  createdAt                      DateTime                         @default(now())
+  updatedAt                      DateTime @updatedAt
+  LiveTrainingEvent              LiveTrainingEvent?               @relation(fields: [liveTrainingEventId], references: [id])
+  LiveTrainingObservationDraft   LiveTrainingObservationDraft     @relation(fields: [liveTrainingObservationDraftId], references: [id], onDelete: Cascade)
+  LiveTrainingSession            LiveTrainingSession              @relation(fields: [liveTrainingSessionId], references: [id], onDelete: Cascade)
+  Player                         Player                           @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  Team                           Team                             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([liveTrainingSessionId])
+  @@index([playerId, createdAt])
+  @@index([teamId])
+}
+
+model LiveTrainingSession {
+  id                                    String                          @id @default(cuid())
+  coachId                               String
+  teamId                                String
+  mode                                  LiveTrainingMode
+  status                                LiveTrainingSessionStatus       @default(live)
+  startedAt                             DateTime                        @default(now())
+  endedAt                               DateTime?
+  confirmedAt                           DateTime?
+  createdAt                             DateTime                        @default(now())
+  updatedAt                             DateTime @updatedAt
+  continuitySnapshotJson                Json?
+  planningSnapshotJson                  Json?
+  sessionMeaningJson                    Json?
+  trainingSessionId                     String?
+  arenaNextFocusAppliedAt               DateTime?
+  arenaNextFocusTargetTrainingSessionId String?
+  arenaNextFocusLine                    String?
+  ExternalCoachRecommendation           ExternalCoachRecommendation[]
+  LiveTrainingEvent                     LiveTrainingEvent[]
+  LiveTrainingObservationDraft          LiveTrainingObservationDraft[]
+  LiveTrainingPlayerSignal              LiveTrainingPlayerSignal[]
+  Team                                  Team                            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  TrainingSession                       TrainingSession?                @relation(fields: [trainingSessionId], references: [id])
+  LiveTrainingSessionReportDraft        LiveTrainingSessionReportDraft?
+
+  @@index([coachId, status])
+  @@index([teamId])
+  @@index([trainingSessionId])
+}
+
+model LiveTrainingSessionReportDraft {
+  id                    String                               @id @default(cuid())
+  liveTrainingSessionId String                               @unique
+  teamId                String
+  coachId               String
+  status                LiveTrainingSessionReportDraftStatus @default(draft)
+  title                 String
+  summaryJson           Json
+  createdAt             DateTime                             @default(now())
+  updatedAt             DateTime @updatedAt
+  publishedAt           DateTime?
+  LiveTrainingSession   LiveTrainingSession                  @relation(fields: [liveTrainingSessionId], references: [id], onDelete: Cascade)
+  Team                  Team                                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([coachId])
+  @@index([teamId])
+}
+
+model OFPResult {
+  id                String           @id @default(cuid())
+  playerId          String
+  trainingSessionId String?
+  testType          OFPTestType
+  value             Decimal          @db.Decimal(12, 4)
+  unit              String
+  note              String?
+  measuredAt        DateTime
+  source            StatsSource
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime @updatedAt
+  createdByUserId   String?
+  createdByCoachId  String?
+  Coach             Coach?           @relation(fields: [createdByCoachId], references: [id])
+  User              User?            @relation(fields: [createdByUserId], references: [id])
+  Player            Player           @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  TrainingSession   TrainingSession? @relation(fields: [trainingSessionId], references: [id])
+
+  @@index([playerId, measuredAt])
+  @@index([trainingSessionId])
+}
+
+model ParentTeamAnnouncementRead {
+  id         String    @id @default(cuid())
+  parentId   String
+  teamId     String
+  lastReadAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  Parent     Parent    @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  Team       Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([parentId, teamId])
+}
+
+model PlayerIndex {
+  id            String   @id @default(cuid())
+  playerId      String
+  attackIndex   Decimal? @db.Decimal(6, 3)
+  defenseIndex  Decimal? @db.Decimal(6, 3)
+  skatingIndex  Decimal? @db.Decimal(6, 3)
+  iqIndex       Decimal? @db.Decimal(6, 3)
+  physicalIndex Decimal? @db.Decimal(6, 3)
+  overallIndex  Decimal? @db.Decimal(6, 3)
+  calculatedAt  DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  Player        Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId, calculatedAt])
+}
+
+model PlayerSessionStructuredMetrics {
+  id                String          @id @default(cuid())
+  trainingSessionId String
+  playerId          String
+  schemaVersion     Int             @default(1)
+  source            StatsSource     @default(MANUAL)
+  iceTechnical      Json?
+  tactical          Json?
+  ofpQualitative    Json?
+  physical          Json?
+  behavioral        Json?
+  observation       Json?
+  voiceMeta         Json?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime @updatedAt
+  Player            Player          @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  TrainingSession   TrainingSession @relation(fields: [trainingSessionId], references: [id], onDelete: Cascade)
+
+  @@unique([trainingSessionId, playerId])
+  @@index([playerId, updatedAt])
+}
+
+model PlayerStatsSnapshot {
+  id            String             @id @default(cuid())
+  playerId      String
+  periodType    SnapshotPeriodType
+  periodStart   DateTime
+  periodEnd     DateTime
+  goals         Int?
+  assists       Int?
+  shots         Int?
+  takeaways     Int?
+  turnovers     Int?
+  passSuccess   Int?
+  passFail      Int?
+  attackIndex   Decimal?           @db.Decimal(6, 3)
+  defenseIndex  Decimal?           @db.Decimal(6, 3)
+  skatingIndex  Decimal?           @db.Decimal(6, 3)
+  physicalIndex Decimal?           @db.Decimal(6, 3)
+  overallIndex  Decimal?           @db.Decimal(6, 3)
+  summary       String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime @updatedAt
+  Player        Player             @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([periodStart, periodEnd])
+  @@index([playerId, periodStart])
+  @@index([playerId, periodType, periodStart])
+}
+
+model PlayerTrainingReport {
+  id                String               @id @default(cuid())
+  playerId          String
+  trainingSessionId String
+  rawText           String?
+  summary           String?
+  coachNote         String?
+  status            TrainingReportStatus @default(DRAFT)
+  source            StatsSource
+  audioUrl          String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime @updatedAt
+  createdByUserId   String?
+  createdByCoachId  String?
+  Coach             Coach?               @relation(fields: [createdByCoachId], references: [id])
+  User              User?                @relation(fields: [createdByUserId], references: [id])
+  Player            Player               @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  TrainingSession   TrainingSession      @relation(fields: [trainingSessionId], references: [id], onDelete: Cascade)
+
+  @@index([playerId, trainingSessionId])
+  @@index([trainingSessionId])
+}
+
+model SkillProgress {
+  id               String         @id @default(cuid())
+  playerId         String
+  skill            SkillType
+  status           SkillStatus
+  trend            TrendDirection
+  note             String?
+  measuredAt       DateTime
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime @updatedAt
+  createdByUserId  String?
+  createdByCoachId String?
+  Coach            Coach?         @relation(fields: [createdByCoachId], references: [id])
+  User             User?          @relation(fields: [createdByUserId], references: [id])
+  Player           Player         @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId, measuredAt])
+  @@index([playerId, skill, measuredAt])
+}
+
+model TrainingSessionCoachJournal {
+  id                String          @id @default(cuid())
+  trainingSessionId String
+  coachId           String
+  topic             String?
+  goals             String?
+  notes             String?
+  teamComment       String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime @updatedAt
+  Coach             Coach           @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  TrainingSession   TrainingSession @relation(fields: [trainingSessionId], references: [id], onDelete: Cascade)
+
+  @@unique([trainingSessionId, coachId])
+  @@index([coachId])
+}
+
+enum UserRole {
+  SCHOOL_ADMIN
+  COACH
+  PARENT
+  MAIN_COACH
+  SCHOOL_MANAGER
+  EXTERNAL_COACH
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum NotificationType {
+  TRAINING_NEW
+  SCHEDULE_CHANGE
+  PAYMENT_DUE
+  PAYMENT_RECEIVED
+  CHAT_MESSAGE
+  TEAM_ANNOUNCEMENT
+  TRAINING_REPORT_PUBLISHED
+  PARENT_PROGRESS_UPDATED
+}
+
+enum BehaviorIntensity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum BehaviorLogType {
+  GOOD_POSITIONING
+  LOST_POSITION
+  RETURNS_TO_DEFENSE
+  IGNORES_TEAMPLAY
+  ACTIVE_PLAY
+  PASSIVE_PLAY
+  GOOD_EFFORT
+  LOW_ENGAGEMENT
+}
+
+enum GameEventType {
+  GOAL
+  ASSIST
+  SHOT
+  TURNOVER
+  TAKEAWAY
+  ZONE_ENTRY_SUCCESS
+  ZONE_ENTRY_FAIL
+  PASS_SUCCESS
+  PASS_FAIL
+  GOOD_DECISION
+  BAD_DECISION
+}
+
+enum LiveTrainingEventSourceType {
+  manual_stub
+  transcript_segment
+  system
+}
+
+enum LiveTrainingMode {
+  ice
+  ofp
+  mixed
+}
+
+enum LiveTrainingObservationSentiment {
+  positive
+  negative
+  neutral
+}
+
+enum LiveTrainingSessionReportDraftStatus {
+  draft
+  ready
+}
+
+enum LiveTrainingSessionStatus {
+  live
+  review
+  confirmed
+  cancelled
+}
+
+enum OFPTestType {
+  SPRINT_10M
+  SPRINT_20M
+  SHUTTLE_RUN
+  VERTICAL_JUMP
+  BROAD_JUMP
+  PLANK
+  PUSHUPS
+  BALANCE_TEST
+}
+
+enum SkillStatus {
+  WEAK
+  DEVELOPING
+  STABLE
+  STRONG
+}
+
+enum SkillType {
+  SKATING
+  STICKHANDLING
+  PASSING
+  SHOOTING
+  BALANCE
+  GAME_WITHOUT_PUCK
+  ONE_ON_ONE
+}
+
+enum SnapshotPeriodType {
+  WEEK
+  MONTH
+  SEASON
+  CUSTOM
+}
+
+enum StatsSource {
+  MANUAL
+  VOICE
+  AI
+  IMPORT
+}
+
+enum TrainingReportStatus {
+  DRAFT
+  CONFIRMED
+}
+
+enum TrendDirection {
+  UP
+  SAME
+  DOWN
+}

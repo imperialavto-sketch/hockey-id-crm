@@ -65,6 +65,7 @@ export async function computePlayerAttendanceSummary(
 
   const pairSet = new Map<string, { groupId: string; weekStart: Date }>();
   for (const s of sessions) {
+    if (s.groupId == null) continue;
     const weekStart = sessionWeekStartFromSessionStart(s.startAt);
     const key = pairKey(s.groupId, weekStart);
     if (!pairSet.has(key)) {
@@ -73,6 +74,14 @@ export async function computePlayerAttendanceSummary(
   }
 
   const pairs = Array.from(pairSet.values());
+  if (pairs.length === 0) {
+    return {
+      totalSessions: 0,
+      presentCount: 0,
+      absentCount: 0,
+      attendanceRate: 0,
+    };
+  }
   const assignments = await prisma.playerGroupAssignment.findMany({
     where: {
       playerId,
@@ -90,6 +99,7 @@ export async function computePlayerAttendanceSummary(
 
   const eligibleIds: string[] = [];
   for (const s of sessions) {
+    if (s.groupId == null) continue;
     const weekStart = sessionWeekStartFromSessionStart(s.startAt);
     if (assignmentKeys.has(pairKey(s.groupId, weekStart))) {
       eligibleIds.push(s.id);

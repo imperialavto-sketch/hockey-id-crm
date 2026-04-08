@@ -1,0 +1,4 @@
+
+> hockey-id-crm@0.1.0 db:seed
+> npx tsx prisma/seed.ts
+

@@ -129,13 +129,16 @@ export async function POST(
       }
 
       const weekStart = sessionWeekStartFromSessionStart(session.startAt);
-      const inGroup = await prisma.playerGroupAssignment.findFirst({
-        where: {
-          playerId: String(playerId),
-          groupId: session.groupId,
-          weekStartDate: weekStart,
-        },
-      });
+      const inGroup =
+        session.groupId != null
+          ? await prisma.playerGroupAssignment.findFirst({
+              where: {
+                playerId: String(playerId),
+                groupId: session.groupId,
+                weekStartDate: weekStart,
+              },
+            })
+          : null;
 
       if (!inGroup) {
         return NextResponse.json(

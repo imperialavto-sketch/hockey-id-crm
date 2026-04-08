@@ -225,6 +225,74 @@ export async function getParentLatestSessionReport(
   };
 }
 
+function trainingSessionTypeLabel(type: string): string {
+  switch (type) {
+    case "ice":
+      return "Лёд";
+    case "ofp":
+      return "ОФП";
+    case "mixed":
+      return "Смешанная";
+    default:
+      return type?.trim() ? type : "Тренировка";
+  }
+}
+
+/** Published `TrainingSessionReport` rows for parent-facing live-training summary (newest first). */
+export type ParentFacingSessionReport = {
+  trainingId: string;
+  teamName: string | null;
+  sessionKindLabel: string;
+  sessionStartedAt: string;
+  summary: string | null;
+  focusAreas: string | null;
+  parentMessage: string | null;
+};
+
+export async function listParentFacingPublishedSessionReports(
+  playerId: string,
+  limit: number
+): Promise<ParentFacingSessionReport[]> {
+  const cap = Math.max(1, Math.min(50, limit));
+  const attendanceRows = await prisma.trainingAttendance.findMany({
+    where: { playerId },
+    orderBy: { training: { startAt: "desc" } },
+    take: cap * 12,
+    include: {
+      training: {
+        include: {
+          sessionReport: true,
+          team: { select: { name: true } },
+        },
+      },
+    },
+  });
+
+  const out: ParentFacingSessionReport[] = [];
+  for (const a of attendanceRows) {
+    const r = a.training.sessionReport;
+    if (!r) continue;
+    const summary = r.summary?.trim() || null;
+    const focusAreas = r.focusAreas?.trim() || null;
+    const coachNote = r.coachNote?.trim() || null;
+    const parentMessage = r.parentMessage?.trim() || null;
+    if (!summary && !focusAreas && !coachNote && !parentMessage) continue;
+
+    out.push({
+      trainingId: a.trainingId,
+      teamName: a.training.team?.name ?? null,
+      sessionKindLabel: trainingSessionTypeLabel(a.training.type),
+      sessionStartedAt: a.training.startAt.toISOString(),
+      summary,
+      focusAreas,
+      parentMessage,
+    });
+    if (out.length >= cap) break;
+  }
+
+  return out;
+}
+
 export interface CreateParentPlayerInput {
   firstName: string;
   lastName: string;

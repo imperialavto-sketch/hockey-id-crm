@@ -26,8 +26,13 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
       take: 200,
     });
+    type Item = (typeof items)[number];
     const playerIds = Array.from(
-      new Set(items.map((x) => x.playerId).filter((v): v is string => typeof v === "string" && v.length > 0))
+      new Set(
+        items
+          .map((x: Item) => x.playerId)
+          .filter((v: Item["playerId"]): v is string => typeof v === "string" && v.length > 0)
+      )
     );
     const players = playerIds.length
       ? await prisma.player.findMany({
@@ -35,12 +40,16 @@ export async function GET(req: NextRequest) {
           select: { id: true, firstName: true, lastName: true },
         })
       : [];
+    type PlayerRow = (typeof players)[number];
     const playerNameById = new Map(
-      players.map((p) => [p.id, [p.firstName, p.lastName].filter(Boolean).join(" ").trim() || "Игрок"])
+      players.map((p: PlayerRow) => [
+        p.id,
+        [p.firstName, p.lastName].filter(Boolean).join(" ").trim() || "Игрок",
+      ])
     );
 
     return NextResponse.json(
-      items.map((x) => ({
+      items.map((x: Item) => ({
         id: x.id,
         title: x.title,
         descriptionPreview: preview(x.description),

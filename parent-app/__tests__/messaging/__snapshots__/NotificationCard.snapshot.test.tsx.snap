@@ -1,0 +1,5 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`NotificationCard snapshots read chat_message 1`] = `null`;
+
+exports[`NotificationCard snapshots unread chat_message 1`] = `null`;

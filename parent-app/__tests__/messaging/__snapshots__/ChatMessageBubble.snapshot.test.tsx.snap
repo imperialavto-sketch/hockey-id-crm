@@ -1,0 +1,7 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ChatMessageBubble snapshots coach incoming 1`] = `null`;
+
+exports[`ChatMessageBubble snapshots arena AI bubble 1`] = `null`;
+
+exports[`ChatMessageBubble snapshots parent outgoing 1`] = `null`;

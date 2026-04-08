@@ -54,8 +54,25 @@ export async function getAuthFromRequest(
   const authHeader = req.headers.get("authorization");
   if (authHeader?.toLowerCase().startsWith("bearer ")) {
     const token = authHeader.slice(7).trim();
-    const user = parseSessionToken(token);
-    if (user) return user;
+    if (!token) {
+      console.warn("[api-auth] Authorization Bearer present but token empty");
+    } else {
+      const user = parseSessionToken(token);
+      if (user) {
+        if (
+          user.role === "PARENT" &&
+          (user.parentId == null || String(user.parentId).trim() === "")
+        ) {
+          console.warn(
+            "[api-auth] Bearer session parsed but PARENT payload missing parentId (mobile routes will return 401)"
+          );
+        }
+        return user;
+      }
+      console.warn(
+        "[api-auth] Bearer token not a valid CRM session (expected base64url JSON from POST /api/parent/mobile/auth/verify or setSessionCookie shape; legacy JWT or demo placeholder strings fail here)"
+      );
+    }
   }
 
   // Session cookie (web CRM)

@@ -2,7 +2,13 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 
-export type UserRole = "SCHOOL_ADMIN" | "MAIN_COACH" | "COACH" | "SCHOOL_MANAGER" | "PARENT";
+export type UserRole =
+  | "SCHOOL_ADMIN"
+  | "MAIN_COACH"
+  | "COACH"
+  | "SCHOOL_MANAGER"
+  | "PARENT"
+  | "EXTERNAL_COACH";
 
 export interface User {
   id: string;
