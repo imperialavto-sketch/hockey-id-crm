@@ -31,6 +31,12 @@ yarn-error.log*
 .env.production
 .env.bak
 *.env.bak
+.env.save
+**/.env.save
+
+# parent-app generated output
+parent-app/dist/
+parent-app/storybook-static/
 
 # backups (SQL dumps)
 /backups/
