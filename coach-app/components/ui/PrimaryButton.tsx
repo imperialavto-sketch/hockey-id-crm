@@ -26,6 +26,10 @@ type PrimaryButtonProps = {
   textStyle?: TextStyle;
   /** Плавное scale/opacity при нажатии (reanimated). */
   animatedPress?: boolean;
+  /** Optional emphasis shadow (live-training / flagship). */
+  glow?: boolean;
+  accessibilityHint?: string;
+  accessibilityLabel?: string;
 };
 
 export function PrimaryButton({
@@ -36,6 +40,9 @@ export function PrimaryButton({
   style,
   textStyle,
   animatedPress = false,
+  glow = false,
+  accessibilityHint,
+  accessibilityLabel,
 }: PrimaryButtonProps) {
   const isOutline = variant === 'outline';
   const isGhost = variant === 'ghost';
@@ -47,11 +54,16 @@ export function PrimaryButton({
     opacity: opacity.value,
   }));
 
+  const a11yLabel = accessibilityLabel ?? title;
+
   if (animatedPress) {
     return (
       <Pressable
         onPress={onPress}
         disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={a11yLabel}
+        accessibilityHint={accessibilityHint}
         onPressIn={() => {
           if (disabled) return;
           scale.value = withTiming(0.985, PRESS_IN);
@@ -68,6 +80,7 @@ export function PrimaryButton({
             isOutline && styles.outline,
             isGhost && styles.ghost,
             disabled && styles.disabled,
+            glow && !isOutline && !isGhost && styles.glow,
             style,
             motionStyle,
           ]}
@@ -92,11 +105,15 @@ export function PrimaryButton({
     <Pressable
       onPress={onPress}
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={a11yLabel}
+      accessibilityHint={accessibilityHint}
       style={({ pressed }) => [
         styles.button,
         isOutline && styles.outline,
         isGhost && styles.ghost,
         disabled && styles.disabled,
+        glow && !isOutline && !isGhost && styles.glow,
         pressed && styles.pressed,
         style,
       ]}
@@ -152,5 +169,12 @@ const styles = StyleSheet.create({
   },
   disabledText: {
     color: theme.colors.textMuted,
+  },
+  glow: {
+    shadowColor: theme.colors.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 6,
   },
 });

@@ -63,4 +63,10 @@ export const COACH_SESSION_DETAIL_COPY = {
   noteSave: 'Сохранить',
   commentCta: 'Комментарий',
   commentSavedMark: ' · сохранён',
+  evalSectionHint: 'Баллы и заметки сохраняются в CRM; подсказки эфира — только контекст.',
+  evalLiveContextPrefix: 'Эфир:',
+  reportSectionHint: 'Текст отчёта видят родители там, где включена публикация полей.',
+  liveTrainingKicker: 'Живая тренировка',
+  /** Prefix for aggregated behavioral explainability on live report draft screen. */
+  liveReportDraftTeamBehaviorContextPrefix: 'По отметкам эфира (концентрация и дисциплина):',
 } as const;

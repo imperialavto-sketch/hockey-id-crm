@@ -11,8 +11,8 @@
  * - GET/POST /api/trainings/:id/report
  * - GET/POST /api/trainings/:id/attendance (и пр.)
  *
- * Если ваш деплой HOCKEY-ID-CRM ещё без evaluations/report, укажите EXPO_PUBLIC_API_URL
- * на тот хост, где эти маршруты есть (например hockey-server), либо на единый API после слияния.
+ * Канонический backend для coach-app — развёрнутый Next CRM (тот же репозиторий).
+ * Другой origin допустим только если это прокси на тот же Next API, не legacy Express hockey-server.
  */
 
 const ENV = process.env;

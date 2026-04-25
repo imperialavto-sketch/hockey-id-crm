@@ -24,4 +24,13 @@ export const COACH_SCHEDULE_COPY = {
   quickToday: 'Сегодня',
   quickTomorrow: 'Завтра',
   dayFree: 'Свободно',
+  fieldValidationHint: 'Проверьте дату и время слота.',
+  deleteSlotConfirmTitle: 'Удалить тренировку?',
+  deleteSlotConfirmBody: 'Слот будет удалён из расписания. Действие необратимо.',
+  cancel: 'Отмена',
+  quickEditTitle: 'Редактировать слот',
+  saveSlot: 'Сохранить',
+  similarSlot: 'Похожий слот',
+  openSessionDetail: 'Открыть карточку',
+  deleteSlot: 'Удалить слот',
 } as const;

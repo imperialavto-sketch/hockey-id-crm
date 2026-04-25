@@ -10,9 +10,9 @@ export const COACH_AUTH_REQUIRED_LINE = 'Нужна авторизация в п
 export const COACH_DASHBOARD_COPY = {
   /** Under hero when hub has loaded. */
   heroSubtitleResume:
-    'Черновик тренировки можно продолжить или завершить — материалы появятся в «Создано».',
+    'Локальный legacy-черновик (coach-input) можно продолжить или сбросить. Итог сессии в продукте — Arena / live-training.',
   heroSubtitleDefault:
-    'Тренировка · сообщения · задачи · отчёты — один контур до и после сессии.',
+    'Живая тренировка и пост-сессия — Arena / live-training; сообщения, задачи и отчёты рядом.',
   /** Hub snapshot loading (status primary line). */
   loadingHubStatus: 'Загружаем состояние…',
   /** Inline blocks (teams list, messages preview). */
@@ -33,4 +33,6 @@ export const COACH_DASHBOARD_COPY = {
   retryCta: 'Повторить',
   teamsEmptyHint: 'Попросите администратора назначить вас на команду.',
   messagesEmptyHint: 'Диалоги появятся, когда родители напишут.',
+  /** Intro line under «Отчёты и материалы» kicker on home hub card. */
+  workLinksIntro: 'Готовые отчёты недели, созданные материалы и голосовые заметки — в одном блоке.',
 } as const;

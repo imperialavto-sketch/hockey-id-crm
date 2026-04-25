@@ -18,6 +18,47 @@ export type LiveTrainingSessionAnalyticsSummary = {
   draftsWithPlayerCount: number;
 };
 
+/** CRM GET session: cohort rollup for `session_canonical_v1` materialized signals only (not strict group truth). */
+export type LiveTrainingSessionGroupContextCoverageKind =
+  | "no_signals"
+  | "all_legacy"
+  | "mixed"
+  | "fully_attributed";
+
+export type LiveTrainingSessionGroupContextSignalRollup = {
+  liveTrainingSessionId: string;
+  teamId: string;
+  canonicalGroupId: string | null;
+  attributionVersionUsed: "session_canonical_v1";
+  attributedSignalCount: number;
+  legacySignalCount: number;
+  attributedPositiveSignalCount: number;
+  attributedNegativeSignalCount: number;
+  attributedDomainsJson: Record<string, number>;
+  coverageKind: LiveTrainingSessionGroupContextCoverageKind;
+};
+
+export type LiveTrainingSessionGroupContextStampConsistencyKind =
+  | "no_signals"
+  | "no_attributed_signals"
+  | "canonical_present_but_unstamped_only"
+  | "aligned"
+  | "mixed_stamps"
+  | "canonical_null_but_stamped"
+  | "mismatch";
+
+export type LiveTrainingSessionGroupContextStampDiagnostic = {
+  liveTrainingSessionId: string;
+  teamId: string;
+  canonicalGroupId: string | null;
+  attributedSignalCount: number;
+  legacySignalCount: number;
+  distinctStampedGroupIds: string[];
+  stampedNullPresent: boolean;
+  consistencyKind: LiveTrainingSessionGroupContextStampConsistencyKind;
+  consistencyNote?: string;
+};
+
 export type LiveTrainingSessionOutcomePlayer = {
   playerId: string;
   playerName: string;
@@ -289,6 +330,13 @@ export interface LiveTrainingSession {
   autoFinalized?: boolean;
   /** PHASE 6 Step 11: кэш смысла (read-model), приходит с GET session после ingest. */
   sessionMeaningJson?: LiveTrainingSessionMeaning | null;
+  /**
+   * Только `status === "confirmed"`: rollup attributed cohort vs legacy (session-context, не team PvO).
+   * @see `GET /api/live-training/sessions/[id]`
+   */
+  groupContextSignalRollup?: LiveTrainingSessionGroupContextSignalRollup;
+  /** Только `status === "confirmed"`: stamp vs canonical re-read diagnostic. */
+  groupContextStampDiagnostic?: LiveTrainingSessionGroupContextStampDiagnostic;
 }
 
 export type LiveTrainingConfirmAnalytics = {
@@ -721,6 +769,12 @@ export type LiveTrainingReportDraftPayload = {
   /** Синхронизируется с suggestedActions.recommendedCoaches при загрузке черновика. */
   externalCoachRecommendations: LiveTrainingExternalCoachRecommendationRow[];
   arenaNextTrainingFocusApply: ArenaNextTrainingFocusApplyState;
+  /** Planned focus слота на момент confirm (снимок на live-сессии). */
+  plannedFocusSnapshot?: string | null;
+  /**
+   * @deprecated — use `plannedFocusSnapshot`. Same value from API; kept for backward compatibility, will be removed later.
+   */
+  plannedTrainingFocus?: string | null;
 };
 
 export type LiveTrainingReportDraftPublishResult = LiveTrainingReportDraftPayload & {

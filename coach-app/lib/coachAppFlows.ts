@@ -7,7 +7,7 @@
  * PHASE 4 ISOLATION — см. `docs/PHASE_4_DEAD_PATH_ISOLATION.md`, `isolationContours.ts` (frozen: `coachSessionLiveService` / `/api/coach/sessions/*`).
  *
  * - **CORE Live Training**: `app/live-training/*` — основной поток (события → review → confirm).
- * - **Legacy coach session (sunset)**: `/dev/coach-input` stub only — no CoachSession API in coach-app.
+ * - **Legacy coach session (sunset)**: `/coach-input` (session capture UI) — no CoachSession API in coach-app.
  * - **Voice MVP (❗ UTILITY ONLY — NOT TRAINING SSOT)**: `voice-note(s)`, `voice-starter/*` — личные заметки
  *   и черновики отчёта/задачи/родителю; не истина по сессии.
  *

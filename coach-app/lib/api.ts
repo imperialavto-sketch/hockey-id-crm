@@ -42,11 +42,14 @@ function pickApiErrorMessage(data: unknown, fallback: string): string {
 
 export class ApiRequestError extends Error {
   status: number;
+  /** Parsed JSON body from a non-2xx response, when available. */
+  body?: unknown;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, body?: unknown) {
     super(message);
     this.name = 'ApiRequestError';
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -54,8 +57,16 @@ export function isApi404(err: unknown): err is ApiRequestError {
   return err instanceof ApiRequestError && err.status === 404;
 }
 
+export function isApi409(err: unknown): err is ApiRequestError {
+  return err instanceof ApiRequestError && err.status === 409;
+}
+
 export function isApi401(err: unknown): err is ApiRequestError {
   return err instanceof ApiRequestError && err.status === 401;
+}
+
+export function isApi422(err: unknown): err is ApiRequestError {
+  return err instanceof ApiRequestError && err.status === 422;
 }
 
 export async function apiFetch<T>(
@@ -121,7 +132,7 @@ export async function apiFetch<T>(
       }
     }
     const message = pickApiErrorMessage(data, `Ошибка ${res.status}`);
-    throw new ApiRequestError(message, res.status);
+    throw new ApiRequestError(message, res.status, data);
   }
 
   return data as T;

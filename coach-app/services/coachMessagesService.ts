@@ -49,18 +49,6 @@ export interface ConversationDetailApiItem {
   }>;
 }
 
-export interface ConversationDetailUi {
-  id: string;
-  title: string;
-  messages: Array<{
-    id: string;
-    senderName: string;
-    text: string;
-    time: string;
-    isOwn: boolean;
-  }>;
-}
-
 function formatTime(iso?: string): string {
   if (!iso) return '';
   try {
@@ -212,13 +200,20 @@ function mapConversationApiToCard(
 export function mapConversationDetailToUi(api: ConversationDetailApiItem): ConversationDetailUi {
   const messages = (api.messages ?? [])
     .filter((m) => !!m?.id)
-    .map((m) => ({
-      id: m.id,
-      senderName: m.senderName ?? '—',
-      text: m.text ?? '',
-      time: formatTime(m.createdAt),
-      isOwn: m.isOwn ?? false,
-    }));
+    .map((m) => {
+      const createdAtMs =
+        typeof m.createdAt === 'string' && m.createdAt
+          ? new Date(m.createdAt).getTime()
+          : undefined;
+      return {
+        id: m.id,
+        senderName: m.senderName ?? '—',
+        text: m.text ?? '',
+        time: formatTime(m.createdAt),
+        isOwn: m.isOwn ?? false,
+        ...(Number.isFinite(createdAtMs) ? { createdAtMs } : {}),
+      };
+    });
 
   return {
     id: api.id,
@@ -277,6 +272,20 @@ export async function getCoachMessages(): Promise<ConversationCardData[]> {
   }
 }
 
+/** Sum of `unreadCount` across coach conversations (for app icon badge). */
+export async function getCoachChatUnreadBadgeCount(): Promise<number> {
+  try {
+    const items = await getCoachMessages();
+    let n = 0;
+    for (const c of items) {
+      n += c.unreadCount ?? 0;
+    }
+    return n;
+  } catch {
+    return 0;
+  }
+}
+
 /** API response for send message */
 export interface SendMessageApiResponse {
   id: string;
@@ -294,6 +303,14 @@ export interface MessageUi {
   text: string;
   time: string;
   isOwn: boolean;
+  /** For grouping adjacent bubbles by time window. */
+  createdAtMs?: number;
+}
+
+export interface ConversationDetailUi {
+  id: string;
+  title: string;
+  messages: MessageUi[];
 }
 
 const messagesSendSuffix = '/send';
@@ -329,12 +346,15 @@ export async function sendCoachMessage(
     awaitingMap[conversationId] = createdIso;
     await saveAwaitingReplyMap(awaitingMap);
 
+    const createdAtMs = new Date(createdIso).getTime();
+
     return {
       id: res.id,
       senderName: res.senderName ?? 'Вы',
       text: res.text ?? trimmed,
       time: formatTime(res.createdAt),
       isOwn: res.isOwn ?? true,
+      createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : undefined,
     };
   } catch (e) {
     if (isApi404(e)) markEndpointUnavailable(path);

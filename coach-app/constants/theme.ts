@@ -2,6 +2,8 @@
  * Hockey ID Coach — Premium dark hockey-style theme
  */
 
+import type { ViewStyle } from 'react-native';
+
 export const theme = {
   colors: {
     background: '#0a0e14',
@@ -22,6 +24,8 @@ export const theme = {
     success: '#00d4aa',
     warning: '#f5a623',
     error: '#ff4d6a',
+    /** Muted warning surfaces (pills, borders) */
+    warningMuted: 'rgba(245, 166, 35, 0.18)',
   },
   spacing: {
     xs: 4,
@@ -98,3 +102,8 @@ export const theme = {
 } as const;
 
 export type Theme = typeof theme;
+
+/** Stack `contentStyle` for coach navigator screens (matches app background). */
+export const coachStackContentStyle: ViewStyle = {
+  backgroundColor: theme.colors.background,
+};

@@ -3,7 +3,7 @@
  *
  * **Запуск QA**
  * 1. `cd coach-app && npx expo start`
- * 2. Открыть маршрут `/storybook` (только `__DEV__`, см. `app/_layout.tsx`).
+ * 2. On-device Storybook: см. `.rnstorybook` и Metro `EXPO_PUBLIC_STORYBOOK_ENABLED` (маршрута `/storybook` в app нет).
  * 3. В дереве: `Schedule / StructuredMetricsFoundationSection` — пройти истории сверху вниз.
  *
  * **Снапшоты Jest:** см. `StructuredMetricsFoundationSection.snapshot.test.tsx` и `*.snap`.

@@ -1,3 +1,8 @@
+/**
+ * Dashboard-блок продукта «Арена» (сводка по команде).
+ * Имена CoachMark* / coachMark* — stable legacy technical naming; не переименовывать без отдельного migration pass.
+ */
+
 import React, { useState, useCallback } from "react";
 import {
   StyleSheet,
@@ -63,7 +68,7 @@ function DigestContent({
     return (
       <View style={styles.activeCard}>
         <Text style={styles.emptyTitle}>Пока нет сводки</Text>
-        <Text style={styles.emptyText}>Запишите тренировку — Coach Mark соберёт данные</Text>
+        <Text style={styles.emptyText}>Запишите тренировку — Арена соберёт данные</Text>
       </View>
     );
   }

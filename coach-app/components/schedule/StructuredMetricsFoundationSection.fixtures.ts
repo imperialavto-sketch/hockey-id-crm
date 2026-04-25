@@ -3,7 +3,7 @@
  *
  * **Стабильные id:** не менять строки `SM_FIXTURE_PLAYER_*` — снапшоты и регрессии привязаны к ним.
  *
- * **QA / Storybook:** открыть `/storybook` в dev, раздел Schedule → Structured Metrics; сравнить визуально
+ * **QA / Storybook:** при включённом Storybook Metro — раздел Schedule → Structured Metrics; сравнить визуально
  * loading / error / empty / два игрока / save disabled / saving / success / полосы подсказок (applicable, matches, наблюдения↔quick, Hockey ID conflict).
  */
 
@@ -38,7 +38,7 @@ function player(
       tactical: {},
       ofpQualitative: {},
       physical: {},
-      behavioral,
+      behavioral: behavioral as Record<string, unknown>,
       observation: {},
       voiceMeta: {},
     },
@@ -271,7 +271,13 @@ export function fixtureSaveError(): StructuredMetricsFoundationSectionProps {
 /** Конфликт наблюдений (live) и быстрой оценки у Беты. */
 export function fixtureSuggestionVoiceVsQuick(): StructuredMetricsFoundationSectionProps {
   const voice: VoiceBehavioralByPlayer = new Map([
-    [SM_FIXTURE_PLAYER_BETA, { focus: 2, discipline: 3 }],
+    [
+      SM_FIXTURE_PLAYER_BETA,
+      {
+        playerId: SM_FIXTURE_PLAYER_BETA,
+        behavioral: { focus: 2, discipline: 3 },
+      },
+    ],
   ]);
   const evaluations: TrainingEvaluation[] = [
     {

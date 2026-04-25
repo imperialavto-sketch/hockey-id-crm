@@ -1,3 +1,8 @@
+/**
+ * Dashboard-блок продукта «Арена» (сигналы по игрокам).
+ * Имена CoachMark* / coachMark* — stable legacy technical naming; не переименовывать без отдельного migration pass.
+ */
+
 import React, { useState, useCallback } from "react";
 import {
   StyleSheet,
@@ -49,7 +54,7 @@ function CoachMarkBlockContent({
           Пока нет сигналов
         </Text>
         <Text style={cardStyles.emptyText}>
-          Запишите тренировку — Coach Mark соберёт данные
+          Запишите тренировку — Арена соберёт данные
         </Text>
       </SectionCard>
     );

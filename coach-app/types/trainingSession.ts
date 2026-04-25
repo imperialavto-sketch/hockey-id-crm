@@ -23,4 +23,6 @@ export interface CoachTrainingSession {
   group: { id: string; name: string; level: number };
   coachId: string;
   coach: { id: string; firstName: string; lastName: string };
+  /** Optional focus line from Arena / planning (when API includes it). */
+  arenaNextTrainingFocus?: string | null;
 }

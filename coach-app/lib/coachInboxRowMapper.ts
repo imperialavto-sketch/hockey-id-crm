@@ -93,7 +93,6 @@ export function mapCoachInboxApiItemToCard(
     metadata: metadata || undefined,
     preview: resolveCoachInboxListPreview(api, type),
     time: formatTime(api.lastMessageAt),
-    lastActivityAtIso: api.lastMessageAt,
     unreadCount: api.unreadCount ?? 0,
     awaitingParentReply,
     needsCoachReaction,

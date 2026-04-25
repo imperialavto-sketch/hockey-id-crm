@@ -712,7 +712,7 @@ function mapDraft(row: ApiDraftRow): LiveTrainingObservationDraft {
 }
 
 function pickSessionIdFrom409(e: ApiRequestError): string | undefined {
-  const p = e.payload;
+  const p = e.body;
   if (p && typeof p === "object" && "sessionId" in p) {
     const s = (p as { sessionId?: unknown }).sessionId;
     if (typeof s === "string" && s.trim()) return s.trim();
@@ -1530,6 +1530,9 @@ type ReportDraftApiResponse = {
   publishedFinalReport?: LiveTrainingPublishedFinalReportRead | null;
   externalCoachRecommendations?: unknown;
   arenaNextTrainingFocusApply?: unknown;
+  plannedFocusSnapshot?: unknown;
+  /** @deprecated — alias of `plannedFocusSnapshot` on server */
+  plannedTrainingFocus?: unknown;
 };
 
 function mapExternalCoachRecommendations(raw: unknown): LiveTrainingReportDraftPayload["externalCoachRecommendations"] {
@@ -1569,6 +1572,11 @@ function defaultArenaNextTrainingFocusApply(): LiveTrainingReportDraftPayload["a
     targetTrainingSessionId: null,
     appliedAt: null,
   };
+}
+
+function mapPlannedFocusSnapshot(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  return raw.trim();
 }
 
 function mapArenaNextTrainingFocusApply(
@@ -1780,12 +1788,17 @@ function mapReportDraftApiResponseToPayload(raw: ReportDraftApiResponse, session
   const publishedFinalReport = mapPublishedFinalReportRead(raw.publishedFinalReport);
   const externalCoachRecommendations = mapExternalCoachRecommendations(raw.externalCoachRecommendations);
   const arenaNextTrainingFocusApply = mapArenaNextTrainingFocusApply(raw.arenaNextTrainingFocusApply);
+  const plannedFocusSnapshot = mapPlannedFocusSnapshot(raw.plannedFocusSnapshot);
+  // Legacy key: mirror canonical snapshot only (server sends both; avoid TrainingSession semantics).
+  const plannedTrainingFocus = plannedFocusSnapshot;
   return {
     reportDraft,
     audienceViews,
     publishedFinalReport,
     externalCoachRecommendations,
     arenaNextTrainingFocusApply,
+    plannedFocusSnapshot,
+    plannedTrainingFocus,
   };
 }
 
@@ -2063,6 +2076,121 @@ export async function postLiveTrainingSessionEvent(
       body: JSON.stringify(body),
     }
   );
+}
+
+/** Как в `resolvePlayerFromSpeech` на сервере — для сужения списка кандидатов при ambiguous. */
+export type LiveTrainingSpeechResolutionPayload =
+  | { status: "not_found" }
+  | { status: "ambiguous"; tier: "lastName" | "firstName" | "jerseyNumber" }
+  | { status: "ok"; playerId: string };
+
+export type LiveTrainingEventNeedsClarificationParsed = {
+  reason: string;
+  speechResolution?: LiveTrainingSpeechResolutionPayload;
+};
+
+/**
+ * Разбор тела 422 от POST .../events (`error` + поля из `arenaRuntimeOutcomeToHttpBody`).
+ * Не бросает — возвращает null, если это не needs_clarification.
+ */
+export function parseLiveTrainingEventNeedsClarification422Body(
+  body: unknown
+): LiveTrainingEventNeedsClarificationParsed | null {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+  const o = body as Record<string, unknown>;
+  if (o.arenaOutcome !== "needs_clarification") return null;
+  const reason =
+    typeof o.reason === "string" && o.reason.trim()
+      ? o.reason.trim()
+      : "needs_clarification";
+  const sr = o.speechResolution;
+  if (sr == null || typeof sr !== "object" || Array.isArray(sr)) {
+    return { reason };
+  }
+  const s = sr as Record<string, unknown>;
+  const st = s.status;
+  if (st === "not_found") {
+    return { reason, speechResolution: { status: "not_found" } };
+  }
+  if (st === "ambiguous") {
+    const tier = s.tier;
+    if (tier === "lastName" || tier === "firstName" || tier === "jerseyNumber") {
+      return { reason, speechResolution: { status: "ambiguous", tier } };
+    }
+    return { reason };
+  }
+  if (st === "ok" && typeof s.playerId === "string" && s.playerId.trim()) {
+    return { reason, speechResolution: { status: "ok", playerId: s.playerId.trim() } };
+  }
+  return { reason };
+}
+
+function normalizeArenaPlayerSpeechTextCoach(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitCoachRosterDisplayName(name: string): { firstName: string; lastName: string } {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return { firstName: parts[0]!, lastName: parts[parts.length - 1]! };
+  }
+  const one = parts[0] ?? "";
+  return { firstName: one, lastName: one };
+}
+
+/**
+ * Кандидаты для inline-уточнения: при ambiguous — эвристика как на сервере по display name;
+ * иначе весь roster. На сервере для ambiguous по номеру нужен jerseyNumber в БД — в приложении
+ * часто нет номера, тогда показываем весь состав.
+ */
+export function buildLiveTrainingClarificationRosterCandidates(
+  roster: Array<{ id: string; name: string }>,
+  phrase: string,
+  speechResolution: LiveTrainingSpeechResolutionPayload | undefined
+): Array<{ id: string; name: string }> {
+  if (roster.length === 0) return [];
+  const normText = normalizeArenaPlayerSpeechTextCoach(phrase);
+  if (!normText) return [...roster];
+
+  if (!speechResolution || speechResolution.status === "not_found") {
+    return [...roster];
+  }
+
+  if (speechResolution.status === "ok") {
+    const row = roster.find((r) => r.id === speechResolution.playerId);
+    return row ? [row] : [...roster];
+  }
+
+  if (speechResolution.status === "ambiguous") {
+    if (speechResolution.tier === "lastName") {
+      const hits = roster.filter((p) => {
+        const { lastName } = splitCoachRosterDisplayName(p.name);
+        const ln = normalizeArenaPlayerSpeechTextCoach(lastName);
+        return ln.length >= 2 && normText.includes(ln);
+      });
+      return hits.length > 0 ? hits : [...roster];
+    }
+    if (speechResolution.tier === "firstName") {
+      const hits = roster.filter((p) => {
+        const { firstName } = splitCoachRosterDisplayName(p.name);
+        const fn = normalizeArenaPlayerSpeechTextCoach(firstName);
+        return fn.length >= 2 && normText.includes(fn);
+      });
+      return hits.length > 0 ? hits : [...roster];
+    }
+    /* ambiguous по номеру: в coach roster часто нет jersey — показываем весь состав */
+    if (speechResolution.tier === "jerseyNumber") {
+      return [...roster];
+    }
+  }
+
+  return [...roster];
 }
 
 /** PHASE 15: read-only next steps по итогам сессии. */

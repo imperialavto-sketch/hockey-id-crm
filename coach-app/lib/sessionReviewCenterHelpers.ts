@@ -7,7 +7,8 @@ import type { CompletedTrainingSession } from "@/models/sessionObservation";
 import type { PersistedCoachInputState } from "./coachInputStorage";
 import { loadCoachInputState } from "./coachInputStorage";
 import { groupObservationsByPlayer } from "./sessionReviewHelpers";
-import { getCoachSessionReview } from "@/services/coachSessionLiveService";
+import { getLiveTrainingReviewState } from "@/services/liveTrainingService";
+import type { LiveTrainingReviewState } from "@/types/liveTraining";
 
 export interface SessionPlayerSummary {
   playerId: string;
@@ -113,53 +114,72 @@ export function buildSessionReviewSummary(
   };
 }
 
-function mapApiReviewToSummary(
-  api: NonNullable<Awaited<ReturnType<typeof getCoachSessionReview>>>,
+function buildPlayerSummariesFromDraftCounts(
+  entries: Array<{ playerId: string; playerName: string; draftCount: number }>
+): SessionPlayerSummary[] {
+  return entries.map(({ playerId, playerName, draftCount: count }) => {
+    const hasInsight = count >= 3;
+    const hasReport = hasInsight;
+    const hasParentDraft = hasInsight;
+    let statusLabel: SessionPlayerSummary["statusLabel"] = null;
+    if (hasParentDraft) statusLabel = "Готово сообщение";
+    else if (hasReport) statusLabel = "Готов отчёт";
+    else if (hasInsight) statusLabel = "Есть вывод";
+    return {
+      playerId,
+      playerName,
+      observationCountInSession: count,
+      hasInsight,
+      hasReport,
+      hasParentDraft,
+      statusLabel,
+    };
+  });
+}
+
+function mapLiveReviewStateToSummary(
+  live: LiveTrainingReviewState,
   localSession: CompletedTrainingSession,
   localSummary: SessionReviewSummary
 ): SessionReviewSummary {
-  const obsCount = api.observationsCount ?? localSession.observations.length;
-  const playersCount = api.playersCount ?? new Set(localSession.observations.map((o) => o.playerId)).size;
+  const top = live.preConfirmSummary.topDraftPlayers ?? [];
+  let players: SessionPlayerSummary[];
 
-  const recent = api.recentObservations ?? [];
-  const byPlayer = new Map<string, { name: string; count: number }>();
-  for (const o of recent) {
-    const cur = byPlayer.get(o.playerId);
-    if (cur) {
-      cur.count++;
-    } else {
-      byPlayer.set(o.playerId, { name: o.playerName ?? "Игрок", count: 1 });
+  if (top.length > 0) {
+    players = buildPlayerSummariesFromDraftCounts(top);
+  } else {
+    const byPlayer = new Map<string, { name: string; count: number }>();
+    for (const d of live.drafts) {
+      const pid = d.playerId;
+      if (!pid) continue;
+      const name = d.playerNameRaw?.trim() || "Игрок";
+      const cur = byPlayer.get(pid);
+      if (cur) cur.count++;
+      else byPlayer.set(pid, { name, count: 1 });
     }
-  }
-
-  const players: SessionPlayerSummary[] = Array.from(byPlayer.entries()).map(
-    ([playerId, { name, count }]) => {
-      const hasInsight = count >= 3;
-      const hasReport = hasInsight;
-      const hasParentDraft = hasInsight;
-      let statusLabel: SessionPlayerSummary["statusLabel"] = null;
-      if (hasParentDraft) statusLabel = "Готово сообщение";
-      else if (hasReport) statusLabel = "Готов отчёт";
-      else if (hasInsight) statusLabel = "Есть вывод";
-      return {
+    players = buildPlayerSummariesFromDraftCounts(
+      Array.from(byPlayer.entries()).map(([playerId, { name, count }]) => ({
         playerId,
         playerName: name,
-        observationCountInSession: count,
-        hasInsight,
-        hasReport,
-        hasParentDraft,
-        statusLabel,
-      };
-    }
-  );
+        draftCount: count,
+      }))
+    );
+  }
+
+  const observationCount =
+    live.reviewSummary.totalActiveDraftCount ?? live.drafts.length ?? localSession.observations.length;
+  const uniquePlayers =
+    players.length > 0
+      ? players.length
+      : Math.max(1, live.preConfirmSummary.playersWithDraftsCount || 0);
 
   const reportsReady = players.filter((p) => p.hasReport).length;
   const draftsReady = players.filter((p) => p.hasParentDraft).length;
 
   return {
     session: localSession,
-    observationCount: obsCount,
-    uniquePlayers: playersCount,
+    observationCount,
+    uniquePlayers,
     reportsReady,
     draftsReady,
     players: players.length > 0 ? players : localSummary.players,
@@ -173,8 +193,13 @@ export async function loadSessionReviewSummary(): Promise<SessionReviewSummary> 
   const session = getLastCompletedSession(state);
   if (!session?.id) return local;
 
-  const api = await getCoachSessionReview(session.id);
-  if (!api) return local;
+  let live: LiveTrainingReviewState | null;
+  try {
+    live = await getLiveTrainingReviewState(session.id);
+  } catch {
+    return local;
+  }
+  if (!live) return local;
 
-  return mapApiReviewToSummary(api, session, local);
+  return mapLiveReviewStateToSummary(live, session, local);
 }
