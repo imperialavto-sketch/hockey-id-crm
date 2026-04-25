@@ -29,7 +29,7 @@ npx expo start --web
    - `eas build --profile preview` — для внутреннего теста (APK / internal)
    - `eas build --profile production` — для релиза (store)
 
-Без `EXPO_PUBLIC_API_URL` приложение использует fallback: `https://hockey-server-api.onrender.com` (legacy).
+Без `EXPO_PUBLIC_API_URL`: в **production** сборка падает при старте (требуется явный URL Next CRM). В **dev** по умолчанию используется `http://localhost:3000` (см. `config/api.ts`), либо `EXPO_PUBLIC_DEVICE_API_URL` на устройстве.
 
 ## Структура
 
