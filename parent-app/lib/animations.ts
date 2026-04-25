@@ -14,3 +14,17 @@ export function screenReveal(delayMs: number): EntryOrExitLayoutType {
   const anim = FadeInUp.delay(delayMs).duration(FADE_DUR).springify().damping(18);
   return anim as unknown as EntryOrExitLayoutType;
 }
+
+/**
+ * List row stagger (inbox, notification lists). Matches flagship motion vocabulary.
+ */
+export function listItemReveal(
+  index: number,
+  baseDelayMs = 0
+): EntryOrExitLayoutType {
+  const anim = FadeInUp.delay(baseDelayMs + index * STAGGER)
+    .duration(FADE_DUR)
+    .springify()
+    .damping(18);
+  return anim as unknown as EntryOrExitLayoutType;
+}

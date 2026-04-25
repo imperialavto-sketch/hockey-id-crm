@@ -20,7 +20,7 @@ export function useParentInbox() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  const [coachMarkCtx, setCoachMarkCtx] = useState<{
+  const [arenaCompanionCtx, setArenaCompanionCtx] = useState<{
     playerId?: string | null;
     playerName?: string | null;
   } | null>(null);
@@ -40,14 +40,14 @@ export function useParentInbox() {
         getConversations(user.id),
         getTeamAnnouncementsInboxSummary(user.id),
       ]);
-      const cmCtx = await getCoachMarkContext();
+      const savedArenaCtx = await getCoachMarkContext();
       if (!mountedRef.current) return;
       const nextConversations = Array.isArray(data) ? data : [];
-      setCoachMarkCtx(cmCtx);
+      setArenaCompanionCtx(savedArenaCtx);
       setConversations(nextConversations);
       setTeamSummary(team);
       syncMessagesAttentionFromInbox(
-        buildParentInboxList(user.id, nextConversations, team, cmCtx)
+        buildParentInboxList(user.id, nextConversations, team, savedArenaCtx)
       );
     } catch {
       if (mountedRef.current) {
@@ -73,9 +73,9 @@ export function useParentInbox() {
   const items = useMemo<ParentInboxItem[]>(
     () =>
       user?.id
-        ? buildParentInboxList(user.id, conversations, teamSummary, coachMarkCtx)
+        ? buildParentInboxList(user.id, conversations, teamSummary, arenaCompanionCtx)
         : [],
-    [user?.id, conversations, teamSummary, coachMarkCtx]
+    [user?.id, conversations, teamSummary, arenaCompanionCtx]
   );
 
   const onRefresh = useCallback(() => {

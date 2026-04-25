@@ -10,6 +10,16 @@ export const PLAYER_PROFILE_COPY = {
   materialsOpenHint: "Откройте карточку целиком",
   materialsFootHint:
     "После следующих занятий загляните снова — появятся новые материалы.",
+  childDevelopmentTitle: "Развитие",
+  childDevelopmentSubtitle:
+    "Коротко и спокойно — без оценок и сравнения с другими.",
+  engagementTitle: "Рядом с тренировками",
+  engagementSubtitle: "Поддержка и ориентиры после занятий.",
+  progressNarrativeTitle: "Как складывается прогресс",
+  progressNarrativeSubtitle:
+    "Связная история по последним тренировкам — без баллов и гонки.",
+  progressNarrativeContinuingLabel: "Продолжаем наращивать",
+  progressNarrativeStabilizingLabel: "Стабильная зона",
   coachMaterialsSubtitle:
     "Отчёты, задачи и личные сообщения тренера после занятий. Сверху — самые свежие.",
   actionsEyebrow: "Действия",

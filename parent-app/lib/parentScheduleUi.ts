@@ -18,8 +18,8 @@ export const SCHEDULE_COPY = {
     "Когда тренер добавит тренировки и игры, они появятся здесь.",
   sectionUpcoming: "Ближайшие",
   sectionWeek: "Вся неделя",
-  coachMarkTitle: "Coach Mark",
-  coachMarkDescription:
+  arenaCompanionTitle: "Арена",
+  arenaCompanionDescription:
     "Персональный план на неделю с учётом вашего расписания — в чате",
 } as const;
 

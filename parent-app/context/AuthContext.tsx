@@ -35,8 +35,8 @@ interface AuthContextValue {
    */
   hasMarketplaceApiAuth: boolean;
   isLoading: boolean;
-  /** JWT login: store token and parent from backend. */
-  login: (token: string, parent: { id: number; email: string }) => Promise<void>;
+  /** Email/password login: store Bearer token and parent identity (Parent.id is string cuid). */
+  login: (token: string, parent: { id: string | number; email: string }) => Promise<void>;
   logout: () => Promise<void>;
   requestCode: (phone: string) => Promise<void>;
   verifyCode: (phone: string, code: string) => Promise<void>;
@@ -44,7 +44,7 @@ interface AuthContextValue {
   resetAllAuthStateForDev?: () => Promise<void>;
 }
 
-function parentToUser(parent: { id: number; email: string }): ParentUser {
+function parentToUser(parent: { id: string | number; email: string }): ParentUser {
   return {
     id: String(parent.id),
     name: parent.email || "Родитель",
@@ -193,7 +193,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => setUnauthorizedHandler(null);
   }, [clearAuthState]);
 
-  const login = useCallback(async (newToken: string, parent: { id: number; email: string }) => {
+  const login = useCallback(async (newToken: string, parent: { id: string | number; email: string }) => {
     await persistAuthSession(parentToUser(parent), newToken);
   }, [persistAuthSession]);
 

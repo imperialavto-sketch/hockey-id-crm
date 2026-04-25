@@ -1,5 +1,7 @@
 import type { Href } from "expo-router";
-import { COACH_MARK_ID } from "@/services/chatService";
+import { ARENA_COMPANION_CHAT_ID } from "@/services/chatService";
+
+/** Route helpers keep legacy identifiers; user-facing name in app: «Арена» / «AI-компаньон Арена». */
 
 export type CoachMarkRouteParams = {
   playerId?: string | null;
@@ -18,7 +20,7 @@ function pushIfPresent(q: URLSearchParams, key: string, value?: string | null) {
   if (v) q.set(key, v);
 }
 
-/** Единый deep link в чат Coach Mark с контекстом игрока. */
+/** Единый deep link в чат компаньона Арены с контекстом игрока. */
 export function hrefCoachMarkChat(params?: CoachMarkRouteParams): Href {
   const q = new URLSearchParams();
   pushIfPresent(q, "playerId", params?.playerId);
@@ -26,10 +28,10 @@ export function hrefCoachMarkChat(params?: CoachMarkRouteParams): Href {
   pushIfPresent(q, "teamId", params?.teamId);
   pushIfPresent(q, "initialMessage", params?.initialMessage);
   const s = q.toString();
-  return `/chat/${COACH_MARK_ID}${s ? `?${s}` : ""}` as Href;
+  return `/chat/${ARENA_COMPANION_CHAT_ID}${s ? `?${s}` : ""}` as Href;
 }
 
-/** Единый deep link в Hub Coach Mark с контекстом игрока. */
+/** Единый deep link в хаб Арены (компаньон) с контекстом игрока. */
 export function hrefCoachMarkHub(params?: {
   playerId?: string | null;
   playerName?: string | null;

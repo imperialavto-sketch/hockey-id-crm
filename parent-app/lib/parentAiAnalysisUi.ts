@@ -21,5 +21,5 @@ export const AI_ANALYSIS_COPY = {
   heroSubtitle:
     "На основе данных и статистики — сильные стороны, зоны роста и шаги для развития.",
   summaryLead: "Главный вывод",
-  coachMarkCta: "Обсудить выводы с Coach Mark",
+  arenaCompanionCta: "Обсудить выводы в Арене",
 } as const;
