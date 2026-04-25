@@ -1,6 +1,6 @@
 /**
  * GET /api/video-analysis/:id
- * Returns { request, result }. 404 if not found.
+ * Legacy stub (dev). Production: GET /api/parent/mobile/player/:playerId/video-analysis/:analysisId
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -13,6 +13,17 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json(
+      {
+        error:
+          "Этот endpoint отключён. Чтение анализа: GET /api/parent/mobile/player/:playerId/video-analysis/:analysisId",
+        code: "VIDEO_ANALYSIS_USE_PARENT_MOBILE_API",
+      },
+      { status: 410 }
+    );
+  }
+
   const { id } = await params;
   if (!id) {
     return NextResponse.json({ error: "ID обязателен" }, { status: 400 });

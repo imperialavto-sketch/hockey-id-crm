@@ -1,6 +1,6 @@
 /**
  * POST /api/video-analysis/:id/retry
- * Stub: returns { success: true }. Optionally updates request in store.
+ * Legacy stub (dev). Production: POST .../parent/mobile/player/:playerId/video-analysis/:analysisId/retry
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -14,6 +14,17 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json(
+      {
+        error:
+          "Этот endpoint отключён. Повтор анализа: POST /api/parent/mobile/player/:playerId/video-analysis/:analysisId/retry",
+        code: "VIDEO_ANALYSIS_USE_PARENT_MOBILE_API",
+      },
+      { status: 410 }
+    );
+  }
+
   const { id } = await params;
   const _parentId = req.headers.get(PARENT_ID_HEADER)?.trim(); // optional: for future audit
 

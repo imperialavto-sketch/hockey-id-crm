@@ -1,15 +1,21 @@
 /**
  * POST /api/video/upload
- * Accept multipart/form-data (field: video). No file persistence yet.
- * Returns mock-compatible { videoId: "vid_<timestamp>" }.
- * Reads x-parent-id header if provided; does not require auth for stub.
+ * Legacy stub (dev). Production: use POST /api/parent/mobile/player/:playerId/video-analysis (multipart).
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { PARENT_ID_HEADER } from "@/lib/api-auth";
 
 export async function POST(req: NextRequest) {
-  const parentId = req.headers.get(PARENT_ID_HEADER)?.trim();
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json(
+      {
+        error:
+          "Этот endpoint отключён. Загрузка видео: POST /api/parent/mobile/player/:playerId/video-analysis",
+        code: "VIDEO_UPLOAD_USE_PARENT_MOBILE_API",
+      },
+      { status: 410 }
+    );
+  }
 
   try {
     const contentType = req.headers.get("content-type") ?? "";
@@ -22,7 +28,6 @@ export async function POST(req: NextRequest) {
 
     const formData = await req.formData();
     const file = formData.get("video");
-    const playerId = formData.get("playerId");
 
     // Optional: validate file exists; for stub we don't persist, so just consume the body
     if (file instanceof Blob) {
