@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/api-rbac";
 import { checkPlayerAccess } from "@/lib/data-scope";
+import { getProfessionalStatsPayload } from "@/lib/player-professional-stats-data";
 
 export async function GET(
   req: NextRequest,
@@ -26,58 +27,8 @@ export async function GET(
     const accessRes = checkPlayerAccess(user!, { ...player, team: player.team ?? undefined });
     if (accessRes) return accessRes;
 
-    const [grouped, recentBehaviors, skillProgress, latestIndex, latestSnapshot] =
-      await Promise.all([
-        prisma.gameEvent.groupBy({
-          by: ["type"],
-          where: { playerId: id },
-          _count: { _all: true },
-        }),
-        prisma.behaviorLog.findMany({
-          where: { playerId: id },
-          orderBy: { createdAt: "desc" },
-          take: 12,
-          select: {
-            type: true,
-            intensity: true,
-            note: true,
-            createdAt: true,
-          },
-        }),
-        prisma.skillProgress.findMany({
-          where: { playerId: id },
-          orderBy: { measuredAt: "desc" },
-          take: 15,
-          select: {
-            skill: true,
-            status: true,
-            trend: true,
-            note: true,
-            measuredAt: true,
-          },
-        }),
-        prisma.playerIndex.findFirst({
-          where: { playerId: id },
-          orderBy: { calculatedAt: "desc" },
-        }),
-        prisma.playerStatsSnapshot.findFirst({
-          where: { playerId: id },
-          orderBy: { periodStart: "desc" },
-        }),
-      ]);
-
-    const gameEventsByType: Record<string, number> = {};
-    for (const row of grouped) {
-      gameEventsByType[row.type] = row._count._all;
-    }
-
-    return NextResponse.json({
-      gameEventsByType,
-      recentBehaviors,
-      skillProgress,
-      latestIndex,
-      latestSnapshot,
-    });
+    const payload = await getProfessionalStatsPayload(id);
+    return NextResponse.json(payload);
   } catch (error) {
     console.error("GET /api/players/[id]/professional-stats failed:", error);
     return NextResponse.json(
