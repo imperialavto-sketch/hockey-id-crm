@@ -14,7 +14,7 @@
 
 **Минимум для preview:** `EXPO_PUBLIC_API_URL` — задать в EAS Secrets или в профиле build env.
 
-**Chat / Coach Mark AI:** hockey-server имеет `POST /api/chat/ai/message`. Требуется `OPENAI_API_KEY` в `.env` hockey-server (см. `hockey-server/.env.example`). Без ключа — 503 и сообщение «AI-ассистент временно недоступен».
+**Chat / Coach Mark AI:** parent-app вызывает `POST /api/chat/ai/message` на **том же** `EXPO_PUBLIC_API_URL` (Next CRM). Нужен `OPENAI_API_KEY` в окружении **процесса Next** (см. корневой `.env.example`). Отдельный hockey-server для этого сценария не требуется. Без ключа — 503.
 
 ---
 
@@ -27,7 +27,7 @@
 
 2. **EXPO_PUBLIC_API_URL:** Задан и указывает на доступный backend (HTTPS для production).
 
-3. **Backend:** hockey-server (или другой backend) задеплоен и отвечает на `/api/parent/mobile/auth/request-code`, `/verify`, `/players` и т.д.
+3. **Backend:** задеплоен **Next CRM** с `src/app/api/*` и отвечает на нужные parent-маршруты (в т.ч. `/api/parent/mobile/auth/*`, `/api/me/players`, …) по тому URL, что в `EXPO_PUBLIC_API_URL`.
 
 4. **EAS CLI:** `eas build` доступен (`npm i -g eas-cli` или `npx eas-cli`).
 

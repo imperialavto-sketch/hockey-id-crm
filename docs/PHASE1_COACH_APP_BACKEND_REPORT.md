@@ -144,7 +144,7 @@
    - [ ] Save note: succeeds; returns to detail
 
 6. **Session Capture (dev)**
-   - [ ] Visit Players tab first → Session Capture (dev/coach-input) uses cached players
+   - [ ] Visit Players tab first → Session Capture (`/coach-input`) uses cached players
    - [ ] Without visiting Players → falls back to mock players
 
 7. **Error states**

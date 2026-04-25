@@ -96,7 +96,7 @@
 
 - Use **Next.js CRM** as the coach-app auth backend.
 - Set `EXPO_PUBLIC_API_URL` to the Next.js CRM base URL.
-- hockey-server remains for parent-app; coach-app does not use it for auth.
+- **Phase 1 (boundary freeze):** parent-app also targets the **same** Next.js CRM origin (`parent-app/config/api.ts`). **`hockey-server/`** is a parallel/legacy service, not the canonical Phase 1 backend for either mobile app; coach-app does not use it for auth.
 
 ---
 

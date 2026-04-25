@@ -68,7 +68,7 @@ Operational coach live training for **school Arena** is **`LiveTrainingSession`*
 | `coach-app/hooks/useArenaVoiceAssistant.ts` | Types from `liveTrainingService` | **Canonical** | **Active** | |
 | `coach-app/lib/arena*.ts`, `liveTraining*ViewModel.ts` | Arena intelligence / view models | **Canonical** | **Active** | |
 | `coach-app/app/session-review.tsx` | Session review center | **Canonical** | **Active** | Comment: no coach-sessions review API. |
-| `coach-app/app/dev/coach-input.tsx` | Dev input | **Canonical** routes only (constants) | **Dev** | States former CoachSession UI removed. |
+| `coach-app/app/coach-input.tsx` | Session capture (manual / structured) | **Canonical** routes only (constants) | **Supporting** | Not Arena live agent; separate from `live-training/*`. |
 | `parent-app/...` + `playerService` / parent APIs | Parent player live summary UI | **Canonical** (server-composed) | **Active** | Reads **server** parent summary built from **`LiveTrainingSession`** paths (not CoachSession contour). |
 
 ---

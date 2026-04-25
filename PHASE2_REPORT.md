@@ -29,7 +29,7 @@
 ### Coach-App
 
 - `coach-app/services/coachSessionLiveService.ts` — `CreateObservationPayload` updated (playerName, optional teamId); POST observations only when session is server-backed
-- `coach-app/app/dev/coach-input.tsx` — call `createCoachObservation` only when `!sessionId.startsWith("session_local_")`, pass `playerName`
+- `coach-app/app/coach-input.tsx` — call `createCoachObservation` only when `!sessionId.startsWith("session_local_")`, pass `playerName`
 
 ## 5. LIVE SESSION MODEL USED
 

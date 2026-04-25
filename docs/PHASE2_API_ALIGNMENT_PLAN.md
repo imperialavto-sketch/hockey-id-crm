@@ -11,7 +11,7 @@
 ### Clients
 | App | Default Backend | Config |
 |-----|-----------------|--------|
-| **parent-app** | hockey-server (`LIVE_BACKEND_URL`) | `parent-app/config/api.ts` → `EXPO_PUBLIC_API_URL` or fallback to Render |
+| **parent-app** | **Next.js CRM** (целевой) через `EXPO_PUBLIC_API_URL` | `parent-app/config/api.ts` — prod без URL → error; dev → `localhost:3000` или `EXPO_PUBLIC_DEVICE_API_URL` |
 | **coach-app** | Next.js CRM | `coach-app/lib/config.ts` → `EXPO_PUBLIC_API_URL` or localhost:3000 |
 
 ### Schedule Models (3 разные сущности)

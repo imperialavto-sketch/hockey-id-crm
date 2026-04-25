@@ -22,6 +22,18 @@ These subsystems are the **intended long-term center of gravity** for Hockey ID 
 
 ## 2. SSOT DECISIONS (freeze)
 
+### 2.0 Canonical HTTP backend & Prisma (boundary freeze)
+
+| Topic | **SSOT / rule** |
+|-------|------------------|
+| **Canonical product backend** | Root **Next.js** app in this repository (same process as `npm run dev` at repo root). HTTP surface: **`src/app/api/**`**. |
+| **Canonical server-side logic** | **`src/lib/**`**. |
+| **Canonical Prisma schema & migrations** | **`prisma/schema.prisma`** and **`prisma/migrations/**`** at repository root. |
+| **Legacy Express `hockey-server`** | **Removed from this repository** (was a parallel stack with its own Prisma tree). **Not** a target for **coach-app** or **parent-app**; older docs that mention the in-tree copy are historical. |
+| **Coach-app + parent-app** | Both must use **one and the same** Next CRM **origin** per environment (`EXPO_PUBLIC_API_URL` / device override in `parent-app/config/api.ts`; `EXPO_PUBLIC_API_URL` in coach-app). |
+
+**Freeze rule:** Default mobile and CRM integration work assumes **a single Next origin** aligned with this repo’s root app, unless a deliberate program explicitly documents a different split.
+
 ### 2.1 Training domain
 
 | Topic | **SSOT** | Notes |
@@ -44,7 +56,7 @@ These subsystems are the **intended long-term center of gravity** for Hockey ID 
 
 - Prisma **`CoachSession`** (+ observations / snapshots / parent drafts).
 - HTTP **`/api/coach/sessions/*`** (e.g. `start`, `active`, `sync`, observations).
-- **`coach-app/services/coachSessionLiveService.ts`** — still referenced from **`resumeSessionHelpers.ts`**, **`sessionReviewCenterHelpers.ts`**, **`app/dev/coach-input.tsx`**.
+- **`coach-app/services/coachSessionLiveService.ts`** — still referenced from **`resumeSessionHelpers.ts`**, **`sessionReviewCenterHelpers.ts`**, **`app/coach-input.tsx`**.
 
 **Freeze rule:** **DO NOT EXPAND** `CoachSession` / `/api/coach/sessions/*` as if it were the same product object as `LiveTrainingSession`. Any new live-training capability should go through **`/api/live-training/sessions`** unless Phase 1 explicitly chooses consolidation.
 
@@ -85,6 +97,7 @@ Two routes coexist:
 | **CRM `ScheduleDetailPage` + related** | Still loads **`/api/legacy/trainings/:id`** for some paths (see file marker). |
 | **`Player.parentId`** | Legacy/transitional single-parent pointer on `Player`. |
 | **`coachSessionLiveService` / `CoachSession`** | Parallel “session capture” stack; not `LiveTrainingSession` SSOT. |
+| **Legacy Express `hockey-server` (historical)** | Was parallel Express + separate Prisma; **removed from repo**. Never Phase 1 `EXPO_PUBLIC_API_URL` for coach-app or parent-app (see §2.0). |
 
 ---
 
@@ -114,7 +127,7 @@ Two routes coexist:
 1. **Per-route precedence:** For each `parentId`-scoped API, does code filter by **`ParentPlayer`**, **`Player.parentId`**, or both? (Inventory + tests.)
 2. **CRM schedule:** Full list of CRM pages/components still calling **`/api/legacy/trainings`** vs **`TrainingSession`** APIs.
 3. **`Message` vs `ChatMessage`:** Whether `Message` model is fully superseded or still written/read.
-4. **`hockey-server/` package:** Deployment relevance vs root Next app (**UNCERTAIN** from repo alone).
+4. **Legacy separate API hosts:** If any environment still ran the old Express stack, that is **ops-owned** and outside this repo; coach-app/parent-app base URL remains the root Next app (§2.0).
 5. **Coach-app residual `coachSessionLiveService` callers:** Whether `resumeSessionHelpers` / `sessionReviewCenterHelpers` can be switched to `liveTrainingService` only in a later phase (behavior change — not now).
 
 ---

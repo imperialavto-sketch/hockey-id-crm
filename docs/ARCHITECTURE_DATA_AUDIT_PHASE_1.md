@@ -99,7 +99,7 @@
 - `src/app/api/coach/players/[id]/share-report/route.ts`
 - `src/app/api/coach/actions/route.ts` (reads `coachSessionObservation`)
 
-**Coach-app:** `coach-app/services/coachSessionLiveService.ts`, `coachSessionSyncService.ts`; **`coach-app/lib/resumeSessionHelpers.ts`**, **`sessionReviewCenterHelpers.ts`**; **`coach-app/app/dev/coach-input.tsx`**.
+**Coach-app:** `coach-app/services/coachSessionLiveService.ts`, `coachSessionSyncService.ts`; **`coach-app/lib/resumeSessionHelpers.ts`**, **`sessionReviewCenterHelpers.ts`**; **`coach-app/app/coach-input.tsx`**.
 
 ### C. Depth of duplication
 
