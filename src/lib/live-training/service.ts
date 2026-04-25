@@ -2,8 +2,9 @@
  * Live Training — серверная логика и Prisma (PHASE 2 persistence).
  */
 
-import { Prisma, type LiveTrainingMode, type LiveTrainingSessionStatus } from "@prisma/client";
+import { Prisma, type LiveTrainingMode, LiveTrainingSessionStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { findNextScheduledTrainingSlotForLiveTeam } from "./find-next-scheduled-training-slot-for-live-team";
 import type { ApiUser } from "@/lib/api-auth";
 import { canAccessTeam } from "@/lib/data-scope";
 import { canUserAccessSessionTeam } from "@/lib/training-session-helpers";
@@ -13,6 +14,12 @@ import {
   createLiveTrainingPlayerSignalsInTransaction,
   getLiveTrainingSessionAnalyticsSummary,
 } from "./live-training-player-signals";
+import {
+  getLiveTrainingSessionGroupContextSignalRollup,
+  getLiveTrainingSessionGroupContextStampDiagnostic,
+  type LiveTrainingSessionGroupContextSignalRollupDto,
+  type LiveTrainingSessionGroupContextStampDiagnosticDto,
+} from "./live-training-session-group-context-signal-rollup";
 
 export { listLiveTrainingPlayerSignalsForPlayer } from "./live-training-player-signals";
 import {
@@ -32,6 +39,7 @@ import {
   type LiveTrainingSessionReportDraftDto,
   type LiveTrainingSessionReportDraftSummary,
 } from "./live-training-session-report-draft";
+import { upsertArenaPlannedVsObservedLiveFactForSession } from "./arena-planned-vs-observed-live-fact";
 import type { SessionMeaning } from "./session-meaning";
 import { augmentCoachNarrativeWithSessionMeaning } from "./session-meaning-report-merge";
 import { parsePersistedSessionMeaning } from "./session-meaning";
@@ -111,6 +119,7 @@ import {
   type LiveTrainingPriorityAlignmentReviewDto,
 } from "./liveTrainingPriorityReviewScorer";
 import { buildLiveTrainingQualityFrame } from "./liveTrainingQualityFrame";
+import { loadArenaCrmSupercoreOperationalFocusLinesForLiveSession } from "@/lib/arena/crm/arena-crm-supercore-operational-focus";
 
 export { LiveTrainingHttpError } from "./http-error";
 export type { LiveTrainingDraftCorrectionSuggestionDto } from "./live-training-draft-correction-suggestions";
@@ -192,6 +201,14 @@ export type LiveTrainingSessionReportDraftWithAudienceDto = {
   externalCoachRecommendations: ExternalCoachRecommendationCoachDto[];
   /** Фокус следующей тренировки: применение в ближайший слот расписания. */
   arenaNextTrainingFocusApply: ArenaNextTrainingFocusApplyStateDto;
+  /**
+   * Снимок planned focus слота на момент первого confirm (`LiveTrainingSession.plannedFocusSnapshot`).
+   */
+  plannedFocusSnapshot: string | null;
+  /**
+   * @deprecated Use `plannedFocusSnapshot` instead. Same value; backward compatibility only; will be removed later.
+   */
+  plannedTrainingFocus: string | null;
 };
 
 export type PublishLiveTrainingSessionReportDraftResultDto = LiveTrainingSessionReportDraftWithAudienceDto & {
@@ -229,6 +246,16 @@ export type LiveTrainingSessionDto = {
   autoFinalized?: boolean;
   /** PHASE 6 Step 11: кэш смысла сессии (read-model), обновляется после каждого успешного ingest. */
   sessionMeaningJson?: SessionMeaning | null;
+  /**
+   * Session-context rollup по materialized сигналам с `session_canonical_v1` (не per-player truth).
+   * Только при `status === "confirmed"`; не team planned-vs-observed fact.
+   */
+  groupContextSignalRollup?: LiveTrainingSessionGroupContextSignalRollupDto;
+  /**
+   * Диагностика согласованности stamp vs пересчитанного canonical group id (re-read).
+   * Только при `status === "confirmed"`.
+   */
+  groupContextStampDiagnostic?: LiveTrainingSessionGroupContextStampDiagnosticDto;
 };
 
 export type LiveTrainingDraftDto = {
@@ -344,6 +371,36 @@ function mapSession(
     dto.sessionMeaningJson = sessionMeaning;
   }
   return dto;
+}
+
+type ConfirmedLiveTrainingSessionReadModels = {
+  analyticsSummary: Awaited<ReturnType<typeof getLiveTrainingSessionAnalyticsSummary>>;
+  outcome: Awaited<ReturnType<typeof buildLiveTrainingSessionOutcomeForSession>>;
+  groupRollup: LiveTrainingSessionGroupContextSignalRollupDto | null;
+  groupDiagnostic: LiveTrainingSessionGroupContextStampDiagnosticDto | null;
+};
+
+/** Single Promise.all for confirmed-session DTO fields (GET session, confirm response, etc.). */
+async function loadConfirmedLiveTrainingSessionReadModels(
+  sessionId: string
+): Promise<ConfirmedLiveTrainingSessionReadModels> {
+  const [analyticsSummary, outcome, groupRollup, groupDiagnostic] = await Promise.all([
+    getLiveTrainingSessionAnalyticsSummary(sessionId),
+    buildLiveTrainingSessionOutcomeForSession(sessionId),
+    getLiveTrainingSessionGroupContextSignalRollup(sessionId),
+    getLiveTrainingSessionGroupContextStampDiagnostic(sessionId),
+  ]);
+  return { analyticsSummary, outcome, groupRollup, groupDiagnostic };
+}
+
+function applyConfirmedReadModelsToLiveTrainingSessionDto(
+  dto: LiveTrainingSessionDto,
+  read: ConfirmedLiveTrainingSessionReadModels
+): void {
+  dto.analyticsSummary = read.analyticsSummary;
+  dto.outcome = read.outcome;
+  if (read.groupRollup) dto.groupContextSignalRollup = read.groupRollup;
+  if (read.groupDiagnostic) dto.groupContextStampDiagnostic = read.groupDiagnostic;
 }
 
 function mapDraft(row: {
@@ -535,43 +592,6 @@ function resolveFirstNextTrainingFocusLineFromMeaning(
   return null;
 }
 
-async function findNextScheduledTrainingSlotForLiveTeam(input: {
-  teamId: string;
-  linkedTrainingSessionId: string | null;
-}): Promise<{ id: string } | null> {
-  const now = new Date();
-  const { teamId, linkedTrainingSessionId } = input;
-  let preferGroupId: string | null = null;
-  if (linkedTrainingSessionId) {
-    const cur = await prisma.trainingSession.findUnique({
-      where: { id: linkedTrainingSessionId },
-      select: { groupId: true, teamId: true },
-    });
-    if (cur?.teamId === teamId) {
-      preferGroupId = cur.groupId ?? null;
-    }
-  }
-  const base: Prisma.TrainingSessionWhereInput = {
-    teamId,
-    status: "scheduled",
-    startAt: { gt: now },
-    ...(linkedTrainingSessionId ? { id: { not: linkedTrainingSessionId } } : {}),
-  };
-  if (preferGroupId) {
-    const same = await prisma.trainingSession.findFirst({
-      where: { ...base, groupId: preferGroupId },
-      orderBy: { startAt: "asc" },
-      select: { id: true },
-    });
-    if (same) return same;
-  }
-  return prisma.trainingSession.findFirst({
-    where: base,
-    orderBy: { startAt: "asc" },
-    select: { id: true },
-  });
-}
-
 type LiveRowArenaApplySlice = {
   sessionMeaningJson: Prisma.JsonValue | null;
   teamId: string;
@@ -599,6 +619,11 @@ async function buildArenaNextTrainingFocusApplyStateDto(
   };
 }
 
+/**
+ * Coach path: один раз на live-сессию (`arenaNextFocusAppliedAt`); фокус из SessionMeaning;
+ * слот — {@link findNextScheduledTrainingSlotForLiveTeam}. Повторный вызов не пишет в слот снова.
+ * Перезапись непустого `TrainingSession.arenaNextTrainingFocus` при первом apply не проверяется (legacy coach).
+ */
 export async function applyArenaNextTrainingFocusForCoach(
   user: ApiUser,
   sessionId: string
@@ -680,6 +705,133 @@ export async function applyArenaNextTrainingFocusForCoach(
   });
   if (!after) {
     throw new LiveTrainingHttpError("Сессия не найдена", 404);
+  }
+  return buildArenaNextTrainingFocusApplyStateDto(after);
+}
+
+function sanitizeExplicitArenaNextFocusLine(raw: string): string | null {
+  const t = raw.trim().replace(/\s+/g, " ");
+  if (!t) return null;
+  return t.length > ARENA_NEXT_FOCUS_MAX_LEN ? t.slice(0, ARENA_NEXT_FOCUS_MAX_LEN) : t;
+}
+
+function isArenaNextTrainingFocusSlotOccupied(raw: string | null | undefined): boolean {
+  return Boolean(String(raw ?? "").trim());
+}
+
+/**
+ * CRM explicit path: текст фокуса на выбранный будущий слот. Повторные вызовы разрешены;
+ * непустой `arenaNextTrainingFocus` перезаписывается только при `explicitOverwrite` (ручное намерение).
+ * Будущий auto-apply: `explicitOverwrite: false` — запись только если слот пустой.
+ */
+export async function applyArenaNextTrainingFocusForCrmWithExplicitTarget(
+  user: ApiUser,
+  liveTrainingSessionId: string,
+  targetTrainingSessionId: string,
+  focusLineRaw: string,
+  explicitOverwrite: boolean
+): Promise<ArenaNextTrainingFocusApplyStateDto> {
+  const focusLine = sanitizeExplicitArenaNextFocusLine(focusLineRaw);
+  if (!focusLine) {
+    throw new LiveTrainingHttpError("Пустой или некорректный фокус", 400, {
+      code: "ARENA_NEXT_FOCUS_EMPTY",
+    });
+  }
+
+  const live = await prisma.liveTrainingSession.findFirst({
+    where: { id: liveTrainingSessionId },
+    select: {
+      id: true,
+      teamId: true,
+      status: true,
+      trainingSessionId: true,
+      sessionMeaningJson: true,
+      arenaNextFocusAppliedAt: true,
+      arenaNextFocusTargetTrainingSessionId: true,
+      arenaNextFocusLine: true,
+    },
+  });
+  if (!live) {
+    throw new LiveTrainingHttpError("Live-сессия не найдена", 404);
+  }
+  await assertTeamAccess(user, live.teamId);
+  if (live.status !== "confirmed") {
+    throw new LiveTrainingHttpError(
+      "Доступно только для подтверждённой живой тренировки",
+      409,
+      { code: "LIVE_TRAINING_SESSION_NOT_CONFIRMED" }
+    );
+  }
+
+  const target = await prisma.trainingSession.findFirst({
+    where: { id: targetTrainingSessionId, teamId: live.teamId },
+    select: {
+      id: true,
+      teamId: true,
+      status: true,
+      startAt: true,
+      arenaNextTrainingFocus: true,
+      team: { select: { schoolId: true } },
+    },
+  });
+  if (!target) {
+    throw new LiveTrainingHttpError("Слот расписания не найден", 404);
+  }
+  if (
+    !canUserAccessSessionTeam(user, {
+      teamId: target.teamId,
+      team: { schoolId: target.team.schoolId },
+    })
+  ) {
+    throw new LiveTrainingHttpError("Нет доступа к слоту", 403);
+  }
+  if (target.status !== "scheduled") {
+    throw new LiveTrainingHttpError("Слот не в статусе scheduled", 409, {
+      code: "ARENA_NEXT_FOCUS_SLOT_NOT_SCHEDULED",
+    });
+  }
+  if (target.startAt.getTime() <= Date.now()) {
+    throw new LiveTrainingHttpError("Выберите будущий слот расписания", 409, {
+      code: "ARENA_NEXT_FOCUS_SLOT_PAST",
+    });
+  }
+
+  if (isArenaNextTrainingFocusSlotOccupied(target.arenaNextTrainingFocus) && !explicitOverwrite) {
+    throw new LiveTrainingHttpError(
+      "В слоте уже указан фокус тренировки. Для замены укажите explicitOverwrite: true (ручное действие CRM).",
+      409,
+      { code: "ARENA_NEXT_FOCUS_SLOT_OCCUPIED" }
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.trainingSession.update({
+      where: { id: target.id },
+      data: { arenaNextTrainingFocus: focusLine },
+    });
+    await tx.liveTrainingSession.update({
+      where: { id: live.id },
+      data: {
+        arenaNextFocusAppliedAt: new Date(),
+        arenaNextFocusTargetTrainingSessionId: target.id,
+        arenaNextFocusLine: focusLine,
+      },
+    });
+  });
+
+  const after = await prisma.liveTrainingSession.findFirst({
+    where: { id: liveTrainingSessionId },
+    select: {
+      sessionMeaningJson: true,
+      teamId: true,
+      trainingSessionId: true,
+      arenaNextFocusAppliedAt: true,
+      arenaNextFocusTargetTrainingSessionId: true,
+      arenaNextFocusLine: true,
+    },
+  });
+  if (!after) {
+    throw new LiveTrainingHttpError("Live-сессия не найдена", 404);
   }
   return buildArenaNextTrainingFocusApplyStateDto(after);
 }
@@ -914,13 +1066,9 @@ export async function getLiveTrainingSessionByIdForCoach(
   }
   await assertTeamAccess(user, row.teamId);
   const dto = mapSession(row);
-  if (row.status === "confirmed") {
-    const [analyticsSummary, outcome] = await Promise.all([
-      getLiveTrainingSessionAnalyticsSummary(sessionId),
-      buildLiveTrainingSessionOutcomeForSession(sessionId),
-    ]);
-    dto.analyticsSummary = analyticsSummary;
-    dto.outcome = outcome;
+  if (row.status === LiveTrainingSessionStatus.confirmed) {
+    const read = await loadConfirmedLiveTrainingSessionReadModels(sessionId);
+    applyConfirmedReadModelsToLiveTrainingSessionDto(dto, read);
   }
   return dto;
 }
@@ -1119,8 +1267,109 @@ export async function getLiveTrainingReviewState(
 }
 
 /**
+ * Однократный снимок `TrainingSession.arenaNextTrainingFocus` для связанного слота при первом confirm.
+ * Не перезаписывает непустое значение; ошибки БД — warn, без прерывания confirm.
+ */
+async function snapshotPlannedFocusOnLiveConfirmIfNeeded(
+  teamId: string,
+  liveSessionId: string,
+  trainingSessionId: string | null | undefined
+): Promise<void> {
+  const linkId = trainingSessionId?.trim();
+  if (!linkId) return;
+  try {
+    const live = await prisma.liveTrainingSession.findFirst({
+      where: { id: liveSessionId, teamId },
+      select: { plannedFocusSnapshot: true },
+    });
+    if (live?.plannedFocusSnapshot != null && String(live.plannedFocusSnapshot).trim() !== "") {
+      return;
+    }
+    const slot = await prisma.trainingSession.findFirst({
+      where: { id: linkId, teamId },
+      select: { arenaNextTrainingFocus: true },
+    });
+    const focus = slot?.arenaNextTrainingFocus?.trim();
+    if (!focus) return;
+    await prisma.liveTrainingSession.update({
+      where: { id: liveSessionId },
+      data: { plannedFocusSnapshot: focus },
+    });
+  } catch (e) {
+    console.warn("[live-training] plannedFocusSnapshot on confirm: skipped", liveSessionId, e);
+  }
+}
+
+/**
+ * Safe auto-apply MVP: только из {@link confirmLiveTrainingSession} при первом переходе в `confirmed`.
+ * Первая строка supercore operational focus → канонический next slot; `explicitOverwrite: false` (empty-only).
+ * Повторный confirm не трогает (`alreadyConfirmed`). Уже установленный `arenaNextFocusAppliedAt` — пропуск
+ * (coach/manual/auto уже связали слот). Бизнес-отказы — тихий no-op + `console.warn`.
+ */
+async function trySafeAutoApplyArenaNextFocusAfterLiveConfirm(
+  user: ApiUser,
+  sessionId: string
+): Promise<void> {
+  try {
+    const lines = await loadArenaCrmSupercoreOperationalFocusLinesForLiveSession(sessionId);
+    const first = lines[0];
+    if (!first) return;
+
+    const focusLineRaw = [first.title, first.body]
+      .map((s) => String(s ?? "").trim())
+      .filter(Boolean)
+      .join(" — ");
+    const focusLine = sanitizeExplicitArenaNextFocusLine(focusLineRaw);
+    if (!focusLine) return;
+
+    const liveRow = await prisma.liveTrainingSession.findFirst({
+      where: { id: sessionId },
+      select: {
+        teamId: true,
+        status: true,
+        trainingSessionId: true,
+        arenaNextFocusAppliedAt: true,
+      },
+    });
+    if (!liveRow || liveRow.status !== LiveTrainingSessionStatus.confirmed) return;
+    if (liveRow.arenaNextFocusAppliedAt != null) return;
+
+    await assertTeamAccess(user, liveRow.teamId);
+
+    const nextSlot = await findNextScheduledTrainingSlotForLiveTeam({
+      teamId: liveRow.teamId,
+      linkedTrainingSessionId: liveRow.trainingSessionId,
+    });
+    if (!nextSlot) return;
+
+    await applyArenaNextTrainingFocusForCrmWithExplicitTarget(
+      user,
+      sessionId,
+      nextSlot.id,
+      focusLine,
+      false
+    );
+  } catch (e) {
+    if (e instanceof LiveTrainingHttpError) {
+      console.warn(
+        "[live-training] safe auto-apply Arena next focus: no-op",
+        sessionId,
+        e.message,
+        e.body ?? {}
+      );
+      return;
+    }
+    console.error("[live-training] safe auto-apply Arena next focus: unexpected", sessionId, e);
+  }
+}
+
+/**
  * Подтверждение сессии: создание аналитических сигналов по-прежнему от модели черновика (`needsReview`, категория и т.д.).
  * `coachDecision` на черновиках — read-model для review API; при необходимости confirm можно расширить позже без ломки контракта.
+ *
+ * При **первом** переходе в `confirmed` дополнительно: снимок planned focus слота в `plannedFocusSnapshot`
+ * (см. {@link snapshotPlannedFocusOnLiveConfirmIfNeeded}) и safe auto-apply Arena next focus;
+ * см. {@link trySafeAutoApplyArenaNextFocusAfterLiveConfirm}.
  */
 export async function confirmLiveTrainingSession(
   user: ApiUser,
@@ -1176,12 +1425,24 @@ export async function confirmLiveTrainingSession(
     throw new LiveTrainingHttpError("Сессия не найдена", 404);
   }
 
-  const [analyticsSummary, outcome] = await Promise.all([
-    getLiveTrainingSessionAnalyticsSummary(sessionId),
-    buildLiveTrainingSessionOutcomeForSession(sessionId),
-  ]);
+  if (!alreadyConfirmed) {
+    await snapshotPlannedFocusOnLiveConfirmIfNeeded(
+      updated.teamId,
+      sessionId,
+      updated.trainingSessionId
+    );
+  }
+
+  const { analyticsSummary, outcome, groupRollup, groupDiagnostic } =
+    await loadConfirmedLiveTrainingSessionReadModels(sessionId);
 
   await upsertLiveTrainingSessionReportDraft(sessionId);
+
+  try {
+    await upsertArenaPlannedVsObservedLiveFactForSession(sessionId);
+  } catch (e) {
+    console.warn("[live-training] arena planned-vs-observed fact upsert skipped", sessionId, e);
+  }
 
   const planningSnap = parsePlanningSnapshotFromDb(updated.planningSnapshotJson);
 
@@ -1252,11 +1513,17 @@ export async function confirmLiveTrainingSession(
     throw new LiveTrainingHttpError("Сессия не найдена", 404);
   }
 
+  if (!alreadyConfirmed) {
+    await trySafeAutoApplyArenaNextFocusAfterLiveConfirm(user, sessionId);
+  }
+
   return {
     session: {
       ...mapSession(finalRow),
       analyticsSummary,
       outcome,
+      ...(groupRollup ? { groupContextSignalRollup: groupRollup } : {}),
+      ...(groupDiagnostic ? { groupContextStampDiagnostic: groupDiagnostic } : {}),
     },
     observationIds: drafts.map((d) => d.id),
     analytics: {
@@ -1552,6 +1819,10 @@ export async function getLiveTrainingSessionReportDraftForCoach(
         appliedAt: null,
       };
 
+  const rawSnapshot = row.plannedFocusSnapshot;
+  const plannedFocusSnapshot =
+    typeof rawSnapshot === "string" && rawSnapshot.trim() ? rawSnapshot.trim() : null;
+
   const publishedFinalReport =
     draft.status === "ready"
       ? await loadPublishedFinalReadForCoach(user, row, {
@@ -1560,6 +1831,7 @@ export async function getLiveTrainingSessionReportDraftForCoach(
         })
       : null;
 
+  // `plannedTrainingFocus` mirrors `plannedFocusSnapshot` for additive API compatibility (no TrainingSession read).
   return {
     reportDraft: {
       id: draft.id,
@@ -1573,6 +1845,8 @@ export async function getLiveTrainingSessionReportDraftForCoach(
     publishedFinalReport,
     externalCoachRecommendations,
     arenaNextTrainingFocusApply,
+    plannedFocusSnapshot,
+    plannedTrainingFocus: plannedFocusSnapshot,
   };
 }
 

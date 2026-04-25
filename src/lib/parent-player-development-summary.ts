@@ -1,5 +1,8 @@
 /**
  * Родительская сводка развития: человеческий язык, без внутренних терминов и «оценок».
+ *
+ * BOUNDARY (future / not on HTTP): модуль не подключён к текущему parent HTTP-слою в `src/app/api/**`
+ * (ни один route не импортирует эти экспорты). Не удалять и не менять контракт без отдельного product decision.
  */
 
 import type { PlayerDevelopmentInsightDto } from "./player-development-insights";

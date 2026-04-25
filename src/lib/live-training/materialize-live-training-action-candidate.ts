@@ -9,6 +9,7 @@ import { canAccessPlayer } from "@/lib/data-scope";
 import { getCoachPlayerLiveTrainingActionCandidates } from "./build-coach-player-action-candidates";
 import { listLiveTrainingSessionActionCandidatesForMaterialize } from "./session-meaning-action-candidate";
 import type { LiveTrainingActionCandidateDto } from "./live-training-action-candidate-types";
+import { augmentLiveTrainingSessionActionCandidatesWithSupercore } from "@/lib/arena/supercore/merge-supercore-focus-decisions-into-action-candidates";
 import {
   getLiveTrainingSessionByIdForCoach,
   LiveTrainingHttpError,
@@ -170,12 +171,18 @@ export async function materializeSessionLiveTrainingActionCandidate(
     return { ok: false, status: 400, error: "Кандидат не относится к этой сессии" };
   }
 
-  const items = listLiveTrainingSessionActionCandidatesForMaterialize(
+  let items = listLiveTrainingSessionActionCandidatesForMaterialize(
     session.outcome,
     session.id,
     session.startedAt,
     session.sessionMeaningJson?.nextActions
   );
+  items = await augmentLiveTrainingSessionActionCandidatesWithSupercore({
+    items,
+    sessionId: session.id,
+    sessionStartedAt: session.startedAt,
+    outcome: session.outcome,
+  });
   const hit = items.find((i) => i.id === candidateId);
   if (!hit) {
     return {

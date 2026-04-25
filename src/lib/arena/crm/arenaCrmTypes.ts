@@ -28,10 +28,23 @@ export type ArenaTeamSnapshot = {
   dominantStrengths: string[];
 };
 
+/** Pass 9: operational focus lines from supercore (latest confirmed live session for team). */
+export type ArenaCrmSupercoreOperationalFocusLine = {
+  title: string;
+  body: string;
+  liveTrainingSessionId: string;
+  bindingDecisionId: string;
+};
+
 export type ArenaCrmSnapshot = {
   player?: ArenaPlayerSnapshot;
   group?: ArenaGroupSnapshot;
   team?: ArenaTeamSnapshot;
+  /**
+   * Supercore-backed focus decisions (`ArenaActionEnvelope` → CRM adapter) for the team’s
+   * most recent confirmed `LiveTrainingSession`. Omitted when empty or unavailable.
+   */
+  supercoreOperationalFocus?: ArenaCrmSupercoreOperationalFocusLine[];
 };
 
 /** Единичное наблюдение для детерминированной агрегации (черновик + опционально сигнал). */

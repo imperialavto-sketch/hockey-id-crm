@@ -4,10 +4,15 @@
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { canonicalGroupIdForLiveSession } from "@/lib/live-training/canonical-group-of-live-session";
+import { getCanonicalTrainingSessionIdFromLiveRow } from "@/lib/live-training/resolve-live-training-to-training-session";
 import {
   mapLiveTrainingDraftToAnalyticsSignals,
   type LiveTrainingDraftForAnalyticsMap,
 } from "./map-live-training-draft-to-analytics-signals";
+
+/** Written on signal materialize (confirm) only; see createLiveTrainingPlayerSignalsInTransaction. */
+const ARENA_GROUP_ATTRIBUTION_VERSION = "session_canonical_v1" as const;
 
 export type LiveTrainingSessionAnalyticsSummary = {
   signalCount: number;
@@ -93,6 +98,41 @@ export async function createLiveTrainingPlayerSignalsInTransaction(
     teamId: string;
   }
 ): Promise<CreateSignalsResult> {
+  const liveRow = await tx.liveTrainingSession.findFirst({
+    where: { id: params.sessionId, teamId: params.teamId },
+    select: { planningSnapshotJson: true, trainingSessionId: true },
+  });
+
+  let linkedTrainingSessionGroupId: string | null | undefined;
+  if (liveRow) {
+    const slotId = getCanonicalTrainingSessionIdFromLiveRow({
+      trainingSessionId: liveRow.trainingSessionId,
+      planningSnapshotJson: liveRow.planningSnapshotJson,
+    });
+    if (slotId) {
+      const slot = await tx.trainingSession.findFirst({
+        where: { id: slotId, teamId: params.teamId },
+        select: { groupId: true },
+      });
+      linkedTrainingSessionGroupId = slot?.groupId?.trim() || null;
+    }
+  }
+
+  /**
+   * Session-context attribution only (not per-player / not «true observed subgroup»).
+   * `arenaSessionGroupId: null` means canonical resolver says no team group for this session — still
+   * explicit for read models; mixed rosters are not resolved here.
+   */
+  const sessionGroupAttributionMetadata: Prisma.InputJsonValue = {
+    arenaSessionGroupId: liveRow
+      ? canonicalGroupIdForLiveSession({
+          planningSnapshotJson: liveRow.planningSnapshotJson,
+          linkedTrainingSessionGroupId,
+        })
+      : null,
+    arenaGroupAttributionVersion: ARENA_GROUP_ATTRIBUTION_VERSION,
+  };
+
   const drafts = await tx.liveTrainingObservationDraft.findMany({
     where: {
       sessionId: params.sessionId,
@@ -137,6 +177,7 @@ export async function createLiveTrainingPlayerSignalsInTransaction(
             signalDirection: slice.signalDirection,
             signalStrength: slice.signalStrength,
             evidenceText: slice.evidenceText,
+            metadataJson: sessionGroupAttributionMetadata,
           },
         });
         createdSignalsCount += 1;

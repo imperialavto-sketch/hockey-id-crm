@@ -1,5 +1,8 @@
 /**
  * Компактные «крючки» удержания для родителя — только из уже родительских данных (отчёты + сводка развития).
+ *
+ * BOUNDARY: экспортируемые builders не импортируются текущими parent routes в `src/app/api/**`;
+ * не считать частью активного parent HTTP runtime surface.
  */
 
 import type { ParentPlayerDevelopmentSummaryDto } from "./parent-player-development-summary";

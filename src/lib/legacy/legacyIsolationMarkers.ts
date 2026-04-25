@@ -48,6 +48,65 @@ export function warnLegacyTrainingContourWrite(surface: string): void {
   );
 }
 
+export type LegacyTrainingHttpWriteOutcomeStage =
+  | "before_write"
+  | "committed"
+  | "policy_disabled";
+
+export type LegacyTrainingHttpWriteLogFields = {
+  event: "legacy_training_write_attempt" | "legacy_training_write_committed";
+  surface: string;
+  method: string;
+  trainingId: string;
+  userId: string;
+  outcomeStage: LegacyTrainingHttpWriteOutcomeStage;
+  userAgent?: string;
+  requestId?: string;
+  bulkUpdatedCount?: number;
+};
+
+function normalizedLegacyTrainingWritePath(surface: string): string {
+  if (surface.includes("attendance/bulk")) {
+    return "/api/legacy/trainings/[id]/attendance/bulk";
+  }
+  if (surface.includes("/attendance")) {
+    return "/api/legacy/trainings/[id]/attendance";
+  }
+  return "/api/legacy/trainings/[id]";
+}
+
+function pickRequestId(req: NextRequest): string | undefined {
+  return (
+    req.headers.get("x-request-id") ??
+    req.headers.get("x-vercel-id") ??
+    req.headers.get("cf-ray") ??
+    undefined
+  );
+}
+
+function truncateUa(ua: string | null): string | undefined {
+  if (!ua) return undefined;
+  const t = ua.trim();
+  if (!t) return undefined;
+  return t.length > 200 ? `${t.slice(0, 200)}…` : t;
+}
+
+/** Single-line JSON after grep-friendly prefix; no body fields, no emails. */
+export function logLegacyTrainingHttpWrite(
+  req: NextRequest,
+  fields: LegacyTrainingHttpWriteLogFields
+): void {
+  const payload = {
+    ...fields,
+    normalizedPath: normalizedLegacyTrainingWritePath(fields.surface),
+    marker: "[LEGACY WRITE]",
+    ts: new Date().toISOString(),
+    userAgent: fields.userAgent ?? truncateUa(req.headers.get("user-agent")),
+    requestId: fields.requestId ?? pickRequestId(req),
+  };
+  console.info(`[LEGACY WRITE] ${JSON.stringify(payload)}`);
+}
+
 export function warnLegacyMixedAnalytics(ctx: { req: NextRequest; userId: string }): void {
   warnLegacyTrainingContourRead({
     surface:

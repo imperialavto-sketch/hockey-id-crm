@@ -7,6 +7,9 @@
  * Published-report storage SSOT remains `TrainingSessionReport`. This module is a **mixed read model**:
  * it may compose published rows with live-session / draft / heuristic fallbacks for parent UX.
  * Do not treat API output here as equivalent to the canonical persisted published report row alone.
+ *
+ * **HTTP entry:** `buildParentLatestTrainingSummaryFromSources` / `getParentLatestLiveTrainingSummaryForPlayer`
+ * in `parent-latest-training-summary.assemble.ts` (слой сборки: canonical/legacy base → supercore).
  */
 
 import { LiveTrainingSessionStatus, type LiveTrainingMode } from "@prisma/client";
@@ -36,7 +39,6 @@ import {
   projectSuggestedActionsFromDraftSummary,
 } from "./session-meaning-suggested-actions";
 import { EXTERNAL_COACH_RECOMMENDATION_STATUS } from "@/lib/external-coach/external-coach-recommendation-service";
-
 const MAX_HIGHLIGHTS = 3;
 const MAX_FOCUS = 2;
 const MAX_LINE = 220;
@@ -786,9 +788,14 @@ function parentProgressHeadlineRuFromMeaning(
 async function attachParentMeaningActionsForPlayer(
   playerId: string,
   report: ParentFacingSessionReport,
-  base: ParentLiveTrainingScopedSummary
+  base: ParentLiveTrainingScopedSummary,
+  /** When set (incl. `null`), skips a second `resolveLiveTrainingSessionIdForParentReport` query. */
+  resolvedLiveSessionId?: string | null
 ): Promise<ParentLiveTrainingScopedSummary> {
-  const sessionId = await resolveLiveTrainingSessionIdForParentReport(playerId, report);
+  const sessionId =
+    resolvedLiveSessionId !== undefined
+      ? resolvedLiveSessionId
+      : await resolveLiveTrainingSessionIdForParentReport(playerId, report);
   if (!sessionId) return base;
   const [row, draftRow] = await Promise.all([
     prisma.liveTrainingSession.findUnique({
@@ -845,9 +852,13 @@ async function attachArenaLayerForLiveSession(
 async function attachArenaLayerForParent(
   playerId: string,
   report: ParentFacingSessionReport,
-  base: ParentLiveTrainingScopedSummary
+  base: ParentLiveTrainingScopedSummary,
+  resolvedLiveSessionId?: string | null
 ): Promise<ParentLiveTrainingScopedSummary> {
-  const sessionId = await resolveLiveTrainingSessionIdForParentReport(playerId, report);
+  const sessionId =
+    resolvedLiveSessionId !== undefined
+      ? resolvedLiveSessionId
+      : await resolveLiveTrainingSessionIdForParentReport(playerId, report);
   if (!sessionId) return base;
   return attachArenaLayerForLiveSession(playerId, sessionId, base);
 }
@@ -865,24 +876,44 @@ export async function getParentRecentScopedLiveTrainingSummaries(
 }
 
 /**
- * Последняя тренировка: приоритет опубликованному `TrainingSessionReport`, иначе fallback на последнюю
- * `LiveTrainingSession` команды ребёнка (без изменения publish pipeline).
- * Доступ родителя проверяет route.
+ * Слой 1a — canonical: последний родительский `TrainingSessionReport` + live-слои (meaning, arena drafts).
+ * Без supercore; вызывается из `buildParentLatestTrainingSummaryFromSources`.
  */
-export async function getParentLatestLiveTrainingSummaryForPlayer(
-  playerId: string
-): Promise<ParentLatestLiveTrainingSummaryDto> {
+export async function buildPublishedParentLatestTrainingSummaryPayload(playerId: string): Promise<{
+  payload: ParentLatestLiveTrainingSummaryDto;
+  liveTrainingSessionId: string | null;
+} | null> {
   const rows = await listParentFacingPublishedSessionReports(playerId, 1);
-  if (rows.length > 0) {
-    const report = rows[0]!;
-    let base = mapFacingReportToSummaryDto(report);
-    base = await attachParentMeaningActionsForPlayer(playerId, report, base);
-    const scoped = await attachArenaLayerForParent(playerId, report, base);
-    return { ...scoped, source: "published", isPublished: true };
-  }
+  if (rows.length === 0) return null;
+  const report = rows[0]!;
+  const liveSessionId = await resolveLiveTrainingSessionIdForParentReport(playerId, report);
+  let base = mapFacingReportToSummaryDto(report);
+  base = await attachParentMeaningActionsForPlayer(playerId, report, base, liveSessionId);
+  const scoped = await attachArenaLayerForParent(playerId, report, base, liveSessionId);
+  return {
+    payload: {
+      ...scoped,
+      source: "published",
+      isPublished: true,
+    },
+    liveTrainingSessionId: liveSessionId,
+  };
+}
 
+/**
+ * Слой 1b — legacy fallback: последняя `LiveTrainingSession` команды ребёнка + meaning/draft/arena.
+ * Без supercore; вызывается из `buildParentLatestTrainingSummaryFromSources`.
+ */
+export async function buildLiveSessionFallbackParentLatestTrainingSummaryPayload(
+  playerId: string
+): Promise<{
+  payload: ParentLatestLiveTrainingSummaryDto;
+  liveTrainingSessionId: string | null;
+}> {
   const live = await findLatestLiveTrainingSessionForParentFallback(playerId);
-  if (!live) return { hasData: false };
+  if (!live) {
+    return { payload: { hasData: false }, liveTrainingSessionId: null };
+  }
 
   const draftSummary = parseDraftSummaryFromRow(live.LiveTrainingSessionReportDraft);
   let base = buildFallbackScopedSummaryFromLiveSession(playerId, live, draftSummary);
@@ -898,5 +929,12 @@ export async function getParentLatestLiveTrainingSummaryForPlayer(
     { requireMeaning: false }
   );
   const scoped = await attachArenaLayerForLiveSession(playerId, live.id, base);
-  return { ...scoped, source: "live_session_fallback", isPublished: false };
+  return {
+    payload: {
+      ...scoped,
+      source: "live_session_fallback",
+      isPublished: false,
+    },
+    liveTrainingSessionId: live.id,
+  };
 }

@@ -1,5 +1,8 @@
 /**
  * Короткая «история прогресса» для родителя — только родительские отчёты и сводка развития.
+ *
+ * BOUNDARY: экспортируемые builders не импортируются текущими parent routes в `src/app/api/**`;
+ * не считать частью активного parent HTTP runtime surface.
  */
 
 import type { ParentFacingSessionReport } from "./parent-players";

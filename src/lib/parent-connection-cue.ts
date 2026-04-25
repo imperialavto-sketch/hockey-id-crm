@@ -1,5 +1,8 @@
 /**
  * Лёгкая связь «родитель ↔ линия тренера» без чата, без обязанности отвечать.
+ *
+ * BOUNDARY: экспортируемые builders не импортируются текущими parent routes в `src/app/api/**`;
+ * не считать частью активного parent HTTP runtime surface.
  */
 
 import type { ParentEmotionalInsightDto } from "./parent-emotional-insight";
