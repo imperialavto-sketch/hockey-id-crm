@@ -4,6 +4,9 @@
 // PHASE 6: ❗ NOT CORE SCHOOL SSOT — клиент внешнего контура родителя (`/api/arena/*`). Не coach live Arena, не voice-draft слота.
 // Persisted: request/report. «Autonomous» match UX = ⚠ MOCK MATCHING (in-memory stub на сервере), не автономный агент.
 // Не вызывать root `GET /api/arena/external-training` из продукта (см. PHASE 3).
+//
+// BOUNDARY: клиент HTTP для внешнего `/api/arena/*` контура (не школьный live-training hero).
+// Подключён экраном профиля игрока (`app/player/[id]/index.tsx`) для follow-up рекомендации и POST follow-up-create.
 import { apiFetch } from "@/lib/api";
 
 export type ExternalTrainingTimelineStep = {

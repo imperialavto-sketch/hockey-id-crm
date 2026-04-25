@@ -1,3 +1,9 @@
+/**
+ * Arena / AI companion — HTTP к `/api/chat/ai/*` и локальный кеш сообщений.
+ * В UI продукт — «Арена» / AI-компаньон; в коде — stable legacy: id `coach-mark`, имена `getCoachMark*`, ключи `coach-mark-*`.
+ * Не переименовывать этот слой без отдельного migration pass.
+ */
+
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { ConversationItem, ChatMessage } from "@/types/chat";
 import { apiFetch, getApiBase, ApiRequestError } from "@/lib/api";
@@ -9,14 +15,23 @@ import {
   getDemoMessages,
   addDemoMessage,
 } from "@/demo/demoChat";
+import type { ArenaParentPlayerContext } from "@/types/arenaParentPlayerContext";
 
 const PARENT_ID_HEADER = "x-parent-id";
 
-/** ID виртуального чата с AI-ассистентом Coach Mark */
-export const COACH_MARK_ID = "coach-mark";
+/** Stable id for the Arena AI companion thread (URL segment remains `coach-mark`). */
+export const ARENA_COMPANION_CHAT_ID = "coach-mark" as const;
 
+/** @deprecated Use ARENA_COMPANION_CHAT_ID */
+export const COACH_MARK_ID = ARENA_COMPANION_CHAT_ID;
+
+export function isArenaCompanionConversation(id: string): boolean {
+  return id === ARENA_COMPANION_CHAT_ID;
+}
+
+/** @deprecated Use isArenaCompanionConversation */
 export function isCoachMarkConversation(id: string): boolean {
-  return id === COACH_MARK_ID;
+  return isArenaCompanionConversation(id);
 }
 
 function headers(parentId: string): Record<string, string> {
@@ -214,24 +229,10 @@ export async function saveCoachMarkMessages(
   }
 }
 
-/** Player context для Coach Mark (опционально) */
-export interface CoachMarkPlayerContext {
-  id: string;
-  name?: string;
-  age?: number;
-  birthYear?: number;
-  position?: string;
-  team?: string;
-  stats?: { games?: number; goals?: number; assists?: number; points?: number };
-  aiAnalysis?: {
-    summary?: string;
-    strengths?: string[];
-    growthAreas?: string[];
-  };
-}
+export type { ArenaParentPlayerContext } from "@/types/arenaParentPlayerContext";
 
-/** Memory item для Coach Mark (опционально) */
-export interface CoachMarkMemoryItem {
+/** Ключ–значение для долговременного контекста компаньона Арены в теле запроса к AI. */
+export interface ArenaCompanionMemoryItem {
   key: string;
   value: string;
 }
@@ -239,13 +240,13 @@ export interface CoachMarkMemoryItem {
 const HISTORY_LIMIT = 20;
 const MEMORY_VALUE_MAX_LEN = 300;
 
-/** Отправляет сообщение Coach Mark и возвращает ответ AI */
+/** Отправляет сообщение в чат компаньона Арены и возвращает ответ AI */
 export async function sendMessageToCoachMark(
   text: string,
   parentId: string,
   existingMessages: ChatMessage[],
-  playerContext?: CoachMarkPlayerContext | null,
-  memories?: CoachMarkMemoryItem[]
+  playerContext?: ArenaParentPlayerContext | null,
+  memories?: ArenaCompanionMemoryItem[]
 ): Promise<ChatMessage | null> {
   const recentMessages = existingMessages.slice(-HISTORY_LIMIT);
   const history = recentMessages.map((m) => ({
@@ -300,12 +301,12 @@ export async function sendMessageToCoachMark(
   }
 }
 
-/** Запросить недельный план у Coach Mark, распарсить и сохранить */
+/** Запросить недельный план у компаньона Арены, распарсить и сохранить */
 export async function generateWeeklyPlanWithCoachMark(
   parentId: string,
   existingMessages: ChatMessage[],
-  playerContext?: CoachMarkPlayerContext | null,
-  memories?: CoachMarkMemoryItem[]
+  playerContext?: ArenaParentPlayerContext | null,
+  memories?: ArenaCompanionMemoryItem[]
 ): Promise<{
   chatMessage: ChatMessage | null;
   savedPlan: Awaited<ReturnType<typeof import("./coachMarkStorage").saveCoachMarkWeeklyPlan>> | null;
@@ -343,12 +344,12 @@ export async function generateWeeklyPlanWithCoachMark(
   return { chatMessage, savedPlan: null };
 }
 
-/** Запросить weekly check-in у Coach Mark, распарсить и сохранить */
+/** Запросить weekly check-in у компаньона Арены, распарсить и сохранить */
 export async function generateWeeklyCheckinWithCoachMark(
   parentId: string,
   existingMessages: ChatMessage[],
-  playerContext?: CoachMarkPlayerContext | null,
-  memories?: CoachMarkMemoryItem[],
+  playerContext?: ArenaParentPlayerContext | null,
+  memories?: ArenaCompanionMemoryItem[],
   playerId?: string | null
 ): Promise<{
   chatMessage: ChatMessage | null;

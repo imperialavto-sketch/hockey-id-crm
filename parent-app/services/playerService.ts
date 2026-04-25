@@ -14,8 +14,76 @@ import { mockPlayerSchedule } from "@/mocks/schedule";
 import { PLAYER_MARK_GOLYSH } from "@/constants/mockPlayerMarkGolysh";
 import { getMeSchedule } from "@/services/scheduleService";
 import { getDemoPlayers, getDemoPlayerById, addDemoPlayer } from "@/demo/demoPlayers";
+import {
+  parseParentLatestLiveTrainingSummaryDto,
+  parentLatestTrainingDtoToHeroPayload,
+  type ParentLiveTrainingHeroPayload,
+} from "@/types/parentLatestLiveTrainingSummary";
+import type { ArenaParentPlayerContext } from "@/types/arenaParentPlayerContext";
 
 const PARENT_ID_HEADER = "x-parent-id";
+
+export type { ParentLiveTrainingHeroPayload } from "@/types/parentLatestLiveTrainingSummary";
+
+/** Aligned with `src/lib/parent-player-development-summary.ts` (ParentPlayerDevelopmentSummaryDto). */
+export type ParentPlayerDevelopmentSummary = {
+  mainFocus: string[];
+  positiveTrend?: string;
+  attentionArea?: string;
+  simpleSummary: string;
+};
+
+/** Aligned with `src/lib/parent-engagement-summary.ts` (ParentEngagementSummaryDto). */
+export type ParentEngagementSummary = {
+  recentFocusHeadline?: string;
+  progressCue?: string;
+  nextAttentionCue?: string;
+  encouragementLine: string;
+};
+
+/** Aligned with `src/lib/parent-progress-narrative.ts` (ParentProgressNarrativeDto). */
+export type ParentProgressNarrative = {
+  headline?: string;
+  body: string;
+  continuingFocus?: string;
+  stabilizingArea?: string;
+};
+
+/** Aligned with `src/lib/parent-emotional-insight.ts` (ParentEmotionalInsightDto). */
+export type ParentEmotionalInsight = {
+  highlightMoment?: string;
+  growthSignal?: string;
+  encouragement?: string;
+};
+
+/** Aligned with `src/lib/parent-connection-cue.ts` (ParentConnectionCueDto). */
+export type ParentConnectionCue = {
+  optionalReflection?: string;
+  optionalQuestion?: string;
+};
+
+/** Aligned with `src/lib/live-training/player-story-model.ts` (ParentPlayerStoryDto / PlayerStoryItemDto). */
+export type ParentPlayerStoryItem = {
+  type: "training_summary" | "positive_signal" | "focus_area" | "trend_note";
+  date: string | null;
+  title: string;
+  body: string;
+  tone: "positive" | "neutral" | "attention";
+};
+
+export type ParentPlayerStory = {
+  items: ParentPlayerStoryItem[];
+  lowData: boolean;
+};
+
+/** Aligned with `src/lib/trainingBehavioralExplainabilityText.ts` (BehavioralAxisExplainability). */
+export type ParentTrainingBehaviorAxisExplainability = {
+  positiveCount: number;
+  negativeCount: number;
+  neutralCount: number;
+  totalSignals: number;
+  lastSignalAt: string;
+};
 
 /** Оценка с последней тренировки (GET /api/me/players/:id). */
 export type LatestSessionEvaluation = {
@@ -43,7 +111,7 @@ export type LatestSessionReport = {
   updatedAt?: string | null;
 };
 
-/** Backend (hockey-server / CRM) player response shape */
+/** Next CRM (or compatible) player JSON shape from `/api/me/players` / parent mobile routes — not hockey-server for Phase 1. */
 interface BackendPlayer {
   id: number | string;
   firstName?: string | null;
@@ -462,6 +530,44 @@ export async function getPlayers(_parentId: string): Promise<Player[]> {
     throw new Error("Invalid players response");
   }
   return data.map((p) => mapApiPlayerToPlayer(mapBackendPlayerToApiPlayer(p)));
+}
+
+/**
+ * GET /api/parent/players/:id/latest-training-summary — сводка последней тренировки для Arena hero.
+ * Сетевые/HTTP ошибки и битый JSON не пробрасываются: возвращается пустой hero, ошибка логируется.
+ */
+export async function getLatestTrainingSummaryForPlayer(
+  playerId: string
+): Promise<ParentLiveTrainingHeroPayload> {
+  const empty: ParentLiveTrainingHeroPayload = {
+    summary: null,
+    guidance: null,
+    fallbackLine: null,
+    provenanceLine: null,
+  };
+  if (isDemoMode) {
+    return empty;
+  }
+  const id = playerId?.trim();
+  if (!id) return empty;
+  try {
+    const raw = await apiFetch<unknown>(
+      `/api/parent/players/${encodeURIComponent(id)}/latest-training-summary`,
+      { timeoutMs: 8000 }
+    );
+    const dto = parseParentLatestLiveTrainingSummaryDto(raw);
+    if (!dto) {
+      logApiError(
+        "playerService.getLatestTrainingSummaryForPlayer",
+        new Error("malformed latest-training-summary payload")
+      );
+      return empty;
+    }
+    return parentLatestTrainingDtoToHeroPayload(dto);
+  } catch (err) {
+    logApiError("playerService.getLatestTrainingSummaryForPlayer", err);
+    return empty;
+  }
 }
 
 /** Fetch single player from backend (GET /api/me/players/:id). */
@@ -979,24 +1085,11 @@ export async function getPlayerParentDraftDetail(
   }
 }
 
-/** Lightweight player context for Coach Mark. Fetches player, stats, AI analysis. */
-export async function getPlayerContextForCoachMark(
+/** Лёгкий контекст игрока для Арены и AI-компаньона: профиль, статы, AI-анализ. */
+export async function getPlayerContextForArena(
   playerId: string,
   parentId: string
-): Promise<{
-  id: string;
-  name?: string;
-  age?: number;
-  birthYear?: number;
-  position?: string;
-  team?: string;
-  stats?: { games?: number; goals?: number; assists?: number; points?: number };
-  aiAnalysis?: {
-    summary?: string;
-    strengths?: string[];
-    growthAreas?: string[];
-  };
-} | null> {
+): Promise<ArenaParentPlayerContext | null> {
   try {
     const [playerResult, statsResult, aiResult] = await Promise.allSettled([
       getPlayerById(playerId, parentId),

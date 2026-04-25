@@ -1,6 +1,8 @@
 /**
  * Coach Mark Notes & Weekly Plan v1.
  * Локальное хранение в AsyncStorage. Без БД.
+ *
+ * BOUNDARY: тот же активный Arena companion surface, что и чат «Арена»; ключи `coach-mark-*` — legacy для стабильности, не менять без migration pass.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";

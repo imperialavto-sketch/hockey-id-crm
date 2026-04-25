@@ -89,7 +89,7 @@ export async function createPaymentIntent(
     if (parentId) headers[PARENT_ID_HEADER] = parentId;
 
     const res = await apiFetch<{ clientSecret: string; paymentIntentId: string }>(
-      "/api/bookings/create-payment-intent",
+      "/api/bookings/payment-intent",
       {
         method: "POST",
         headers,

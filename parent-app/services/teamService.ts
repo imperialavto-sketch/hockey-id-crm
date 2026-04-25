@@ -68,7 +68,7 @@ function mapMessage(api: unknown): TeamMessage {
 }
 
 /**
- * Get team posts.
+ * Get team posts (GET /api/team/posts — Prisma TeamFeedPost, Bearer + parent team scope).
  * Fallback: MOCK_TEAM_POSTS only in __DEV__ when API fails.
  */
 export async function getTeamPosts(parentId?: string | null): Promise<TeamPost[]> {
@@ -86,7 +86,7 @@ export async function getTeamPosts(parentId?: string | null): Promise<TeamPost[]
 }
 
 /**
- * Get team post by id.
+ * Get team post by id (GET /api/team/posts/:id — same access rules as list).
  * Fallback: find in MOCK_TEAM_POSTS only in __DEV__ when API fails.
  */
 export async function getTeamPostById(

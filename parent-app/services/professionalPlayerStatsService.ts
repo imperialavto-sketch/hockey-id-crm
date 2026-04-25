@@ -1,6 +1,7 @@
 /**
- * Parent mobile — Hockey ID professional stats snapshot (optional API).
- * Backend route may be absent until deployed; 404 → null (graceful empty state).
+ * Parent mobile — Hockey ID professional stats snapshot.
+ * GET /api/parent/mobile/player/:id/professional-stats (same JSON as CRM read route; parent auth).
+ * 404 / 501 → null (graceful empty state).
  */
 
 import { apiFetch, ApiRequestError } from "@/lib/api";

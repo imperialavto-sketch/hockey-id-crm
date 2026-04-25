@@ -1,6 +1,6 @@
 /**
  * Auth service for parent mobile app.
- * JWT: loginRequest / registerRequest for email+password.
+ * Email/password: loginRequest / registerRequest → CRM `/api/auth/*` (Bearer = base64url session).
  * Legacy: requestLoginCode / verifyLoginCode for phone+code (dev fallback).
  */
 
@@ -11,8 +11,43 @@ import { DEMO_AUTH_TOKEN, demoParentUser } from "@/demo/demoAuth";
 
 export interface AuthLoginResponse {
   token: string;
-  parent: { id: number; email: string };
+  parent: { id: string | number; email: string };
 }
+
+/** CRM `/api/auth/login` — coach uses `mobileToken`; parent email flow adds `token` + `parent`. */
+type AuthLoginApiPayload = {
+  token?: string;
+  mobileToken?: string;
+  parent?: { id: string; email: string };
+  user?: {
+    id?: string;
+    email?: string;
+    name?: string;
+    role?: string;
+    parentId?: string | null;
+  };
+};
+
+function normalizeEmailLoginResponse(data: AuthLoginApiPayload): AuthLoginResponse {
+  const token = (typeof data.token === "string" ? data.token : "").trim()
+    || (typeof data.mobileToken === "string" ? data.mobileToken : "").trim();
+  if (!token) {
+    throw new Error("Не удалось выполнить вход: сервер не вернул токен");
+  }
+  if (data.parent?.email) {
+    return { token, parent: { id: data.parent.id, email: data.parent.email } };
+  }
+  const u = data.user;
+  if (u && (u.role === "PARENT" || u.role === "parent") && u.email) {
+    const pid = u.parentId ?? u.id;
+    if (pid == null || String(pid).trim() === "") {
+      throw new Error("Не удалось выполнить вход: неполный профиль родителя");
+    }
+    return { token, parent: { id: String(pid), email: u.email } };
+  }
+  throw new Error("Не удалось выполнить вход: неожиданный ответ сервера");
+}
+
 
 export interface VerifyLoginResponse {
   user: ParentUser;
@@ -37,10 +72,11 @@ export async function loginRequest(email: string, password: string): Promise<Aut
       parent: { id: Number(demoParentUser.id.replace(/\D/g, "") || 1), email },
     };
   }
-  return apiFetch<AuthLoginResponse>("/api/auth/login", {
+  const raw = await apiFetch<AuthLoginApiPayload>("/api/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
+  return normalizeEmailLoginResponse(raw);
 }
 
 /** POST /api/auth/register — returns { token, parent }. */
@@ -51,10 +87,11 @@ export async function registerRequest(email: string, password: string): Promise<
       parent: { id: Number(demoParentUser.id.replace(/\D/g, "") || 1), email },
     };
   }
-  return apiFetch<AuthLoginResponse>("/api/auth/register", {
+  const raw = await apiFetch<AuthLoginApiPayload>("/api/auth/register", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
+  return normalizeEmailLoginResponse(raw);
 }
 
 /** Request SMS code from backend. Demo mode: no-op. */

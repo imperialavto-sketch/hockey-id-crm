@@ -50,7 +50,8 @@ function extractApiErrorMessageAndCode(data: unknown): { message: string; code?:
   const d = data as Record<string, unknown>;
   const err = d.error;
   if (typeof err === "string") {
-    return { message: err };
+    const code = typeof d.code === "string" ? d.code : undefined;
+    return { message: err, code };
   }
   if (err && typeof err === "object") {
     const e = err as Record<string, unknown>;
@@ -98,8 +99,10 @@ async function doFetch<T>(url: string, init: RequestInit, timeoutMs: number): Pr
 
   if (__DEV__) console.log("[api]", method, url);
 
+  const isFormData =
+    typeof FormData !== "undefined" && init.body instanceof FormData;
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    ...(!isFormData ? { "Content-Type": "application/json" } : {}),
     ...(init.headers as Record<string, string>),
   };
   if (authToken) {
@@ -149,7 +152,7 @@ async function doFetch<T>(url: string, init: RequestInit, timeoutMs: number): Pr
       }
       await handleUnauthorized();
     } else if (res.status === 401 && authToken && __DEV__) {
-      console.log("[api] 401 on Coach Mark/chat — NOT logging out", url);
+      console.log("[api] 401 on Arena companion chat — NOT logging out", url);
     }
     const { message, code } = extractApiErrorMessageAndCode(data);
     throw new ApiRequestError(message || `Ошибка ${res.status}`, res.status, code);
