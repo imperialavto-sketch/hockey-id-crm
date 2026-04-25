@@ -161,12 +161,14 @@ export async function POST(
 
     return NextResponse.json({
       id: record.id,
+      playerId,
       videoUrl: record.videoUrl,
       analysisText: record.analysisText,
       strengths: analysis.strengths,
       growthAreas: analysis.growthAreas,
       recommendations: analysis.recommendations,
       createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString(),
     });
   } catch (err) {
     console.error("Video analysis failed:", err);
