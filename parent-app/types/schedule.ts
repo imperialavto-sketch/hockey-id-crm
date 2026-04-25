@@ -7,4 +7,7 @@ export interface ScheduleItem {
   subtitle?: string;
   /** Посещаемость для TrainingSession (из API) */
   attendance?: string;
+  /** ISO start/end when API provides machine times (hero / live status). */
+  startAt?: string;
+  endAt?: string;
 }
