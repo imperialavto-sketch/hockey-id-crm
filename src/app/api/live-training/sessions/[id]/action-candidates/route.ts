@@ -9,8 +9,10 @@ import {
   getLiveTrainingSessionByIdForCoach,
   LiveTrainingHttpError,
 } from "@/lib/live-training/service";
+import { augmentLiveTrainingSessionActionCandidatesWithSupercore } from "@/lib/arena/supercore/merge-supercore-focus-decisions-into-action-candidates";
 import { listLiveTrainingSessionActionCandidatesWithMeaningMvp } from "@/lib/live-training/session-meaning-action-candidate";
 import { enrichLiveTrainingActionCandidatesWithMaterialization } from "@/lib/live-training/enrich-live-training-action-candidates";
+import { sortLiveTrainingActionCandidates } from "@/lib/live-training/live-training-action-candidate-rules";
 
 export async function GET(
   req: NextRequest,
@@ -39,7 +41,18 @@ export async function GET(
       session.startedAt,
       session.sessionMeaningJson?.nextActions
     );
-    const items = await enrichLiveTrainingActionCandidatesWithMaterialization(user!.id, raw);
+    // Supercore pass 7: доп. кандидаты из ArenaCoreBindings (focus decisions); тот же префикс id для materialize.
+    const augmented = await augmentLiveTrainingSessionActionCandidatesWithSupercore({
+      items: raw,
+      sessionId: session.id,
+      sessionStartedAt: session.startedAt,
+      outcome: session.outcome,
+    });
+    const forEnrich =
+      augmented.length !== raw.length || augmented.length > 7
+        ? sortLiveTrainingActionCandidates(augmented, 7)
+        : augmented;
+    const items = await enrichLiveTrainingActionCandidatesWithMaterialization(user!.id, forEnrich);
     return NextResponse.json({
       sessionId: session.id,
       items,

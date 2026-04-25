@@ -29,7 +29,19 @@ const MOCK_RESULT_NOTES =
 const MOCK_NEXT_STEPS =
   "Следующий фокус — мягкий перенос веса в кросс-оуверах и собранная посадка в остановках.";
 
+const MOCK_SUBMIT_DISABLED = {
+  error: "Mock submit отключён в production. Используйте канонический контур отчёта внешней тренировки.",
+  code: "MOCK_SUBMIT_DISABLED_IN_PRODUCTION" as const,
+};
+
 export async function POST(request: NextRequest) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json(MOCK_SUBMIT_DISABLED, {
+      status: 410,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
+
   const user = await getAuthFromRequest(request);
   if (!user?.role) {
     return unauthorizedResponse();
