@@ -104,7 +104,11 @@ async function main() {
   }
 
   // Parent "Юрий Голыш" + Player "Голыш Марк" для mobile app dev (код 1234)
-  let yuryParent = await prisma.parent.findFirst({ where: { phone: { contains: "9001234567" } } });
+  let yuryParent = await prisma.parent.findFirst({
+    where: {
+      OR: [{ email: "yury@example.com" }, { phone: { contains: "9001234567" } }],
+    },
+  });
   if (!yuryParent) {
     yuryParent = await prisma.parent.create({
       data: {
@@ -173,11 +177,17 @@ async function main() {
         status: "Активен",
       },
     });
-  } else if (!markPlayer.parentId) {
+  } else {
+    // If Марк already exists from another fixture (e.g. universal seed on another team), move him to the
+    // coach demo team so GET /api/coach/players with demo coach scope is non-empty locally.
     await prisma.player.update({
       where: { id: markPlayer.id },
-      data: { parentId: yuryParent.id },
+      data: {
+        teamId: golyshTeam.id,
+        parentId: markPlayer.parentId ?? yuryParent.id,
+      },
     });
+    markPlayer = (await prisma.player.findUnique({ where: { id: markPlayer.id } }))!;
   }
 
   if (markPlayer) {

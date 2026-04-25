@@ -58,19 +58,20 @@ model LoginHistory {
 }
 
 model School {
-  id          String   @id @default(cuid())
-  name        String
-  address     String?
-  phone       String?
-  email       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  city        String?
-  country     String?
-  description String?
-  logoUrl     String?
-  teams       Team[]
-  users       User[]
+  id                             String                           @id @default(cuid())
+  name                           String
+  address                        String?
+  phone                          String?
+  email                          String?
+  createdAt                      DateTime                         @default(now())
+  updatedAt                      DateTime                         @updatedAt
+  city                           String?
+  country                        String?
+  description                    String?
+  logoUrl                        String?
+  ArenaPlannedVsObservedLiveFact ArenaPlannedVsObservedLiveFact[]
+  teams                          Team[]
+  users                          User[]
 }
 
 model Role {
@@ -129,6 +130,7 @@ model Team {
   createdAt                      DateTime                         @default(now())
   updatedAt                      DateTime                         @updatedAt
   coachId                        String?
+  ArenaPlannedVsObservedLiveFact ArenaPlannedVsObservedLiveFact[]
   LiveTrainingPlayerSignal       LiveTrainingPlayerSignal[]
   LiveTrainingSession            LiveTrainingSession[]
   LiveTrainingSessionReportDraft LiveTrainingSessionReportDraft[]
@@ -191,6 +193,7 @@ model TrainingSession {
   updatedAt                      DateTime                         @updatedAt
   subType                        String?
   arenaNextTrainingFocus         String?
+  ArenaPlannedVsObservedLiveFact ArenaPlannedVsObservedLiveFact[]
   BehaviorLog                    BehaviorLog[]
   GameEvent                      GameEvent[]
   LiveTrainingSession            LiveTrainingSession[]
@@ -1237,9 +1240,11 @@ model LiveTrainingSession {
   planningSnapshotJson                  Json?
   sessionMeaningJson                    Json?
   trainingSessionId                     String?
+  plannedFocusSnapshot                  String?
   arenaNextFocusAppliedAt               DateTime?
   arenaNextFocusTargetTrainingSessionId String?
   arenaNextFocusLine                    String?
+  ArenaPlannedVsObservedLiveFact        ArenaPlannedVsObservedLiveFact?
   ExternalCoachRecommendation           ExternalCoachRecommendation[]
   LiveTrainingEvent                     LiveTrainingEvent[]
   LiveTrainingObservationDraft          LiveTrainingObservationDraft[]
@@ -1269,6 +1274,30 @@ model LiveTrainingSessionReportDraft {
 
   @@index([coachId])
   @@index([teamId])
+}
+
+// Read-only fact: planned slot focus vs observed live signals at confirm (one row per live session).
+model ArenaPlannedVsObservedLiveFact {
+  id                    String                               @id @default(cuid())
+  schoolId              String
+  teamId                String
+  trainingSessionId     String?
+  liveTrainingSessionId String                               @unique
+  plannedFocusText      String?
+  observedFocusText     String?
+  comparisonStatus      ArenaPlannedVsObservedComparisonStatus
+  observedDomainsJson   Json
+  supportingSignalCount Int
+  concernSignalCount    Int
+  createdAt             DateTime                             @default(now())
+  updatedAt             DateTime @updatedAt
+  liveTrainingSession   LiveTrainingSession                  @relation(fields: [liveTrainingSessionId], references: [id], onDelete: Cascade)
+  school                School                               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  team                  Team                                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  trainingSession       TrainingSession?                     @relation(fields: [trainingSessionId], references: [id], onDelete: SetNull)
+
+  @@index([teamId])
+  @@index([schoolId])
 }
 
 model OFPResult {
@@ -1520,6 +1549,13 @@ enum LiveTrainingSessionStatus {
   review
   confirmed
   cancelled
+}
+
+enum ArenaPlannedVsObservedComparisonStatus {
+  aligned
+  mixed
+  diverged
+  insufficient_data
 }
 
 enum OFPTestType {
