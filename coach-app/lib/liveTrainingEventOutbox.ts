@@ -83,6 +83,57 @@ export async function enqueueLiveTrainingEvent(
   return row;
 }
 
+/**
+ * Ключ дедупликации для одного и того же наблюдения в очереди (сессия задаётся отдельно).
+ * Используется при повторных попытках POST после 422 ingest-clarify — не плодить дубликаты при плохой сети.
+ */
+export function liveTrainingEventOutboxObservationDedupKey(body: LiveTrainingEventOutboxBody): string {
+  const raw = (body.rawText ?? "").trim();
+  const pid = typeof body.playerId === "string" ? body.playerId.trim() : "";
+  const st = (body.sourceType ?? "manual_stub").trim() || "manual_stub";
+  return `${raw}\u0001${pid}\u0001${st}`;
+}
+
+/**
+ * Ставит событие в outbox; если уже есть запись с тем же phrase + playerId + sourceType — возвращает её
+ * (сохраняется первый `clientMutationId` для идемпотентности flush).
+ */
+export async function enqueueLiveTrainingEventDedupedByObservationKey(
+  sessionId: string,
+  body: LiveTrainingEventOutboxBody
+): Promise<LiveTrainingQueuedEvent> {
+  const normalized: LiveTrainingEventOutboxBody = {
+    ...body,
+    clientMutationId:
+      typeof body.clientMutationId === "string" && body.clientMutationId.trim()
+        ? body.clientMutationId.trim()
+        : createClientMutationId(),
+  };
+  const key = liveTrainingEventOutboxObservationDedupKey(normalized);
+  const items = await loadLiveTrainingEventOutbox(sessionId);
+  const existing = items.find((x) => liveTrainingEventOutboxObservationDedupKey(x.body) === key);
+  if (existing) {
+    const mid = resolveOutboxBodyClientMutationId(existing.body);
+    if (!existing.body.clientMutationId?.trim()) {
+      const next = items.map((x) =>
+        x.localId === existing.localId ? { ...x, body: { ...x.body, clientMutationId: mid } } : x
+      );
+      await saveLiveTrainingEventOutbox(sessionId, next);
+      return { ...existing, body: { ...existing.body, clientMutationId: mid } };
+    }
+    return existing;
+  }
+  const row: LiveTrainingQueuedEvent = {
+    localId: randomLocalId(),
+    body: normalized,
+    enqueuedAt: new Date().toISOString(),
+    attempts: 0,
+  };
+  items.push(row);
+  await saveLiveTrainingEventOutbox(sessionId, items);
+  return row;
+}
+
 export async function removeLiveTrainingQueuedEvent(sessionId: string, localId: string): Promise<void> {
   const items = (await loadLiveTrainingEventOutbox(sessionId)).filter((x) => x.localId !== localId);
   await saveLiveTrainingEventOutbox(sessionId, items);

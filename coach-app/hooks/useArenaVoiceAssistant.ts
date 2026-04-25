@@ -1,10 +1,22 @@
 /**
  * Coach live Arena — голосовой ассистент в эфире (`live-training/*`).
- * ⚠ AI-ASSISTED, NOT AUTONOMOUS AGENT: wake word → одна команда → rule-based intent → действия сессии.
+ *
+ * GROUNDING (PHASE 1 agent substrate)
+ * -------------------------------------
+ * Arena consumes only: (1) verbatim coach utterances from STT, (2) session/roster context
+ * from authenticated session data, (3) parser/server-confirmed signals, (4) explicit
+ * clarification answers. On ambiguity or low confidence, the flow asks for clarification
+ * or defers — it does not invent events, players, or intents.
+ *
+ * Orchestration + grounded context live in `ArenaSessionOrchestrator` and
+ * `ArenaSessionContextStore`; native STT I/O goes through `ArenaListeningTransport`.
+ *
+ * PHASE 2: continuous idle mic feeds final utterances into the same grounded parser path
+ * (observation + read-only status) without forcing wake; wake/command remains for controls.
  * ❗ Не parent external `/api/arena/*` и не marketplace.
  */
 
-import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { Alert, AppState, type AppStateStatus } from "react-native";
 import { playArenaStopSound, playArenaWakeSound } from "@/lib/arenaAssistantSounds";
 import {
@@ -62,7 +74,12 @@ import {
   ARENA_TTS_DELETED_LAST,
   ARENA_TTS_DELETE_NOTHING,
   ARENA_TTS_FINISH_FAILED,
+  ARENA_TTS_INGEST_CLARIFY_GIVE_UP,
+  ARENA_TTS_INGEST_CLARIFY_MANY,
+  ARENA_TTS_INGEST_CLARIFY_REPEAT,
+  ARENA_TTS_INGEST_QUEUED,
   ARENA_TTS_LAST_EMPTY,
+  ARENA_TTS_SAVED_PLAYER,
   ARENA_TTS_PLAYER_NOT_FOUND,
   ARENA_TTS_REASSIGNED,
   ARENA_TTS_REASSIGN_NO_DRAFT,
@@ -71,6 +88,7 @@ import {
   ARENA_TTS_TIMER_PAUSED,
   ARENA_TTS_TIMER_RESUMED,
   ARENA_TTS_UNKNOWN,
+  buildArenaTtsIngestClarifyTwo,
 } from "@/lib/arenaVoicePhrases";
 import type { Href } from "expo-router";
 import {
@@ -79,7 +97,23 @@ import {
   type LiveCoachInsightContext,
 } from "@/lib/arenaCoachIntelligence";
 import type { LiveTrainingEventItem } from "@/services/liveTrainingService";
+import type { LiveTrainingSpeechResolutionPayload } from "@/services/liveTrainingService";
 import type { LiveTrainingSentiment, LiveTrainingSession } from "@/types/liveTraining";
+import {
+  resolveClarificationVoiceAnswer,
+  type ClarificationVoiceCandidate,
+} from "@/lib/resolveClarificationVoiceAnswer";
+import { createExpoSpeechArenaListeningTransport } from "@/lib/arenaListeningAdapter";
+import type { ArenaListeningAdapterHandlers } from "@/lib/arenaListeningAdapter";
+import { buildArenaGroundedUtteranceInterpretation, isArenaControlIntentRequiringWake } from "@/lib/arenaGroundedUtteranceInterpretation";
+import { evaluateArenaSafeAutoPersistForVoiceIntent } from "@/lib/arenaSafeAutoPersistPolicy";
+import { ArenaSessionContextStore } from "@/lib/arenaSessionContextStore";
+import { ArenaSessionOrchestrator, type ArenaOrchestratorPhase } from "@/lib/arenaSessionOrchestrator";
+import {
+  arenaLiveUtteranceQueuePush,
+  type ArenaLiveUtteranceJob,
+  type ArenaLiveUtterancePipelineEntry,
+} from "@/lib/arenaLiveUtteranceQueue";
 
 type SpeechRecognitionNative = {
   isRecognitionAvailable: () => boolean;
@@ -133,6 +167,13 @@ const WAKE_COOLDOWN_MS = 2000;
 const ANTI_REPEAT_WINDOW_MS = 2500;
 const COACH_INSIGHT_COOLDOWN_MS = 72_000;
 const COACH_INSIGHT_DELAY_AFTER_OBS_MS = 1350;
+/** Короткое окно ответа после TTS-вопроса по 422 ingest. */
+const INGEST_CLARIFY_COMMAND_MAX_MS = 6500;
+const INGEST_CLARIFY_SILENCE_TAIL_MS = 1400;
+/** После TTS-вопроса по ingest — пауза, чтобы динамик не «лез» в первый сэмпл STT. */
+const INGEST_CLARIFY_POST_TTS_PAUSE_MS = 400;
+/** Не запускать coach insight TTS сразу после голосового цикла ingest-уточнения. */
+const INGEST_CLARIFY_INSIGHT_COOLDOWN_MS = 2800;
 
 export type LastArenaPostMeta = {
   draftId: string;
@@ -143,6 +184,30 @@ export type LastArenaPostMeta = {
   playerId: string | null;
 } | null;
 
+/** Payload для голосового уточнения после 422 needs_clarification (POST …/events). */
+export type ArenaIngestClarificationVoicePayload = {
+  phrase: string;
+  sourceType: "manual_stub" | "transcript_segment";
+  sentiment: LiveTrainingSentiment;
+  category?: string;
+  confidence?: number | null;
+  candidates: ClarificationVoiceCandidate[];
+  speechResolution?: LiveTrainingSpeechResolutionPayload;
+  serverMessage: string;
+};
+
+/** Результат POST …/events из `postArenaObservation` (голос): не путать с `null` = очередь. */
+export type ArenaVoicePostObservationResult =
+  | { outcome: "ok"; meta: NonNullable<LastArenaPostMeta> }
+  | { outcome: "queued" }
+  | { outcome: "needs_clarification"; clarification?: ArenaIngestClarificationVoicePayload };
+
+export type IngestClarificationRetryResult =
+  | { status: "posted"; meta: NonNullable<LastArenaPostMeta> }
+  | { status: "queued" }
+  | { status: "needs_clarification"; clarification: ArenaIngestClarificationVoicePayload }
+  | { status: "error"; message: string };
+
 export type UseArenaVoiceAssistantParams = {
   enabled: boolean;
   sessionId: string | undefined;
@@ -150,14 +215,14 @@ export type UseArenaVoiceAssistantParams = {
   roster: RosterEntry[];
   lastArenaPostRef: MutableRefObject<LastArenaPostMeta>;
   router: { push: (href: Href) => void; replace: (href: Href) => void };
-  /** POST события; вернуть meta черновика или null (например, ушло в outbox без id) */
+  /** POST события; `needs_clarification` — сервер 422, UI уточняет игрока на live-экране */
   postArenaObservation: (args: {
     rawText: string;
     playerId?: string;
     category?: string;
     sentiment: LiveTrainingSentiment;
     confidence?: number | null;
-  }) => Promise<LastArenaPostMeta | null>;
+  }) => Promise<ArenaVoicePostObservationResult>;
   refreshSession: () => Promise<void>;
   finishTrainingVoice: () => Promise<{ ok: boolean; message?: string }>;
   /** UI-таймер live: то же состояние, что кнопка «Пауза» / «Продолжить». */
@@ -179,13 +244,29 @@ export type UseArenaVoiceAssistantParams = {
   sessionRef?: MutableRefObject<LiveTrainingSession | null>;
   /** Контекст слота расписания (группа / вся команда) для фраз Арены. */
   scheduleArenaContext?: ArenaScheduleSlotContext | null;
+  /** Повтор POST …/events после выбора игрока (422 → explicit playerId). */
+  retryIngestClarificationWithPlayerId: (
+    payload: ArenaIngestClarificationVoicePayload,
+    playerId: string
+  ) => Promise<IngestClarificationRetryResult>;
+  /** Сброс экранного fallback `arenaIngestClarification` в live.tsx */
+  clearIngestClarificationUi: () => void;
 };
 
 export type ArenaClarifyPhase = "none" | "player" | "target" | "meaning";
 
+export type ArenaPersistenceBridge = {
+  notifyOutboxFlushStarted: () => void;
+  notifyOutboxFlushFinished: () => void;
+};
+
 export type UseArenaVoiceAssistantResult = {
   uiPhase: ArenaAssistantUiPhase;
   clarifyPhase: ArenaClarifyPhase;
+  /** PHASE 1: coarse agent lifecycle (mic/NLP/clarify), not product intent. */
+  orchestratorPhase: ArenaOrchestratorPhase;
+  /** Serial utterance backlog (final STT jobs waiting for the interpreter). */
+  arenaUtteranceQueueDepth: number;
   lastTranscript: string;
   lastIntent: ArenaParsedIntent | null;
   /** Rule-based intent V1 (parse-arena-intent); не заменяет lastIntent / parseArenaCommand. */
@@ -193,6 +274,8 @@ export type UseArenaVoiceAssistantResult = {
   error: string | null;
   isSpeechAvailable: boolean;
   clearError: () => void;
+  /** PHASE 2: live screen calls into flush lifecycle so coarse phase matches transport. */
+  persistenceBridge: ArenaPersistenceBridge;
 };
 
 type InternalPhase = "idle" | "listening" | "processing";
@@ -227,6 +310,25 @@ function arenaFirstName(name: string): string {
   return t || name;
 }
 
+function buildIngestClarifyQuestionForTts(payload: ArenaIngestClarificationVoicePayload): string {
+  const c = payload.candidates;
+  if (c.length === 2) return buildArenaTtsIngestClarifyTwo(c[0]!.name, c[1]!.name);
+  if (c.length === 1) {
+    const t = payload.serverMessage.trim();
+    return t.length > 0 ? t : ARENA_TTS_INGEST_CLARIFY_MANY;
+  }
+  return ARENA_TTS_INGEST_CLARIFY_MANY;
+}
+
+type IngestVoiceClarifyRefState =
+  | { kind: "idle" }
+  | {
+      kind: "awaiting_answer";
+      sessionId: string;
+      payload: ArenaIngestClarificationVoicePayload;
+      unclearAttempts: number;
+    };
+
 function prefixedArenaObservationRaw(
   intent:
     | { kind: "create_player_observation"; rawText: string }
@@ -236,14 +338,6 @@ function prefixedArenaObservationRaw(
   if (intent.kind === "create_team_observation") return `[Команда] ${intent.rawText}`;
   if (intent.kind === "create_session_observation") return `[Сессия] ${intent.rawText}`;
   return intent.rawText;
-}
-
-function speechAvailable(): boolean {
-  try {
-    return ExpoSpeechRecognitionModule.isRecognitionAvailable();
-  } catch {
-    return false;
-  }
 }
 
 export function useArenaVoiceAssistant(
@@ -266,6 +360,8 @@ export function useArenaVoiceAssistant(
     eventsRef: eventsRefParam,
     sessionRef: sessionRefParam,
     scheduleArenaContext,
+    retryIngestClarificationWithPlayerId,
+    clearIngestClarificationUi,
   } = params;
 
   const [uiPhase, setUiPhase] = useState<ArenaAssistantUiPhase>("idle");
@@ -274,7 +370,13 @@ export function useArenaVoiceAssistant(
   const [lastIntent, setLastIntent] = useState<ArenaParsedIntent | null>(null);
   const [lastArenaIntentV1, setLastArenaIntentV1] = useState<ArenaIntent | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isSpeechAvailable, setIsSpeechAvailable] = useState(speechAvailable);
+  const [isSpeechAvailable, setIsSpeechAvailable] = useState(() => {
+    try {
+      return ExpoSpeechRecognitionModule.isRecognitionAvailable();
+    } catch {
+      return false;
+    }
+  });
 
   const mountedRef = useRef(true);
   const phaseRef = useRef<InternalPhase>("idle");
@@ -293,13 +395,41 @@ export function useArenaVoiceAssistant(
   const lastCoachInsightSpeakAtRef = useRef(0);
   const lastVolumeLoudAtRef = useRef(0);
   const rosterRef = useRef(roster);
+  const arenaPipelineEntryRef = useRef<"wake_listen" | "idle_continuous_final">("wake_listen");
+  const contextStoreRef = useRef(new ArenaSessionContextStore());
+  const [orchestratorPhase, setOrchestratorPhase] = useState<ArenaOrchestratorPhase>("idle");
+  const [arenaUtteranceQueueDepth, setArenaUtteranceQueueDepth] = useState(0);
+  const orchestrator = useMemo(
+    () =>
+      new ArenaSessionOrchestrator((p) => {
+        setOrchestratorPhase(p);
+      }),
+    []
+  );
+  const listeningTransport = useMemo(
+    () => createExpoSpeechArenaListeningTransport(ExpoSpeechRecognitionModule),
+    []
+  );
+  const listeningHandlersRef = useRef<ArenaListeningAdapterHandlers>({
+    onTranscriptSegment: () => {},
+    onListeningStateChange: () => {},
+    onError: () => {},
+  });
   const conversationContextRef = useRef(createEmptyArenaConversationContext());
   const pendingClarificationRef = useRef(createIdleArenaPendingClarification());
   const clarifyActivatedRef = useRef(false);
+  const ingestVoiceClarifyRef = useRef<IngestVoiceClarifyRefState>({ kind: "idle" });
+  const ingestVoiceClarifyFlowActiveRef = useRef(false);
+  const ingestInsightCooldownUntilRef = useRef(0);
+  const utteranceQueueRef = useRef<ArenaLiveUtteranceJob[]>([]);
+  const lastParserClarifyPromptNormRef = useRef("");
+  const tryScheduleDrainUtteranceQueueRef = useRef<() => void>(() => {});
 
   const clearPendingClarification = useCallback(() => {
     pendingClarificationRef.current = createIdleArenaPendingClarification();
     setClarifyPhase("none");
+    contextStoreRef.current.clearClarification();
+    lastParserClarifyPromptNormRef.current = "";
   }, []);
   type ParamsRef = UseArenaVoiceAssistantParams & {
     sessionId: string | undefined;
@@ -308,6 +438,8 @@ export function useArenaVoiceAssistant(
     eventsRef?: MutableRefObject<LiveTrainingEventItem[]>;
     sessionRef?: MutableRefObject<LiveTrainingSession | null>;
     scheduleArenaContext?: ArenaScheduleSlotContext | null;
+    retryIngestClarificationWithPlayerId: UseArenaVoiceAssistantParams["retryIngestClarificationWithPlayerId"];
+    clearIngestClarificationUi: UseArenaVoiceAssistantParams["clearIngestClarificationUi"];
   };
   const paramsRef = useRef<ParamsRef>(null!);
   paramsRef.current = {
@@ -318,8 +450,38 @@ export function useArenaVoiceAssistant(
     eventsRef: eventsRefParam,
     sessionRef: sessionRefParam,
     scheduleArenaContext: scheduleArenaContext ?? null,
+    retryIngestClarificationWithPlayerId,
+    clearIngestClarificationUi,
   };
   rosterRef.current = roster;
+
+  const speechRecognitionAvailable = useCallback((): boolean => {
+    try {
+      return listeningTransport.isRecognitionAvailable();
+    } catch {
+      return false;
+    }
+  }, [listeningTransport]);
+
+  useEffect(() => {
+    const s = paramsRef.current.sessionRef?.current ?? null;
+    const groupId =
+      s?.groupContextSignalRollup?.canonicalGroupId ??
+      s?.groupContextStampDiagnostic?.canonicalGroupId ??
+      null;
+    const ps = s?.planningSnapshot;
+    const liveFocusLabel =
+      ps?.summaryLines?.find((line) => line.trim().length > 0)?.trim() ??
+      ps?.startPriorities?.summaryLine?.trim() ??
+      null;
+    contextStoreRef.current.setSessionContext({
+      sessionId: sessionId ?? null,
+      teamId: s?.teamId ?? null,
+      groupId,
+      liveFocusLabel,
+    });
+    contextStoreRef.current.updateRosterContext(roster);
+  }, [sessionId, roster, isSessionLive]);
 
   const clearTimers = useCallback(() => {
     if (commandMaxTimerRef.current) {
@@ -341,23 +503,17 @@ export function useArenaVoiceAssistant(
   }, []);
 
   const hardStopRecognizer = useCallback(() => {
-    try {
-      ExpoSpeechRecognitionModule.abort();
-    } catch {
-      try {
-        ExpoSpeechRecognitionModule.stop();
-      } catch {
-        /* ignore */
-      }
-    }
+    listeningTransport.abortListening();
     recognizerActiveRef.current = false;
-  }, []);
+  }, [listeningTransport]);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       pendingClarificationRef.current = createIdleArenaPendingClarification();
+      ingestVoiceClarifyFlowActiveRef.current = false;
+      ingestVoiceClarifyRef.current = { kind: "idle" };
       clearTimers();
       hardStopRecognizer();
       stopArenaSpeech();
@@ -367,13 +523,20 @@ export function useArenaVoiceAssistant(
   useEffect(() => {
     conversationContextRef.current = createEmptyArenaConversationContext();
     clearPendingClarification();
+    ingestVoiceClarifyFlowActiveRef.current = false;
+    ingestVoiceClarifyRef.current = { kind: "idle" };
+    paramsRef.current.clearIngestClarificationUi();
     lastVoiceExecutedNormRef.current = "";
     lastVoiceExecutedAtRef.current = 0;
-  }, [sessionId, clearPendingClarification]);
+    utteranceQueueRef.current = [];
+    lastParserClarifyPromptNormRef.current = "";
+    if (mountedRef.current) setArenaUtteranceQueueDepth(0);
+    orchestrator.reset();
+  }, [sessionId, clearPendingClarification, orchestrator]);
 
   useEffect(() => {
-    setIsSpeechAvailable(speechAvailable());
-  }, [enabled]);
+    setIsSpeechAvailable(speechRecognitionAvailable());
+  }, [enabled, speechRecognitionAvailable]);
 
   const setPhase = useCallback((p: InternalPhase) => {
     phaseRef.current = p;
@@ -422,9 +585,37 @@ export function useArenaVoiceAssistant(
   const scheduleSilenceIdlePromptRef = useRef(scheduleSilenceIdlePrompt);
   scheduleSilenceIdlePromptRef.current = scheduleSilenceIdlePrompt;
 
+  const syncArenaUtteranceQueueDepth = useCallback(() => {
+    if (!mountedRef.current) return;
+    setArenaUtteranceQueueDepth(utteranceQueueRef.current.length);
+  }, []);
+
+  const enqueueArenaLiveUtterance = useCallback(
+    (rawText: string, pipelineEntry: ArenaLiveUtterancePipelineEntry) => {
+      const t = rawText.trim();
+      if (!t) return;
+      const normFull = normalizeArenaTranscript(t);
+      if (isGarbageTranscript(t, normFull)) return;
+      const { queue, droppedCount } = arenaLiveUtteranceQueuePush(utteranceQueueRef.current, {
+        text: t,
+        pipelineEntry,
+        enqueuedAt: Date.now(),
+      });
+      utteranceQueueRef.current = queue;
+      if (droppedCount > 0 && __DEV__) {
+        console.warn("[arena] utterance queue dropped oldest jobs", { droppedCount });
+      }
+      syncArenaUtteranceQueueDepth();
+    },
+    [syncArenaUtteranceQueueDepth]
+  );
+
   const emitCoachInsightIfNeededRef = useRef<() => void>(() => {});
 
   const emitCoachInsightIfNeeded = useCallback(() => {
+    /** Heuristic TTS from already-loaded server events only — not autonomous “game state” inference. */
+    if (ingestVoiceClarifyFlowActiveRef.current) return;
+    if (Date.now() < ingestInsightCooldownUntilRef.current) return;
     const pr = paramsRef.current;
     const evs = pr.eventsRef?.current;
     if (!evs || evs.length === 0) return;
@@ -450,6 +641,8 @@ export function useArenaVoiceAssistant(
     const tts = buildInsightTts(insight);
     setTimeout(() => {
       if (!mountedRef.current) return;
+      if (ingestVoiceClarifyFlowActiveRef.current) return;
+      if (Date.now() < ingestInsightCooldownUntilRef.current) return;
       if (phaseRef.current === "listening") return;
       void speakArenaShort(tts);
     }, COACH_INSIGHT_DELAY_AFTER_OBS_MS);
@@ -460,22 +653,67 @@ export function useArenaVoiceAssistant(
   const startIdleRecognitionRef = useRef<() => Promise<void>>(async () => {});
   const startClarifyCaptureRef = useRef<() => Promise<void>>(async () => {});
 
+  const endIngestVoiceAndResumeIdle = useCallback(() => {
+    ingestVoiceClarifyFlowActiveRef.current = false;
+    ingestVoiceClarifyRef.current = { kind: "idle" };
+    ingestInsightCooldownUntilRef.current = Date.now() + INGEST_CLARIFY_INSIGHT_COOLDOWN_MS;
+    paramsRef.current.clearIngestClarificationUi();
+    contextStoreRef.current.clearClarification();
+    orchestrator.notifyInterpretationPipelineFinished("idle");
+    scheduleIdleRestart();
+    scheduleSilenceIdlePrompt();
+    tryScheduleDrainUtteranceQueueRef.current();
+  }, [scheduleIdleRestart, scheduleSilenceIdlePrompt, orchestrator]);
+
   const finalizeCommandListening = useCallback(
-    async (reason: string) => {
-      if (finalizeLockRef.current) return;
-      if (phaseRef.current !== "listening") return;
+    async (
+      reason: string,
+      options?: {
+        fromQueueDrain?: boolean;
+        overrideText?: string;
+        overridePipelineEntry?: ArenaLiveUtterancePipelineEntry;
+      }
+    ) => {
+      const fromQueueDrain = options?.fromQueueDrain === true;
+      const overrideText = options?.overrideText;
+      const pipelineForEnqueue =
+        options?.overridePipelineEntry ?? arenaPipelineEntryRef.current;
+
+      if (finalizeLockRef.current && !fromQueueDrain) {
+        const tq = (overrideText ?? commandTextRef.current).trim();
+        if (tq) {
+          enqueueArenaLiveUtterance(tq, pipelineForEnqueue);
+        }
+        return;
+      }
+
+      if (!fromQueueDrain && phaseRef.current !== "listening") return;
+
       finalizeLockRef.current = true;
       clearTimers();
-      hardStopRecognizer();
+      if (!fromQueueDrain) {
+        hardStopRecognizer();
+      }
 
-      const text = commandTextRef.current.trim();
+      const text = (overrideText ?? commandTextRef.current).trim();
       commandTextRef.current = "";
       if (mountedRef.current) setLastTranscript(text);
 
-      try {
-        await playArenaStopSound();
-      } catch {
-        /* ignore */
+      const pipelineEntryForRun = arenaPipelineEntryRef.current;
+      arenaPipelineEntryRef.current = "wake_listen";
+
+      const skipStopForIngestClarify =
+        ingestVoiceClarifyRef.current.kind === "awaiting_answer";
+      const skipStopSound =
+        skipStopForIngestClarify ||
+        pipelineEntryForRun === "idle_continuous_final" ||
+        reason === "queue_drain";
+      if (!skipStopSound) {
+        try {
+          await playArenaStopSound();
+        } catch {
+          /* ignore */
+        }
       }
 
       if (!mountedRef.current) {
@@ -484,6 +722,7 @@ export function useArenaVoiceAssistant(
       }
 
       setPhase("processing");
+      orchestrator.notifyInterpretationPipelineStarted();
 
       const executeIntent = async (intent: ArenaParsedIntent) => {
         const p = paramsRef.current;
@@ -510,6 +749,8 @@ export function useArenaVoiceAssistant(
               if (!r.ok && r.message) {
                 void speakArenaShort(ARENA_TTS_FINISH_FAILED);
                 Alert.alert(ARENA_ALERT_TITLE, r.message);
+              } else if (r.ok) {
+                orchestrator.notifySessionCompleted();
               }
               break;
             }
@@ -581,7 +822,9 @@ export function useArenaVoiceAssistant(
             case "create_player_observation":
             case "create_team_observation":
             case "create_session_observation": {
-              const meta = await p.postArenaObservation({
+              const persistVerdict = evaluateArenaSafeAutoPersistForVoiceIntent(intent);
+              contextStoreRef.current.setLastSafeAutoPersistVerdict(persistVerdict);
+              const postRes = await p.postArenaObservation({
                 rawText: prefixedArenaObservationRaw(intent),
                 playerId: intent.kind === "create_player_observation" ? intent.playerId : undefined,
                 category: intent.category,
@@ -589,6 +832,23 @@ export function useArenaVoiceAssistant(
                 confidence: intent.confidence,
               });
               if (!mountedRef.current) break;
+              if (postRes.outcome === "needs_clarification") {
+                if (postRes.clarification) {
+                  if (__DEV__) {
+                    console.log("[useArenaVoiceAssistant] ingest needs_clarification — voice loop");
+                  }
+                  contextStoreRef.current.setPendingClarification({
+                    kind: "ingest_voice",
+                    phrase: postRes.clarification.phrase,
+                    createdAt: Date.now(),
+                  });
+                  ingestVoiceClarifyFlowActiveRef.current = true;
+                  void runIngestClarifySequenceRef.current(postRes.clarification);
+                } else if (__DEV__) {
+                  console.log("[useArenaVoiceAssistant] ingest needs_clarification — no clarification payload");
+                }
+                break;
+              }
               const targetType =
                 intent.kind === "create_player_observation"
                   ? ("player" as const)
@@ -599,7 +859,16 @@ export function useArenaVoiceAssistant(
                 intent.kind === "create_player_observation"
                   ? rosterRef.current.find((x) => x.id === intent.playerId)?.name ?? null
                   : null;
-              if (meta) {
+              if (postRes.outcome === "ok") {
+                const meta = postRes.meta;
+                contextStoreRef.current.markVoiceObservationHttpAccepted();
+                contextStoreRef.current.pushConfirmedEvent({
+                  at: Date.now(),
+                  source: "voice_post_ok",
+                  rawText: intent.rawText,
+                  draftId: meta.draftId ?? undefined,
+                  playerId: meta.playerId,
+                });
                 p.lastArenaPostRef.current = meta;
                 conversationContextRef.current = arenaContextAfterObservation(
                   conversationContextRef.current,
@@ -613,41 +882,46 @@ export function useArenaVoiceAssistant(
                     rawText: intent.rawText,
                   }
                 );
-              } else {
-                conversationContextRef.current = arenaContextAfterObservation(
-                  conversationContextRef.current,
-                  {
-                    draftId: null,
-                    playerId: intent.kind === "create_player_observation" ? intent.playerId : null,
-                    playerName: resolvedPlayerName,
-                    targetType,
-                    domain: intent.domain,
-                    skill: intent.skill,
-                    rawText: intent.rawText,
+                const ttsSalt = meta.draftId ?? `${intent.rawText}:${Date.now()}`;
+                const skipAffirmationTts = persistVerdict.safe === true;
+                if (!skipAffirmationTts) {
+                  if (intent.kind === "create_player_observation") {
+                    void speakArenaShort(
+                      pickTtsAfterPlayerObservation(
+                        arenaFirstName(resolvedPlayerName ?? "игрок"),
+                        ttsSalt
+                      )
+                    );
+                  } else if (intent.kind === "create_team_observation") {
+                    void speakArenaShort(
+                      pickTtsAfterTeamObservation(
+                        ttsSalt,
+                        paramsRef.current.scheduleArenaContext ?? undefined
+                      )
+                    );
+                  } else {
+                    void speakArenaShort(pickTtsAfterSessionObservation(ttsSalt));
                   }
-                );
-                void speakArenaShort(pickTtsQueued(`${intent.kind}:${intent.rawText}`));
+                }
+                emitCoachInsightIfNeededRef.current();
                 break;
               }
-              const ttsSalt = meta?.draftId ?? `${intent.rawText}:${Date.now()}`;
-              if (intent.kind === "create_player_observation") {
-                void speakArenaShort(
-                  pickTtsAfterPlayerObservation(
-                    arenaFirstName(resolvedPlayerName ?? "игрок"),
-                    ttsSalt
-                  )
-                );
-              } else if (intent.kind === "create_team_observation") {
-                void speakArenaShort(
-                  pickTtsAfterTeamObservation(
-                    ttsSalt,
-                    paramsRef.current.scheduleArenaContext ?? undefined
-                  )
-                );
-              } else {
-                void speakArenaShort(pickTtsAfterSessionObservation(ttsSalt));
+              if (postRes.outcome === "queued") {
+                contextStoreRef.current.markVoiceObservationQueuedTransport();
               }
-              emitCoachInsightIfNeededRef.current();
+              conversationContextRef.current = arenaContextAfterObservation(
+                conversationContextRef.current,
+                {
+                  draftId: null,
+                  playerId: intent.kind === "create_player_observation" ? intent.playerId : null,
+                  playerName: resolvedPlayerName,
+                  targetType,
+                  domain: intent.domain,
+                  skill: intent.skill,
+                  rawText: intent.rawText,
+                }
+              );
+              void speakArenaShort(pickTtsQueued(`${intent.kind}:${intent.rawText}`));
               break;
             }
             case "ask_last_observation_status": {
@@ -666,6 +940,9 @@ export function useArenaVoiceAssistant(
                   gnorm,
                   suppressUnknownTts: suppressTts,
                 });
+              }
+              if (pipelineEntryForRun === "idle_continuous_final") {
+                break;
               }
               if (!suppressTts) {
                 void speakArenaShort(ARENA_TTS_UNKNOWN);
@@ -686,8 +963,151 @@ export function useArenaVoiceAssistant(
 
       const run = async () => {
         clarifyActivatedRef.current = false;
+        if (text.trim().length > 0) {
+          contextStoreRef.current.setLastGroundedInterpretation(
+            buildArenaGroundedUtteranceInterpretation({
+              rawTranscript: text,
+              roster: rosterRef.current,
+              conversationCtx: conversationContextRef.current,
+            })
+          );
+        } else {
+          contextStoreRef.current.setLastGroundedInterpretation(null);
+        }
         const p = paramsRef.current;
         const sid = p.sessionId;
+
+        const hasWake = transcriptContainsWakeWord(text);
+
+        if (ingestVoiceClarifyRef.current.kind === "awaiting_answer") {
+          if (!sid || ingestVoiceClarifyRef.current.sessionId !== sid) {
+            endIngestVoiceAndResumeIdle();
+            return;
+          }
+          if (hasWake) {
+            endIngestVoiceAndResumeIdle();
+            return;
+          }
+          if (!text) {
+              const ing0 = ingestVoiceClarifyRef.current;
+              if (ing0.kind === "awaiting_answer") {
+                if (ing0.unclearAttempts >= 1) {
+                  void speakArenaShort(ARENA_TTS_INGEST_CLARIFY_GIVE_UP);
+                  endIngestVoiceAndResumeIdle();
+                  return;
+                }
+                ingestVoiceClarifyRef.current = {
+                  ...ing0,
+                  unclearAttempts: ing0.unclearAttempts + 1,
+                };
+                await speakArenaShort(ARENA_TTS_INGEST_CLARIFY_REPEAT);
+                await new Promise<void>((r) => setTimeout(r, INGEST_CLARIFY_POST_TTS_PAUSE_MS));
+                await startIngestClarifyListeningRef.current();
+              }
+              return;
+            }
+
+            const normIngest = normalizeArenaTranscript(text);
+            if (isGarbageTranscript(text, normIngest)) {
+              const ingG = ingestVoiceClarifyRef.current;
+              if (ingG.kind === "awaiting_answer") {
+                if (ingG.unclearAttempts >= 1) {
+                  void speakArenaShort(ARENA_TTS_INGEST_CLARIFY_GIVE_UP);
+                  endIngestVoiceAndResumeIdle();
+                  return;
+                }
+                ingestVoiceClarifyRef.current = {
+                  ...ingG,
+                  unclearAttempts: ingG.unclearAttempts + 1,
+                };
+                await speakArenaShort(ARENA_TTS_INGEST_CLARIFY_REPEAT);
+                await new Promise<void>((r) => setTimeout(r, INGEST_CLARIFY_POST_TTS_PAUSE_MS));
+                await startIngestClarifyListeningRef.current();
+              }
+              return;
+            }
+
+            const ing = ingestVoiceClarifyRef.current;
+            if (ing.kind !== "awaiting_answer") return;
+            const voiceAnswer = resolveClarificationVoiceAnswer(text, ing.payload.candidates);
+            if (voiceAnswer.kind === "cancelled") {
+              void speakArenaShort(ARENA_TTS_CLARIFY_CANCELLED);
+              endIngestVoiceAndResumeIdle();
+              return;
+            }
+            if (voiceAnswer.kind === "retry") {
+              if (ing.unclearAttempts >= 1) {
+                void speakArenaShort(ARENA_TTS_INGEST_CLARIFY_GIVE_UP);
+                endIngestVoiceAndResumeIdle();
+                return;
+              }
+              ingestVoiceClarifyRef.current = {
+                ...ing,
+                unclearAttempts: ing.unclearAttempts + 1,
+              };
+              await speakArenaShort(ARENA_TTS_INGEST_CLARIFY_REPEAT);
+              await new Promise<void>((r) => setTimeout(r, INGEST_CLARIFY_POST_TTS_PAUSE_MS));
+              await startIngestClarifyListeningRef.current();
+              return;
+            }
+
+            const retryRes = await p.retryIngestClarificationWithPlayerId(
+              ing.payload,
+              voiceAnswer.playerId
+            );
+            if (!mountedRef.current) return;
+            if (retryRes.status === "posted") {
+              const meta = retryRes.meta;
+              contextStoreRef.current.markVoiceObservationHttpAccepted();
+              contextStoreRef.current.pushConfirmedEvent({
+                at: Date.now(),
+                source: "ingest_clarify_retry_ok",
+                rawText: ing.payload.phrase,
+                draftId: meta.draftId ?? undefined,
+                playerId: meta.playerId,
+              });
+              contextStoreRef.current.resolveClarification();
+              p.lastArenaPostRef.current = meta;
+              const rosterRow = rosterRef.current.find((x) => x.id === meta.playerId);
+              const resolvedPlayerName = rosterRow?.name ?? null;
+              conversationContextRef.current = arenaContextAfterObservation(
+                conversationContextRef.current,
+                {
+                  draftId: meta.draftId,
+                  playerId: meta.playerId,
+                  playerName: resolvedPlayerName,
+                  targetType: meta.playerId ? "player" : "session",
+                  domain: null,
+                  skill: null,
+                  rawText: ing.payload.phrase,
+                }
+              );
+              void speakArenaShort(ARENA_TTS_SAVED_PLAYER(arenaFirstName(resolvedPlayerName ?? "игрок")));
+              endIngestVoiceAndResumeIdle();
+              emitCoachInsightIfNeededRef.current();
+              return;
+            }
+            if (retryRes.status === "queued") {
+              contextStoreRef.current.markVoiceObservationQueuedTransport();
+              void speakArenaShort(ARENA_TTS_INGEST_QUEUED);
+              endIngestVoiceAndResumeIdle();
+              return;
+            }
+            if (retryRes.status === "needs_clarification") {
+              contextStoreRef.current.setPendingClarification({
+                kind: "ingest_voice",
+                phrase: retryRes.clarification.phrase,
+                createdAt: Date.now(),
+              });
+              ingestVoiceClarifyFlowActiveRef.current = true;
+              void runIngestClarifySequenceRef.current(retryRes.clarification);
+              return;
+            }
+            void speakArenaShort(ARENA_TTS_UNKNOWN);
+            Alert.alert(ARENA_ALERT_TITLE, retryRes.message);
+            endIngestVoiceAndResumeIdle();
+            return;
+        }
 
         if (!text) {
           if (pendingClarificationRef.current.kind === "awaiting_followup") {
@@ -699,8 +1119,15 @@ export function useArenaVoiceAssistant(
               return;
             }
             pendingClarificationRef.current = { ...pend, retryCount: nextRetry };
-            void speakArenaShort(pend.prompt);
+            const promptNorm = normalizeArenaTranscript(pend.prompt);
+            if (promptNorm !== lastParserClarifyPromptNormRef.current) {
+              lastParserClarifyPromptNormRef.current = promptNorm;
+              void speakArenaShort(pend.prompt);
+            }
             clarifyActivatedRef.current = true;
+            return;
+          }
+          if (pipelineEntryForRun === "idle_continuous_final") {
             return;
           }
           if (mountedRef.current) {
@@ -728,6 +1155,23 @@ export function useArenaVoiceAssistant(
           return;
         }
 
+        if (
+          pipelineEntryForRun === "idle_continuous_final" &&
+          !transcriptContainsWakeWord(text)
+        ) {
+          const probe = parseArenaCommand(text, rosterRef.current, conversationContextRef.current);
+          if (probe.ok && isArenaControlIntentRequiringWake(probe.intent)) {
+            lastVoiceExecutedNormRef.current = normFull;
+            lastVoiceExecutedAtRef.current = nowTs;
+            return;
+          }
+          if (probe.ok && probe.intent.kind === "unknown") {
+            lastVoiceExecutedNormRef.current = normFull;
+            lastVoiceExecutedAtRef.current = nowTs;
+            return;
+          }
+        }
+
         const rosterForIntentV1 = rosterRef.current.map((r) => ({
           id: r.id,
           name: r.name,
@@ -742,7 +1186,6 @@ export function useArenaVoiceAssistant(
           }
         }
 
-        const hasWake = transcriptContainsWakeWord(text);
         if (pendingClarificationRef.current.kind === "awaiting_followup" && hasWake) {
           clearPendingClarification();
         }
@@ -768,10 +1211,15 @@ export function useArenaVoiceAssistant(
               return;
             }
             pendingClarificationRef.current = { ...pend, retryCount: nextRetry };
-            void speakArenaShort(resolved.followUpHint);
+            const hintNorm = normalizeArenaTranscript(resolved.followUpHint);
+            if (hintNorm !== lastParserClarifyPromptNormRef.current) {
+              lastParserClarifyPromptNormRef.current = hintNorm;
+              void speakArenaShort(resolved.followUpHint);
+            }
             clarifyActivatedRef.current = true;
             return;
           }
+          contextStoreRef.current.resolveClarification();
           clearPendingClarification();
           if (mountedRef.current) setLastIntent(resolved.intent);
           await executeIntent(resolved.intent);
@@ -798,6 +1246,7 @@ export function useArenaVoiceAssistant(
         }
         if (!parsed.ok) {
           if (!sid) return;
+          lastParserClarifyPromptNormRef.current = normalizeArenaTranscript(parsed.prompt);
           void speakArenaShort(parsed.prompt);
           Alert.alert(ARENA_ALERT_TITLE, parsed.prompt);
           pendingClarificationRef.current = {
@@ -810,6 +1259,11 @@ export function useArenaVoiceAssistant(
             retryCount: 0,
             createdAt: Date.now(),
           };
+          contextStoreRef.current.setPendingClarification({
+            kind: "parser_followup",
+            clarificationType: parsed.clarificationType,
+            createdAt: Date.now(),
+          });
           setClarifyPhase(parsed.clarificationType);
           clarifyActivatedRef.current = true;
           return;
@@ -827,14 +1281,21 @@ export function useArenaVoiceAssistant(
       } finally {
         finalizeLockRef.current = false;
         if (!mountedRef.current) return;
+        if (ingestVoiceClarifyFlowActiveRef.current) {
+          setPhase("idle");
+          return;
+        }
         if (clarifyActivatedRef.current) {
           setPhase("idle");
+          orchestrator.notifyInterpretationPipelineFinished("clarifying");
           void startClarifyCaptureRef.current();
         } else {
           setPhase("idle");
+          orchestrator.notifyInterpretationPipelineFinished("idle");
           scheduleIdleRestart();
           scheduleSilenceIdlePrompt();
         }
+        tryScheduleDrainUtteranceQueueRef.current();
       }
     },
     [
@@ -844,11 +1305,161 @@ export function useArenaVoiceAssistant(
       scheduleSilenceIdlePrompt,
       setPhase,
       clearPendingClarification,
+      endIngestVoiceAndResumeIdle,
+      orchestrator,
+      enqueueArenaLiveUtterance,
     ]
   );
 
   const finalizeCommandListeningRef = useRef(finalizeCommandListening);
   finalizeCommandListeningRef.current = finalizeCommandListening;
+
+  const tryScheduleDrainUtteranceQueue = useCallback(() => {
+    if (ingestVoiceClarifyFlowActiveRef.current) return;
+    if (pendingClarificationRef.current.kind === "awaiting_followup") return;
+    if (contextStoreRef.current.getSnapshot().outboxFlushInFlight) return;
+    if (finalizeLockRef.current) return;
+    if (utteranceQueueRef.current.length === 0) return;
+    const job = utteranceQueueRef.current.shift();
+    if (!job) return;
+    syncArenaUtteranceQueueDepth();
+    commandTextRef.current = job.text;
+    arenaPipelineEntryRef.current = job.pipelineEntry;
+    queueMicrotask(() => {
+      void finalizeCommandListeningRef.current("queue_drain", { fromQueueDrain: true });
+    });
+  }, [syncArenaUtteranceQueueDepth]);
+
+  tryScheduleDrainUtteranceQueueRef.current = tryScheduleDrainUtteranceQueue;
+
+  const startIngestClarifyListeningRef = useRef<() => Promise<void>>(async () => {});
+
+  const startIngestClarifyListening = useCallback(async () => {
+    if (!mountedRef.current) return;
+    if (ingestVoiceClarifyRef.current.kind !== "awaiting_answer") return;
+    if (phaseRef.current !== "idle") return;
+
+    clearTimers();
+    hardStopRecognizer();
+    phaseRef.current = "listening";
+    if (mountedRef.current) setUiPhase("listening");
+    commandTextRef.current = "";
+
+    const pr = paramsRef.current;
+    if (!pr.enabled || !pr.sessionId) return;
+
+    const st = ingestVoiceClarifyRef.current;
+    if (st.kind !== "awaiting_answer") return;
+    const { payload } = st;
+    const jerseyStrs = payload.candidates
+      .map((c) =>
+        c.jerseyNumber != null && Number.isFinite(c.jerseyNumber as number)
+          ? String(c.jerseyNumber)
+          : ""
+      )
+      .filter(Boolean);
+    const ctxStrings = [
+      "отмена",
+      "не надо",
+      "сбрось",
+      "первый",
+      "второй",
+      "третий",
+      "первая",
+      "вторая",
+      "да",
+      "нет",
+      ...jerseyStrs,
+      ...payload.candidates.flatMap((c) =>
+        c.name
+          .trim()
+          .split(/\s+/)
+          .filter((p) => p.length >= 2)
+      ),
+    ].filter((s, i, a) => s && a.indexOf(s) === i).slice(0, 24);
+
+    try {
+      const perm = await listeningTransport.requestPermissionsAsync();
+      if (!perm.granted) {
+        setError(ARENA_ERR_MIC_DENIED);
+        endIngestVoiceAndResumeIdle();
+        setPhase("idle");
+        return;
+      }
+      setError(null);
+
+      await listeningTransport.startListening({
+        lang: RU,
+        interimResults: true,
+        continuous: false,
+        contextualStrings: ctxStrings,
+        volumeChangeEventOptions: {
+          enabled: true,
+          intervalMillis: 120,
+        },
+      });
+      recognizerActiveRef.current = true;
+      orchestrator.notifySttListeningStarted("ingest_clarify");
+    } catch (e) {
+      if (mountedRef.current) {
+        setError(e instanceof Error ? e.message : ARENA_ERR_CLARIFY_START);
+        endIngestVoiceAndResumeIdle();
+        setPhase("idle");
+      }
+      return;
+    }
+
+    commandMaxTimerRef.current = setTimeout(() => {
+      commandMaxTimerRef.current = null;
+      if (phaseRef.current === "listening" && mountedRef.current) {
+        void finalizeCommandListeningRef.current("max");
+      }
+    }, INGEST_CLARIFY_COMMAND_MAX_MS);
+  }, [clearTimers, hardStopRecognizer, setPhase, endIngestVoiceAndResumeIdle, listeningTransport, orchestrator]);
+
+  startIngestClarifyListeningRef.current = startIngestClarifyListening;
+
+  const runIngestClarifySequence = useCallback(
+    async (payload: ArenaIngestClarificationVoicePayload) => {
+      const pr = paramsRef.current;
+      const sid = pr.sessionId;
+      if (!sid || !pr.enabled || !pr.isSessionLive) {
+        ingestVoiceClarifyFlowActiveRef.current = false;
+        return;
+      }
+      clearTimers();
+      hardStopRecognizer();
+      if (!mountedRef.current) return;
+      ingestVoiceClarifyFlowActiveRef.current = true;
+      ingestVoiceClarifyRef.current = {
+        kind: "awaiting_answer",
+        sessionId: sid,
+        payload,
+        unclearAttempts: 0,
+      };
+      orchestrator.notifyIngestClarifyTtsStarted();
+      try {
+        await speakArenaShort(buildIngestClarifyQuestionForTts(payload));
+      } catch {
+        /* ignore */
+      }
+      if (!mountedRef.current || ingestVoiceClarifyRef.current.kind !== "awaiting_answer") {
+        endIngestVoiceAndResumeIdle();
+        return;
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, INGEST_CLARIFY_POST_TTS_PAUSE_MS));
+      if (!mountedRef.current || ingestVoiceClarifyRef.current.kind !== "awaiting_answer") {
+        endIngestVoiceAndResumeIdle();
+        return;
+      }
+      orchestrator.notifyIngestClarifyTtsEnded();
+      await startIngestClarifyListeningRef.current();
+    },
+    [clearTimers, hardStopRecognizer, endIngestVoiceAndResumeIdle, orchestrator]
+  );
+
+  const runIngestClarifySequenceRef = useRef(runIngestClarifySequence);
+  runIngestClarifySequenceRef.current = runIngestClarifySequence;
 
   const startClarifyCapture = useCallback(async () => {
     if (!mountedRef.current) return;
@@ -864,7 +1475,7 @@ export function useArenaVoiceAssistant(
     if (!mountedRef.current || !paramsRef.current.enabled || !paramsRef.current.sessionId) return;
 
     try {
-      const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      const perm = await listeningTransport.requestPermissionsAsync();
       if (!perm.granted) {
         setError(ARENA_ERR_MIC_DENIED);
         clearPendingClarification();
@@ -874,7 +1485,7 @@ export function useArenaVoiceAssistant(
       }
       setError(null);
 
-      await ExpoSpeechRecognitionModule.start({
+      await listeningTransport.startListening({
         lang: RU,
         interimResults: true,
         continuous: false,
@@ -885,6 +1496,7 @@ export function useArenaVoiceAssistant(
         },
       });
       recognizerActiveRef.current = true;
+      orchestrator.notifySttListeningStarted("parser_clarify");
     } catch (e) {
       if (mountedRef.current) {
         setError(e instanceof Error ? e.message : ARENA_ERR_CLARIFY_START);
@@ -901,7 +1513,7 @@ export function useArenaVoiceAssistant(
         void finalizeCommandListeningRef.current("max");
       }
     }, COMMAND_MAX_MS);
-  }, [clearTimers, hardStopRecognizer, scheduleIdleRestart, setPhase, clearPendingClarification]);
+  }, [clearTimers, hardStopRecognizer, scheduleIdleRestart, setPhase, clearPendingClarification, listeningTransport, orchestrator]);
 
   startClarifyCaptureRef.current = startClarifyCapture;
 
@@ -909,12 +1521,16 @@ export function useArenaVoiceAssistant(
     if (phaseRef.current !== "listening") return;
     if (commandTextRef.current.trim().length < 2) return;
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    const tailMs =
+      ingestVoiceClarifyRef.current.kind === "awaiting_answer"
+        ? INGEST_CLARIFY_SILENCE_TAIL_MS
+        : SILENCE_TAIL_MS;
     silenceTimerRef.current = setTimeout(() => {
       silenceTimerRef.current = null;
       if (phaseRef.current === "listening" && mountedRef.current) {
         void finalizeCommandListeningRef.current("silence");
       }
-    }, SILENCE_TAIL_MS);
+    }, tailMs);
   }, []);
 
   const onWakeDetected = useCallback(async () => {
@@ -937,7 +1553,7 @@ export function useArenaVoiceAssistant(
     if (!mountedRef.current || !paramsRef.current.enabled || !paramsRef.current.sessionId) return;
 
     try {
-      const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      const perm = await listeningTransport.requestPermissionsAsync();
       if (!perm.granted) {
         setError(ARENA_ERR_MIC_DENIED);
         setPhase("idle");
@@ -945,7 +1561,7 @@ export function useArenaVoiceAssistant(
         return;
       }
 
-      await ExpoSpeechRecognitionModule.start({
+      await listeningTransport.startListening({
         lang: RU,
         interimResults: true,
         continuous: false,
@@ -962,6 +1578,7 @@ export function useArenaVoiceAssistant(
         },
       });
       recognizerActiveRef.current = true;
+      orchestrator.notifySttListeningStarted("wake_command");
     } catch (e) {
       if (mountedRef.current) {
         setError(e instanceof Error ? e.message : ARENA_ERR_LISTEN_START);
@@ -977,7 +1594,7 @@ export function useArenaVoiceAssistant(
         void finalizeCommandListeningRef.current("max");
       }
     }, COMMAND_MAX_MS);
-  }, [clearTimers, hardStopRecognizer, scheduleIdleRestart, setPhase]);
+  }, [clearTimers, hardStopRecognizer, scheduleIdleRestart, setPhase, listeningTransport, orchestrator]);
 
   const onWakeDetectedRef = useRef(onWakeDetected);
   onWakeDetectedRef.current = onWakeDetected;
@@ -986,7 +1603,7 @@ export function useArenaVoiceAssistant(
     const pr = paramsRef.current;
     if (!mountedRef.current || !pr.enabled || !pr.sessionId || !pr.isSessionLive) return;
     if (phaseRef.current !== "idle") return;
-    if (!speechAvailable()) {
+    if (!speechRecognitionAvailable()) {
       if (__DEV__) {
         console.warn("[useArenaVoiceAssistant] Idle STT skipped: recognition unavailable (Expo Go or device).");
       }
@@ -994,14 +1611,14 @@ export function useArenaVoiceAssistant(
     }
 
     try {
-      const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      const perm = await listeningTransport.requestPermissionsAsync();
       if (!perm.granted) {
         setError(ARENA_ERR_MIC_DENIED);
         return;
       }
       setError(null);
 
-      await ExpoSpeechRecognitionModule.start({
+      await listeningTransport.startListening({
         lang: RU,
         interimResults: true,
         continuous: true,
@@ -1009,21 +1626,24 @@ export function useArenaVoiceAssistant(
         addsPunctuation: false,
       });
       recognizerActiveRef.current = true;
+      orchestrator.notifySttListeningStarted("continuous_idle");
     } catch (e) {
       if (mountedRef.current) {
         setError(e instanceof Error ? e.message : ARENA_ERR_WAKE_START);
       }
     }
-  }, []);
+  }, [listeningTransport, orchestrator, speechRecognitionAvailable]);
 
   startIdleRecognitionRef.current = startIdleRecognition;
 
   useSpeechRecognitionEvent("start", () => {
     recognizerActiveRef.current = true;
+    listeningHandlersRef.current.onListeningStateChange("started");
   });
 
   useSpeechRecognitionEvent("end", () => {
     recognizerActiveRef.current = false;
+    listeningHandlersRef.current.onListeningStateChange("ended");
     if (phaseRef.current === "listening" && mountedRef.current && commandTextRef.current.trim().length > 0) {
       setTimeout(() => {
         if (phaseRef.current === "listening" && mountedRef.current) {
@@ -1037,10 +1657,42 @@ export function useArenaVoiceAssistant(
     const e = ev as { isFinal?: boolean; results?: { transcript?: string }[] };
     const t = e?.results?.[0]?.transcript?.trim() ?? "";
     if (!t) return;
+    listeningHandlersRef.current.onTranscriptSegment({
+      text: t,
+      isFinal: Boolean(e.isFinal),
+    });
 
     if (phaseRef.current === "idle") {
       if (transcriptContainsWakeWord(t)) {
         void onWakeDetectedRef.current();
+        return;
+      }
+      if (e.isFinal && paramsRef.current.enabled && paramsRef.current.sessionId && paramsRef.current.isSessionLive) {
+        const normFull = normalizeArenaTranscript(t);
+        const nowTs = Date.now();
+        if (
+          normFull &&
+          normFull === lastVoiceExecutedNormRef.current &&
+          nowTs - lastVoiceExecutedAtRef.current < ANTI_REPEAT_WINDOW_MS
+        ) {
+          return;
+        }
+        if (isGarbageTranscript(t, normFull)) return;
+        if (ingestVoiceClarifyFlowActiveRef.current) {
+          enqueueArenaLiveUtterance(t, "idle_continuous_final");
+          return;
+        }
+        arenaPipelineEntryRef.current = "idle_continuous_final";
+        phaseRef.current = "listening";
+        commandTextRef.current = t;
+        if (mountedRef.current) {
+          setUiPhase("listening");
+          setLastTranscript(t);
+        }
+        void finalizeCommandListeningRef.current("idle_continuous_final", {
+          overrideText: t,
+          overridePipelineEntry: "idle_continuous_final",
+        });
       }
       return;
     }
@@ -1051,7 +1703,10 @@ export function useArenaVoiceAssistant(
       lastVolumeLoudAtRef.current = Date.now();
       bumpSilenceFinalize();
       if (e.isFinal && mountedRef.current) {
-        void finalizeCommandListeningRef.current("final");
+        void finalizeCommandListeningRef.current("final", {
+          overrideText: t,
+          overridePipelineEntry: "wake_listen",
+        });
       }
     }
   });
@@ -1078,6 +1733,7 @@ export function useArenaVoiceAssistant(
     recognizerActiveRef.current = false;
     if (!mountedRef.current) return;
     const msg = e?.message ?? e?.error ?? ARENA_ERR_RECOGNITION_GENERIC;
+    listeningHandlersRef.current.onError(msg, ev);
     if (phaseRef.current === "listening") {
       Alert.alert(ARENA_ALERT_TITLE, msg);
       setPhase("idle");
@@ -1109,12 +1765,16 @@ export function useArenaVoiceAssistant(
       setPhase("idle");
       clearPendingClarification();
       setLastArenaIntentV1(null);
+      orchestrator.notifySessionDisarmed();
       return;
     }
+    orchestrator.notifySessionLiveArmed();
     phaseRef.current = "idle";
     setUiPhase("idle");
     void (async () => {
+      orchestrator.notifyWarmingStarted();
       await new Promise((r) => setTimeout(r, 200));
+      orchestrator.notifyWarmingFinished();
       if (!mountedRef.current || !paramsRef.current.enabled) return;
       await startIdleRecognitionRef.current();
       scheduleSilenceIdlePromptRef.current();
@@ -1124,7 +1784,7 @@ export function useArenaVoiceAssistant(
       hardStopRecognizer();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- старт по смене сессии; startIdleRecognition стабилен через ref
-  }, [enabled, sessionId, isSessionLive, clearTimers, hardStopRecognizer, setPhase, clearPendingClarification]);
+  }, [enabled, sessionId, isSessionLive, clearTimers, hardStopRecognizer, setPhase, clearPendingClarification, orchestrator]);
 
   useEffect(() => {
     const sub = (s: AppStateStatus) => {
@@ -1144,15 +1804,33 @@ export function useArenaVoiceAssistant(
 
   const clearError = useCallback(() => setError(null), []);
 
+  const persistenceBridge = useMemo(
+    () => ({
+      notifyOutboxFlushStarted: () => {
+        orchestrator.notifyFlushingStarted();
+        contextStoreRef.current.setOutboxFlushInFlight(true);
+      },
+      notifyOutboxFlushFinished: () => {
+        orchestrator.notifyFlushingFinished();
+        contextStoreRef.current.setOutboxFlushInFlight(false);
+        tryScheduleDrainUtteranceQueueRef.current();
+      },
+    }),
+    [orchestrator]
+  );
+
   return {
     uiPhase,
     clarifyPhase,
+    orchestratorPhase,
+    arenaUtteranceQueueDepth,
     lastTranscript,
     lastIntent,
     lastArenaIntentV1,
     error,
     isSpeechAvailable,
     clearError,
+    persistenceBridge,
   };
 }
 

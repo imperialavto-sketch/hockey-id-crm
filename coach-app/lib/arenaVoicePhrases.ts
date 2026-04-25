@@ -110,6 +110,26 @@ export const ARENA_RESOLVE_TARGET_PICK_RETRY =
 
 export const ARENA_RESOLVE_MEANING_REPEAT_FULL = "Повторите фразу целиком.";
 
+// --- TTS: уточнение после POST …/events (422 needs_clarification) — голосовой цикл ---
+
+export function buildArenaTtsIngestClarifyTwo(aName: string, bName: string): string {
+  const a = aName.trim().split(/\s+/).pop() ?? aName.trim();
+  const b = bName.trim().split(/\s+/).pop() ?? bName.trim();
+  return `Кого имели в виду? Скажите фамилию, номер на майке или первый — ${a}, второй — ${b} из списка.`;
+}
+
+export const ARENA_TTS_INGEST_CLARIFY_MANY =
+  "Несколько подходят. Скажите фамилию, номер на майке или первый, второй из списка.";
+
+export const ARENA_TTS_INGEST_CLARIFY_REPEAT =
+  "Не разобрала. Фамилия, номер на майке или первый, второй из списка.";
+
+export const ARENA_TTS_INGEST_CLARIFY_GIVE_UP = "Не записала. Повторите фразу позже.";
+
+export const ARENA_TTS_INGEST_QUEUED = "Сохраню, когда появится сеть.";
+
+export const ARENA_TTS_INGEST_RECORDED = "Записала.";
+
 // --- UI статус рядом с микрофоном (live) ---
 
 export const ARENA_UI_STATUS_IDLE = "Скажи «Арена» — потом фразу";

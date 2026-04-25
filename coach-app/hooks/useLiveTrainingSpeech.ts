@@ -33,6 +33,6 @@ export function useLiveTrainingSpeech() {
     clearRecognized,
     resetSpeechUi,
     speechState: voice.state as LiveTrainingSpeechState,
-    voiceErrorKind: voice.errorKind,
+    voiceErrorMessage: voice.errorMessage,
   };
 }

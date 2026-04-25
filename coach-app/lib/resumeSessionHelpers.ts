@@ -7,9 +7,9 @@ import type { PersistedCoachInputState } from "./coachInputStorage";
 import { loadCoachInputState } from "./coachInputStorage";
 import type { SessionStatus } from "@/models/sessionObservation";
 import type { TrainingSessionDraft } from "@/models/sessionObservation";
-import { getActiveCoachSession, DEFAULT_TEAM_ID } from "@/services/coachSessionLiveService";
+import { getActiveLiveTrainingSession } from "@/services/liveTrainingService";
 
-export const COACH_INPUT_ROUTE = "/dev/coach-input";
+export const COACH_INPUT_ROUTE = "/coach-input";
 
 /**
  * Session Exit Guard — needs guard when draft is active/review or has observations.
@@ -22,7 +22,20 @@ export function needsSessionExitGuard(draft: TrainingSessionDraft | null): boole
   return isActiveOrReview || hasObservations;
 }
 
+export type ResumeSessionSource =
+  | "coachInputDraft"
+  | "activeLiveTrainingSessionApi"
+  /** Legacy literal from older builds; treat like live training remote resume. */
+  | "activeCoachSessionApi";
+
+/** True when resume row comes from `/api/live-training/sessions/active` (or legacy coach-session literal). */
+export function isActiveLiveTrainingResumeSource(source: ResumeSessionSource | undefined): boolean {
+  return source === "activeLiveTrainingSessionApi" || source === "activeCoachSessionApi";
+}
+
 export interface ResumeSessionSummary {
+  /** Local coach-input draft vs active `LiveTrainingSession` from `/api/live-training/sessions/active`. */
+  source: ResumeSessionSource;
   status: SessionStatus;
   observationCount: number;
   playerCount: number;
@@ -63,6 +76,7 @@ export async function getResumeSessionSummary(): Promise<ResumeSessionSummary | 
         ? "Тренировка активна"
         : "Есть незавершенная сессия";
     return {
+      source: "coachInputDraft",
       status: draft.status,
       observationCount: obs.length,
       playerCount: playerIds.size,
@@ -72,16 +86,38 @@ export async function getResumeSessionSummary(): Promise<ResumeSessionSummary | 
     };
   }
 
-  const active = await getActiveCoachSession(DEFAULT_TEAM_ID);
+  let active: Awaited<ReturnType<typeof getActiveLiveTrainingSession>>;
+  try {
+    active = await getActiveLiveTrainingSession();
+  } catch {
+    return null;
+  }
   if (!active) return null;
+  if (active.status !== "live" && active.status !== "review") return null;
 
-  const startedAt = active.startedAt ? new Date(active.startedAt).getTime() : Date.now();
+  const startedAt = new Date(active.startedAt).getTime();
+  const observationCount =
+    active.analyticsSummary?.signalCount ??
+    active.outcome?.signalsCreatedCount ??
+    active.outcome?.playerObservationCount ??
+    0;
+  const playerCount = Math.max(
+    1,
+    active.analyticsSummary?.playersWithSignals ??
+      active.outcome?.affectedPlayersCount ??
+      (observationCount > 0 ? 1 : 0)
+  );
+  const status: SessionStatus = active.status === "review" ? "review" : "active";
+  const summaryLine =
+    active.status === "review" ? "Нужен разбор сессии" : "Тренировка активна";
+
   return {
-    status: "active",
-    observationCount: active.observationsCount ?? 0,
-    playerCount: Math.max(1, active.observationsCount ?? 1),
+    source: "activeLiveTrainingSessionApi",
+    status,
+    observationCount,
+    playerCount,
     startedAt,
     updatedAt: startedAt,
-    summaryLine: "Тренировка активна",
+    summaryLine,
   };
 }

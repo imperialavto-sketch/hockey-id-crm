@@ -10,7 +10,7 @@ import type {
 
 export const ARENA_PENDING_CLARIFICATION_TTL_MS = 120_000;
 /** После стольких неудачных follow-up подряд — сброс и просьба повторить команду */
-export const ARENA_CLARIFY_MAX_FAILURES = 3;
+export const ARENA_CLARIFY_MAX_FAILURES = 2;
 
 export type ArenaPendingClarificationState =
   | {
