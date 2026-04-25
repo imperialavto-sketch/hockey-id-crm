@@ -325,7 +325,7 @@ export default function VoiceNoteDetailScreen() {
         const voiceStarterId = await saveVoiceStarterPayload(payload);
         if (intent === "parent_draft") {
           router.push({
-            pathname: "/dev/coach-input",
+            pathname: "/coach-input",
             params: { voiceStarterId },
           } as Href);
           return;

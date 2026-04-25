@@ -39,7 +39,10 @@ import {
   pickSessionMeaningFollowUpMvpLine,
   sessionMeaningFollowUpCandidateId,
 } from "@shared/live-training/session-meaning-follow-up-task";
-import { getTrainingVoiceBehavioralSuggestions } from "@/services/coachScheduleService";
+import {
+  getTrainingVoiceBehavioralSuggestions,
+  type TrainingVoiceBehavioralSuggestionsResponse,
+} from "@/services/coachScheduleService";
 import type {
   LiveTrainingCoachPreviewNarrativeV1,
   LiveTrainingCoachView,
@@ -105,6 +108,134 @@ function buildNarrativePatchBody(n: LiveTrainingCoachPreviewNarrativeV1): LiveTr
       })
       .filter((x): x is NonNullable<typeof x> => x != null),
   };
+}
+
+const MAX_WHO_STOOD_OUT_ROWS = 3;
+const MAX_WHO_STOOD_OUT_LINE = 130;
+
+/**
+ * Готовые строки из `coachPreviewNarrativeV1.playerHighlights` (без генерации текста).
+ * Отсекаем дубли с блоком «Следующий шаг» и дословные совпадения со сводкой/фокусом черновика.
+ */
+function pickWhoStoodOutRows(
+  narrative: LiveTrainingCoachPreviewNarrativeV1 | undefined,
+  next: LiveTrainingSessionMeaningNextActionsV1 | undefined
+): { playerLabel: string; line: string }[] {
+  if (!narrative?.playerHighlights?.length) return [];
+  const actionNorm = new Set<string>();
+  if (next) {
+    for (const t of next.team) {
+      const x = t.trim().toLowerCase();
+      if (x.length > 2) actionNorm.add(x);
+    }
+    for (const p of next.players) {
+      for (const a of p.actions) {
+        const x = a.trim().toLowerCase();
+        if (x.length > 2) actionNorm.add(x);
+      }
+    }
+  }
+  const summaryFocusNorm = new Set<string>();
+  for (const s of narrative.sessionSummaryLines) {
+    const x = s.trim().toLowerCase();
+    if (x.length > 2) summaryFocusNorm.add(x);
+  }
+  for (const s of narrative.focusAreas) {
+    const x = s.trim().toLowerCase();
+    if (x.length > 2) summaryFocusNorm.add(x);
+  }
+
+  const out: { playerLabel: string; line: string }[] = [];
+  const seen = new Set<string>();
+  for (const h of narrative.playerHighlights) {
+    const raw = (h.text?.trim() || h.summaryLine?.trim() || "").trim();
+    if (!raw) continue;
+    const line = raw.length > MAX_WHO_STOOD_OUT_LINE ? `${raw.slice(0, MAX_WHO_STOOD_OUT_LINE - 1)}…` : raw;
+    const ln = line.toLowerCase();
+    if (actionNorm.has(ln)) continue;
+    if (summaryFocusNorm.has(ln)) continue;
+    const name = (h.playerName?.trim() || "Игрок").trim();
+    const key = `${name.toLowerCase()}|${ln.slice(0, 56)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ playerLabel: name, line });
+    if (out.length >= MAX_WHO_STOOD_OUT_ROWS) break;
+  }
+  return out;
+}
+
+const MAX_TEAM_SHIFT_HEADLINE = 160;
+const MAX_TEAM_SHIFT_SUPPORT = 120;
+
+function normTeamShiftLine(s: string): string {
+  return s.trim().toLowerCase();
+}
+
+function clipTeamShiftLine(s: string, maxLen: number): string {
+  const t = s.trim();
+  if (t.length <= maxLen) return t;
+  return `${t.slice(0, maxLen - 1)}…`;
+}
+
+/** `coachView.sessionProgress.team` — тот же массив, что `sessionMeaningProgressV1.team` в summaryJson. */
+function buildTeamShiftExcludedNormalized(
+  narrative: LiveTrainingCoachPreviewNarrativeV1,
+  next: LiveTrainingSessionMeaningNextActionsV1 | undefined
+): Set<string> {
+  const out = new Set<string>();
+  for (const line of narrative.sessionSummaryLines) {
+    const n = normTeamShiftLine(line);
+    if (n) out.add(n);
+  }
+  for (const line of narrative.focusAreas) {
+    const n = normTeamShiftLine(line);
+    if (n) out.add(n);
+  }
+  if (next) {
+    for (const line of next.team) {
+      const n = normTeamShiftLine(line);
+      if (n) out.add(n);
+    }
+    for (const p of next.players) {
+      for (const a of p.actions) {
+        const n = normTeamShiftLine(a);
+        if (n) out.add(n);
+      }
+    }
+  }
+  return out;
+}
+
+function pickTeamShiftSnapshot(
+  sessionProgress: LiveTrainingSessionMeaningProgressV1 | undefined,
+  narrative: LiveTrainingCoachPreviewNarrativeV1,
+  next: LiveTrainingSessionMeaningNextActionsV1 | undefined
+): { headline: string; support?: string } | null {
+  const team = sessionProgress?.team;
+  if (!Array.isArray(team) || team.length === 0) return null;
+  const excluded = buildTeamShiftExcludedNormalized(narrative, next);
+  const candidates: string[] = [];
+  for (const item of team) {
+    if (typeof item !== "string") continue;
+    const t = item.trim();
+    if (!t) continue;
+    const n = normTeamShiftLine(t);
+    if (!n) continue;
+    if (excluded.has(n)) continue;
+    candidates.push(t);
+  }
+  if (candidates.length === 0) return null;
+  const headlineRaw = candidates[0]!;
+  const headline = clipTeamShiftLine(headlineRaw, MAX_TEAM_SHIFT_HEADLINE);
+  const headlineNorm = normTeamShiftLine(headlineRaw);
+  let support: string | undefined;
+  for (let i = 1; i < candidates.length; i++) {
+    const raw = candidates[i]!;
+    if (normTeamShiftLine(raw) === headlineNorm) continue;
+    support = clipTeamShiftLine(raw, MAX_TEAM_SHIFT_SUPPORT);
+    break;
+  }
+  return support !== undefined ? { headline, support } : { headline };
 }
 
 function ReportDraftArenaNextTrainingFocusApplyBlock({
@@ -1688,7 +1819,7 @@ export default function LiveTrainingReportDraftScreen() {
     }
     let cancelled = false;
     void getTrainingVoiceBehavioralSuggestions(tid)
-      .then((vb) => {
+      .then((vb: TrainingVoiceBehavioralSuggestionsResponse) => {
         if (cancelled) return;
         const players = Array.isArray(vb.players) ? vb.players : [];
         setTeamBehaviorContextLine(
@@ -1750,6 +1881,7 @@ export default function LiveTrainingReportDraftScreen() {
         publishedFinalReport: result.publishedFinalReport ?? null,
         externalCoachRecommendations: result.externalCoachRecommendations ?? [],
         arenaNextTrainingFocusApply: result.arenaNextTrainingFocusApply,
+        plannedFocusSnapshot: result.plannedFocusSnapshot ?? null,
       });
       setNarrativeEdit(cloneCoachNarrative(result.audienceViews.coachView.coachPreviewNarrativeV1));
       setPublishSuccess(true);
@@ -1853,6 +1985,32 @@ export default function LiveTrainingReportDraftScreen() {
 
   const { reportDraft: draft, audienceViews: views } = payload;
 
+  const plannedSnap =
+    typeof payload.plannedFocusSnapshot === "string" ? payload.plannedFocusSnapshot.trim() : "";
+  const narrativeSummaryLines =
+    views.coachView.coachPreviewNarrativeV1?.sessionSummaryLines?.filter((s) => s.trim().length > 0) ??
+    [];
+  const narrativeSummaryJoined = narrativeSummaryLines.join("\n");
+  const hasPublishedCrmSummary = Boolean(payload.publishedFinalReport?.summary?.trim());
+  /** В черновике сводка редактируется в «Сводка черновика»; после публикации — в блоке итогового отчёта, без дубля. */
+  const showObservedInPlanBlock =
+    draft.status !== "draft" && !hasPublishedCrmSummary && narrativeSummaryJoined.length > 0;
+
+  /** Только в режиме черновика: после публикации те же строки уже в «Акценты по игрокам» (read-only). */
+  const whoStoodOutCoachRows =
+    audience === "coach" && draft.status === "draft"
+      ? pickWhoStoodOutRows(narrativeEdit, views.coachView.nextActions)
+      : [];
+
+  const teamShiftCoachSnapshot =
+    audience === "coach" && draft.status === "draft"
+      ? pickTeamShiftSnapshot(
+          views.coachView.sessionProgress,
+          narrativeEdit,
+          views.coachView.nextActions
+        )
+      : null;
+
   return (
     <FlagshipScreen contentContainerStyle={styles.content}>
       <Text style={styles.title}>{draft.title}</Text>
@@ -1865,6 +2023,45 @@ export default function LiveTrainingReportDraftScreen() {
       <Text style={styles.coreRouteHint}>
         Экран опционален после подтверждения Live Training — основной поток: живой экран → проверка → подтверждение.
       </Text>
+
+      {audience === "coach" && plannedSnap ? (
+        <SectionCard elevated style={styles.card}>
+          <Text style={styles.kicker}>Фокус и итог тренировки</Text>
+          <Text style={styles.planObservedSectionLabel}>План:</Text>
+          <Text style={styles.bodyLine}>{plannedSnap}</Text>
+          {showObservedInPlanBlock ? (
+            <>
+              <Text style={[styles.planObservedSectionLabel, styles.planObservedSectionLabelSpaced]}>
+                Итог:
+              </Text>
+              <Text style={styles.narrativeParagraph}>{narrativeSummaryJoined}</Text>
+              <Text style={styles.plannedFocusAnchorHint}>Сформировано по итогам тренировки</Text>
+            </>
+          ) : null}
+        </SectionCard>
+      ) : null}
+
+      {whoStoodOutCoachRows.length > 0 ? (
+        <SectionCard elevated style={styles.card}>
+          <Text style={styles.kicker}>Кто выделился</Text>
+          {whoStoodOutCoachRows.map((row, i) => (
+            <View key={`stood-${i}`} style={i > 0 ? { marginTop: 10 } : undefined}>
+              <Text style={styles.bodyLine}>{row.playerLabel}</Text>
+              <Text style={styles.mutedLine}>{row.line}</Text>
+            </View>
+          ))}
+        </SectionCard>
+      ) : null}
+
+      {teamShiftCoachSnapshot ? (
+        <SectionCard elevated style={styles.card}>
+          <Text style={styles.kicker}>Сдвиг команды</Text>
+          <Text style={styles.bodyLine}>{teamShiftCoachSnapshot.headline}</Text>
+          {teamShiftCoachSnapshot.support ? (
+            <Text style={[styles.mutedLine, { marginTop: 6 }]}>{teamShiftCoachSnapshot.support}</Text>
+          ) : null}
+        </SectionCard>
+      ) : null}
 
       {showArenaAutoExplain && arenaExplainLines.length > 0 ? (
         <SectionCard elevated style={styles.arenaExplainCard}>
@@ -2005,6 +2202,22 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
     lineHeight: 18,
     marginBottom: theme.spacing.sm,
+  },
+  plannedFocusAnchorHint: {
+    ...theme.typography.caption,
+    fontSize: 11,
+    color: theme.colors.textMuted,
+    lineHeight: 16,
+    marginTop: theme.spacing.sm,
+  },
+  planObservedSectionLabel: {
+    ...theme.typography.caption,
+    fontWeight: "600",
+    color: theme.colors.textSecondary,
+    marginBottom: 4,
+  },
+  planObservedSectionLabelSpaced: {
+    marginTop: theme.spacing.md,
   },
   nextActionsSubkicker: {
     ...theme.typography.caption,

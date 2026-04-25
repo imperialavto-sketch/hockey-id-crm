@@ -39,6 +39,10 @@ import {
 } from "@/lib/liveTrainingCoachWrapUp";
 import { formatLiveTrainingMode } from "@/lib/liveTrainingUi";
 import {
+  ruGroupSessionContextConsistencyLabel,
+  ruGroupSessionContextCoverageLabel,
+} from "@/lib/liveTrainingSessionGroupContextUiLabels";
+import {
   fetchLiveTrainingSessionActionCandidates,
   materializeLiveTrainingSessionActionCandidate,
   getLiveTrainingSession,
@@ -49,8 +53,68 @@ import type {
   LiveTrainingPriorityAlignmentReview,
   LiveTrainingQualityFrame,
   LiveTrainingSession,
+  LiveTrainingSessionGroupContextSignalRollup,
+  LiveTrainingSessionGroupContextStampDiagnostic,
   LiveTrainingSessionOutcome,
 } from "@/types/liveTraining";
+
+/**
+ * Вторичный read-only блок: атрибуция контекста группы на уровне сессии (не team PvO, не строгая истина).
+ * Показывается только при подтверждённой сессии и наличии обоих DTO с GET session.
+ */
+function SessionGroupContextAttributionBlock({
+  rollup,
+  diagnostic,
+}: {
+  rollup: LiveTrainingSessionGroupContextSignalRollup;
+  diagnostic: LiveTrainingSessionGroupContextStampDiagnostic;
+}) {
+  const canonical = rollup.canonicalGroupId?.trim() ?? "";
+  const groupLine =
+    canonical.length === 0 ? "Без группы" : `Группа сессии: ${canonical}`;
+  const coverageLine = ruGroupSessionContextCoverageLabel(rollup.coverageKind);
+  const consistencyLine = ruGroupSessionContextConsistencyLabel(diagnostic.consistencyKind);
+  const ids = diagnostic.distinctStampedGroupIds;
+  const showStampDetail =
+    ids.length > 0 &&
+    (ids.length <= 2 ||
+      diagnostic.consistencyKind === "mixed_stamps" ||
+      diagnostic.consistencyKind === "mismatch");
+  const stampIdsText = showStampDetail
+    ? ids.length <= 2
+      ? ids.join(", ")
+      : `${ids.slice(0, 2).join(", ")} (+${ids.length - 2})`
+    : null;
+
+  return (
+    <View style={styles.groupCtxShell}>
+      <Text style={styles.groupCtxKicker}>Контекст группы сессии</Text>
+      <Text style={styles.groupCtxLineMuted}>{groupLine}</Text>
+      <Text style={styles.groupCtxLabel}>Покрытие атрибуции сигналов</Text>
+      <Text style={styles.groupCtxValue}>{coverageLine}</Text>
+      <Text style={styles.groupCtxLineMuted}>
+        С атрибуцией: {rollup.attributedSignalCount} · Legacy: {rollup.legacySignalCount}
+      </Text>
+      <Text style={styles.groupCtxLabel}>Согласованность контекста</Text>
+      <Text style={styles.groupCtxValue}>{consistencyLine}</Text>
+      {diagnostic.stampedNullPresent ? (
+        <Text style={styles.groupCtxLineMuted}>
+          Есть сигналы с пустым идентификатором группы в метаданных атрибуции.
+        </Text>
+      ) : null}
+      {stampIdsText ? (
+        <Text style={styles.groupCtxMono} numberOfLines={3} ellipsizeMode="tail">
+          ID в штампах: {stampIdsText}
+        </Text>
+      ) : null}
+      {diagnostic.consistencyNote ? (
+        <Text style={styles.groupCtxNote} numberOfLines={2} ellipsizeMode="tail">
+          {diagnostic.consistencyNote}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
 
 /** Маленький честный слой «итог обработки» — дополняет дайджест, не заменяет review. */
 function CoachTruthLayerSection({ truth }: { truth: LiveTrainingCoachTruthSummary }) {
@@ -869,6 +933,15 @@ export default function LiveTrainingCompleteScreen() {
             </Text>
           ) : null}
         </GlassCardV2>
+      ) : null}
+
+      {ok &&
+      session?.groupContextSignalRollup &&
+      session?.groupContextStampDiagnostic ? (
+        <SessionGroupContextAttributionBlock
+          rollup={session.groupContextSignalRollup}
+          diagnostic={session.groupContextStampDiagnostic}
+        />
       ) : null}
 
       {ok && coachWrapUp ? (
@@ -1716,5 +1789,58 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "rgba(255,255,255,0.08)",
+  },
+  groupCtxShell: {
+    width: "100%",
+    marginTop: theme.layout.sectionGap,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    borderRadius: theme.borderRadius.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.cardBorder,
+    backgroundColor: "rgba(18, 25, 32, 0.65)",
+  },
+  groupCtxKicker: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.xs,
+  },
+  groupCtxLabel: {
+    ...theme.typography.caption,
+    fontSize: 11,
+    fontWeight: "600",
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.sm,
+    marginBottom: 2,
+    textTransform: "uppercase",
+    letterSpacing: 0.35,
+  },
+  groupCtxValue: {
+    ...theme.typography.caption,
+    fontSize: 13,
+    color: theme.colors.text,
+    lineHeight: 18,
+  },
+  groupCtxLineMuted: {
+    ...theme.typography.caption,
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+  groupCtxMono: {
+    fontSize: 11,
+    color: theme.colors.textMuted,
+    marginTop: theme.spacing.xs,
+    lineHeight: 15,
+  },
+  groupCtxNote: {
+    fontSize: 11,
+    color: theme.colors.textMuted,
+    marginTop: theme.spacing.xs,
+    fontStyle: "italic",
   },
 });

@@ -19,6 +19,10 @@ import { screenReveal } from "@/lib/animations";
 import { coachHapticSelection, coachHapticSuccess } from "@/lib/coachHaptics";
 import {
   useArenaVoiceAssistant,
+  type ArenaIngestClarificationVoicePayload,
+  type ArenaPersistenceBridge,
+  type ArenaVoicePostObservationResult,
+  type IngestClarificationRetryResult,
   type LastArenaPostMeta,
 } from "@/hooks/useArenaVoiceAssistant";
 import type { LiveTrainingSentiment } from "@/types/liveTraining";
@@ -79,12 +83,13 @@ import {
   type InSessionNudgeActionOffer,
 } from "@/lib/liveTrainingInSessionNudges";
 import { createActionItem } from "@/services/voiceCreateService";
-import { ApiRequestError } from "@/lib/api";
+import { ApiRequestError, isApi422 } from "@/lib/api";
 import { getCoachTeamDetail } from "@/services/coachTeamsService";
 import { getCoachPlayers } from "@/services/coachPlayersService";
 import { createClientMutationId } from "@/lib/liveTrainingClientMutationId";
 import {
   enqueueLiveTrainingEvent,
+  enqueueLiveTrainingEventDedupedByObservationKey,
   ensureOutboxItemClientMutationId,
   loadLiveTrainingEventOutbox,
   removeLiveTrainingQueuedEvent,
@@ -104,11 +109,14 @@ import {
   finishLiveTrainingSession,
   getLiveTrainingSession,
   isLiveTrainingTransientApiError,
+  buildLiveTrainingClarificationRosterCandidates,
   listLiveTrainingSessionEvents,
+  parseLiveTrainingEventNeedsClarification422Body,
   patchLiveTrainingDraft,
   postLiveTrainingSessionEvent,
   withLiveTrainingTransientRetry,
   type LiveTrainingEventItem,
+  type LiveTrainingSpeechResolutionPayload,
 } from "@/services/liveTrainingService";
 import type {
   LiveTrainingConfirmedExternalDevelopmentCarry,
@@ -141,6 +149,42 @@ const SENTIMENT_OPTIONS: { key: LiveTrainingSentiment; label: string }[] = [
   { key: "positive", label: "Плюс" },
   { key: "negative", label: "Минус" },
 ];
+
+type ArenaIngestClarificationState = {
+  phrase: string;
+  sourceType: "manual_stub" | "transcript_segment";
+  sentiment: LiveTrainingSentiment;
+  category?: string;
+  confidence?: number | null;
+  reason: string;
+  speechResolution?: LiveTrainingSpeechResolutionPayload;
+  serverMessage: string;
+};
+
+function voiceClarificationPayloadFromSnap(
+  snap: ArenaIngestClarificationState,
+  roster: Array<{ id: string; name: string; jerseyNumber?: number | null }>
+): ArenaIngestClarificationVoicePayload {
+  const candidates = buildLiveTrainingClarificationRosterCandidates(
+    roster.map((r) => ({ id: r.id, name: r.name })),
+    snap.phrase,
+    snap.speechResolution
+  ).map((c) => ({
+    id: c.id,
+    name: c.name,
+    jerseyNumber: roster.find((r) => r.id === c.id)?.jerseyNumber ?? null,
+  }));
+  return {
+    phrase: snap.phrase,
+    sourceType: snap.sourceType,
+    sentiment: snap.sentiment,
+    category: snap.category,
+    confidence: snap.confidence ?? null,
+    candidates,
+    speechResolution: snap.speechResolution,
+    serverMessage: snap.serverMessage,
+  };
+}
 
 function formatElapsedMs(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
@@ -468,7 +512,9 @@ function LiveTrainingScreen() {
   /** Любой тап по тональности — до этого «Нейтр.» визуально мягкий default. */
   const [sentimentRowTouched, setSentimentRowTouched] = useState(false);
   const [playerPick, setPlayerPick] = useState<string | null>(null);
-  const [roster, setRoster] = useState<Array<{ id: string; name: string; position?: string }>>([]);
+  const [roster, setRoster] = useState<
+    Array<{ id: string; name: string; position?: string; jerseyNumber?: number | null }>
+  >([]);
   const [events, setEvents] = useState<LiveTrainingEventItem[]>([]);
   const eventsRef = useRef<LiveTrainingEventItem[]>([]);
   const sessionRef = useRef<LiveTrainingSession | null>(null);
@@ -481,12 +527,16 @@ function LiveTrainingScreen() {
     text: string;
     kind: "voice" | "manual";
   } | null>(null);
+  const [arenaIngestClarification, setArenaIngestClarification] =
+    useState<ArenaIngestClarificationState | null>(null);
+  const [arenaClarificationBusy, setArenaClarificationBusy] = useState(false);
   const captureFeedbackOpacity = useRef(new Animated.Value(0)).current;
   const captureFeedbackHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [outboxCount, setOutboxCount] = useState(0);
   const [outboxBodies, setOutboxBodies] = useState<LiveTrainingEventOutboxBody[]>([]);
   const [flushingOutbox, setFlushingOutbox] = useState(false);
   const flushOutboxLockRef = useRef(false);
+  const arenaPersistenceBridgeRef = useRef<ArenaPersistenceBridge | null>(null);
   const lastArenaPostRef = useRef<LastArenaPostMeta>(null);
   const inSessionNudgeGateRef = useRef(createInSessionNudgeGateState());
   const inSessionNudgeTtsKeysRef = useRef<Set<string>>(new Set());
@@ -665,6 +715,7 @@ function LiveTrainingScreen() {
     const reqSid = sid;
     flushOutboxLockRef.current = true;
     setFlushingOutbox(true);
+    arenaPersistenceBridgeRef.current?.notifyOutboxFlushStarted();
     trackLiveTrainingEvent("lt_outbox_flush_start", { sessionId: reqSid, uiPhase: "flush_start" });
     try {
       // eslint-disable-next-line no-constant-condition
@@ -695,6 +746,7 @@ function LiveTrainingScreen() {
     } finally {
       flushOutboxLockRef.current = false;
       setFlushingOutbox(false);
+      arenaPersistenceBridgeRef.current?.notifyOutboxFlushFinished();
       if (!mountedRef.current || sidRef.current !== reqSid) return;
       const left = await loadLiveTrainingEventOutbox(reqSid);
       setOutboxCount(left.length);
@@ -720,6 +772,8 @@ function LiveTrainingScreen() {
               id: p.id,
               name: p.name,
               position: p.position,
+              jerseyNumber:
+                typeof p.number === "number" && Number.isFinite(p.number) ? p.number : undefined,
             }))
           );
         } catch {
@@ -732,7 +786,13 @@ function LiveTrainingScreen() {
       if (!mountedRef.current || sidRef.current !== reqSid) return;
       if (d?.roster?.length) {
         setRoster(
-          d.roster.map((p) => ({ id: p.id, name: p.name, position: p.position }))
+          d.roster.map((p) => ({
+            id: p.id,
+            name: p.name,
+            position: p.position,
+            jerseyNumber:
+              typeof p.number === "number" && Number.isFinite(p.number) ? p.number : undefined,
+          }))
         );
       } else {
         setRoster([]);
@@ -763,6 +823,8 @@ function LiveTrainingScreen() {
     setQuickText("");
     setCategoryDraft("");
     setCaptureFeedback(null);
+    setArenaIngestClarification(null);
+    setArenaClarificationBusy(false);
   }, [sid]);
 
   useEffect(() => {
@@ -1010,6 +1072,28 @@ function LiveTrainingScreen() {
         );
         return;
       }
+      if (isApi422(err)) {
+        const clar = parseLiveTrainingEventNeedsClarification422Body(
+          err instanceof ApiRequestError ? err.body : undefined
+        );
+        if (clar && mountedRef.current && sidRef.current === reqSid) {
+          if (__DEV__) {
+            console.log("[live-training] manual ingest needs_clarification", clar);
+          }
+          setArenaIngestClarification({
+            phrase: params.rawText,
+            sourceType: params.sourceType,
+            sentiment: sentimentPick,
+            category: categoryDraft.trim() || undefined,
+            confidence: undefined,
+            reason: clar.reason,
+            speechResolution: clar.speechResolution,
+            serverMessage:
+              err instanceof ApiRequestError ? err.message : "Уточните игрока",
+          });
+          return;
+        }
+      }
       throw err;
     }
   };
@@ -1119,8 +1203,8 @@ function LiveTrainingScreen() {
       category?: string;
       sentiment: LiveTrainingSentiment;
       confidence?: number | null;
-    }): Promise<LastArenaPostMeta | null> => {
-      if (!sid) return null;
+    }): Promise<ArenaVoicePostObservationResult> => {
+      if (!sid) return { outcome: "queued" };
       const reqSid = sid;
       const clientMutationId = createClientMutationId();
       const body: LiveTrainingEventOutboxBody = {
@@ -1139,7 +1223,9 @@ function LiveTrainingScreen() {
         const res = await withLiveTrainingTransientRetry(() =>
           postLiveTrainingSessionEvent(reqSid, body)
         );
-        if (!mountedRef.current || sidRef.current !== reqSid) return null;
+        if (!mountedRef.current || sidRef.current !== reqSid) {
+          return { outcome: "queued" };
+        }
         await loadEvents();
         await refresh();
         coachHapticSuccess();
@@ -1161,17 +1247,22 @@ function LiveTrainingScreen() {
           kind: "voice",
         });
         return {
-          draftId: d.id,
-          sourceText: d.sourceText || args.rawText,
-          category: d.category ?? "",
-          sentiment,
-          needsReview: Boolean(d.needsReview),
-          playerId: resolvedPlayerId,
+          outcome: "ok",
+          meta: {
+            draftId: d.id,
+            sourceText: d.sourceText || args.rawText,
+            category: d.category ?? "",
+            sentiment,
+            needsReview: Boolean(d.needsReview),
+            playerId: resolvedPlayerId,
+          },
         };
       } catch (err) {
         if (isLiveTrainingTransientApiError(err)) {
           await enqueueLiveTrainingEvent(reqSid, body);
-          if (!mountedRef.current || sidRef.current !== reqSid) return null;
+          if (!mountedRef.current || sidRef.current !== reqSid) {
+            return { outcome: "queued" };
+          }
           await refreshOutboxCount();
           trackLiveTrainingEvent("lt_event_post_queued", {
             sessionId: reqSid,
@@ -1183,7 +1274,57 @@ function LiveTrainingScreen() {
             "Сохранено в очередь",
             "Сеть нестабильна — наблюдение сохранено на устройстве. Оно уйдёт при следующей отправке очереди."
           );
-          return null;
+          return { outcome: "queued" };
+        }
+        if (isApi422(err)) {
+          const clar = parseLiveTrainingEventNeedsClarification422Body(
+            err instanceof ApiRequestError ? err.body : undefined
+          );
+          if (clar && mountedRef.current && sidRef.current === reqSid) {
+            if (__DEV__) {
+              console.log("[live-training] voice ingest needs_clarification", clar);
+            }
+            const voiceCandidates = buildLiveTrainingClarificationRosterCandidates(
+              roster.map((r) => ({ id: r.id, name: r.name })),
+              args.rawText,
+              clar.speechResolution
+            ).map((c) => ({
+              id: c.id,
+              name: c.name,
+              jerseyNumber: roster.find((r) => r.id === c.id)?.jerseyNumber ?? null,
+            }));
+            setArenaIngestClarification({
+              phrase: args.rawText,
+              sourceType: "transcript_segment",
+              sentiment: args.sentiment,
+              category: args.category?.trim() || undefined,
+              confidence:
+                typeof args.confidence === "number" && Number.isFinite(args.confidence)
+                  ? Math.max(0, Math.min(1, args.confidence))
+                  : undefined,
+              reason: clar.reason,
+              speechResolution: clar.speechResolution,
+              serverMessage:
+                err instanceof ApiRequestError ? err.message : "Уточните игрока",
+            });
+            return {
+              outcome: "needs_clarification",
+              clarification: {
+                phrase: args.rawText,
+                sourceType: "transcript_segment",
+                sentiment: args.sentiment,
+                category: args.category?.trim() || undefined,
+                confidence:
+                  typeof args.confidence === "number" && Number.isFinite(args.confidence)
+                    ? Math.max(0, Math.min(1, args.confidence))
+                    : undefined,
+                candidates: voiceCandidates,
+                speechResolution: clar.speechResolution,
+                serverMessage:
+                  err instanceof ApiRequestError ? err.message : "Уточните игрока",
+              },
+            };
+          }
         }
         throw err;
       }
@@ -1273,6 +1414,166 @@ function LiveTrainingScreen() {
     [sid, loadEvents]
   );
 
+  const executeIngestClarificationPost = useCallback(
+    async (
+      payload: ArenaIngestClarificationVoicePayload,
+      playerId: string
+    ): Promise<IngestClarificationRetryResult> => {
+      if (!sid) return { status: "error", message: "Нет сессии." };
+      const reqSid = sid;
+      const clientMutationId = createClientMutationId();
+      const body: LiveTrainingEventOutboxBody = {
+        clientMutationId,
+        rawText: payload.phrase,
+        playerId,
+        category: payload.category,
+        sentiment: payload.sentiment,
+        sourceType: payload.sourceType,
+        confidence:
+          typeof payload.confidence === "number" && Number.isFinite(payload.confidence)
+            ? Math.max(0, Math.min(1, payload.confidence))
+            : undefined,
+      };
+      try {
+        const res = await withLiveTrainingTransientRetry(() =>
+          postLiveTrainingSessionEvent(reqSid, body)
+        );
+        if (!mountedRef.current || sidRef.current !== reqSid) {
+          return { status: "error", message: "Сессия сменилась." };
+        }
+        setArenaIngestClarification(null);
+        await loadEvents();
+        await refresh();
+        coachHapticSuccess();
+        trackLiveTrainingEvent("lt_event_post_success", {
+          sessionId: reqSid,
+          source: "ingest_clarification_retry",
+          ingestClientMutationId: clientMutationId,
+          uiPhase: "posted",
+        });
+        if (payload.sourceType === "manual_stub") {
+          setQuickText("");
+          setCategoryDraft("");
+        }
+        const d = res.draft;
+        const sentRaw = String(d.sentiment ?? "");
+        const sentiment: LiveTrainingSentiment =
+          sentRaw === "positive" || sentRaw === "negative" || sentRaw === "neutral"
+            ? sentRaw
+            : payload.sentiment;
+        const resolvedPlayerId = d.playerId ?? playerId ?? null;
+        setCaptureFeedback({
+          text: buildCaptureSuccessLabel(
+            payload.sourceType === "transcript_segment" ? "voice" : "manual",
+            resolvedPlayerId,
+            roster
+          ),
+          kind: payload.sourceType === "transcript_segment" ? "voice" : "manual",
+        });
+        return {
+          status: "posted",
+          meta: {
+            draftId: d.id,
+            sourceText: d.sourceText || payload.phrase,
+            category: d.category ?? "",
+            sentiment,
+            needsReview: Boolean(d.needsReview),
+            playerId: resolvedPlayerId,
+          },
+        };
+      } catch (err) {
+        if (isLiveTrainingTransientApiError(err)) {
+          await enqueueLiveTrainingEventDedupedByObservationKey(reqSid, body);
+          if (!mountedRef.current || sidRef.current !== reqSid) {
+            return { status: "error", message: "Сессия сменилась." };
+          }
+          await refreshOutboxCount();
+          setArenaIngestClarification(null);
+          return { status: "queued" };
+        }
+        if (isApi422(err)) {
+          const clar = parseLiveTrainingEventNeedsClarification422Body(
+            err instanceof ApiRequestError ? err.body : undefined
+          );
+          if (clar && mountedRef.current && sidRef.current === reqSid) {
+            if (__DEV__) {
+              console.log("[live-training] clarification retry still needs_clarification", clar);
+            }
+            const nextCandidates = buildLiveTrainingClarificationRosterCandidates(
+              roster.map((r) => ({ id: r.id, name: r.name })),
+              payload.phrase,
+              clar.speechResolution
+            ).map((c) => ({
+              id: c.id,
+              name: c.name,
+              jerseyNumber: roster.find((r) => r.id === c.id)?.jerseyNumber ?? null,
+            }));
+            const nextPayload: ArenaIngestClarificationVoicePayload = {
+              phrase: payload.phrase,
+              sourceType: payload.sourceType,
+              sentiment: payload.sentiment,
+              category: payload.category,
+              confidence: payload.confidence,
+              candidates: nextCandidates,
+              speechResolution: clar.speechResolution,
+              serverMessage:
+                err instanceof ApiRequestError ? err.message : "Уточните игрока",
+            };
+            setArenaIngestClarification({
+              phrase: payload.phrase,
+              sourceType: payload.sourceType,
+              sentiment: payload.sentiment,
+              category: payload.category,
+              confidence: payload.confidence ?? undefined,
+              reason: clar.reason,
+              speechResolution: clar.speechResolution,
+              serverMessage: nextPayload.serverMessage,
+            });
+            Alert.alert(
+              "Уточнение",
+              "Сервер снова запросил выбор игрока. Выберите другого из списка."
+            );
+            return { status: "needs_clarification", clarification: nextPayload };
+          }
+        }
+        const msg =
+          err instanceof ApiRequestError ? err.message : "Не удалось отправить наблюдение.";
+        return { status: "error", message: msg };
+      }
+    },
+    [sid, loadEvents, refresh, refreshOutboxCount, roster]
+  );
+
+  const retryIngestClarificationWithPlayerId = useCallback(
+    (payload: ArenaIngestClarificationVoicePayload, playerId: string) =>
+      executeIngestClarificationPost(payload, playerId),
+    [executeIngestClarificationPost]
+  );
+
+  const clearIngestClarificationUi = useCallback(() => {
+    setArenaIngestClarification(null);
+  }, []);
+
+  const confirmArenaIngestClarification = useCallback(
+    async (playerId: string) => {
+      if (!sid || !arenaIngestClarification) return;
+      const snap = arenaIngestClarification;
+      const payload = voiceClarificationPayloadFromSnap(snap, roster);
+      setArenaClarificationBusy(true);
+      try {
+        const r = await executeIngestClarificationPost(payload, playerId);
+        if (r.status === "error") {
+          Alert.alert("Ошибка", r.message);
+        }
+      } finally {
+        if (mountedRef.current) setArenaClarificationBusy(false);
+      }
+    },
+    [sid, arenaIngestClarification, roster, executeIngestClarificationPost]
+  );
+
+  // PHASE 1 agent substrate: `useArenaVoiceAssistant` coordinates ArenaSessionOrchestrator,
+  // ArenaSessionContextStore, and Expo-backed `ArenaListeningTransport` (UI still reads `uiPhase` / `clarifyPhase`).
   const arena = useArenaVoiceAssistant({
     enabled: session?.status === "live",
     sessionId: sid,
@@ -1290,7 +1591,10 @@ function LiveTrainingScreen() {
     eventsRef,
     sessionRef,
     scheduleArenaContext: arenaScheduleCtx,
+    retryIngestClarificationWithPlayerId,
+    clearIngestClarificationUi,
   });
+  arenaPersistenceBridgeRef.current = arena.persistenceBridge;
 
   useEffect(() => {
     const li = arena.lastIntent;
@@ -1313,6 +1617,19 @@ function LiveTrainingScreen() {
     }
     return m;
   }, [roster]);
+
+  const ingestClarificationCandidates = useMemo(() => {
+    if (!arenaIngestClarification) return [];
+    return buildLiveTrainingClarificationRosterCandidates(
+      roster,
+      arenaIngestClarification.phrase,
+      arenaIngestClarification.speechResolution
+    );
+  }, [arenaIngestClarification, roster]);
+
+  const dismissArenaIngestClarification = useCallback(() => {
+    setArenaIngestClarification(null);
+  }, []);
 
   const liveSessionDevelopmentAcc = useMemo(
     () =>
@@ -1643,6 +1960,19 @@ function LiveTrainingScreen() {
                 {arena.lastTranscript.trim()}
               </Text>
             ) : null}
+            {arena.orchestratorPhase === "flushing" ? (
+              <Text style={styles.arenaMuted} numberOfLines={1}>
+                Арена: отправка очереди…
+              </Text>
+            ) : arena.orchestratorPhase === "clarifying" || arena.orchestratorPhase === "prompting" ? (
+              <Text style={styles.arenaMuted} numberOfLines={1}>
+                Арена: уточнение…
+              </Text>
+            ) : arena.arenaUtteranceQueueDepth > 0 ? (
+              <Text style={styles.arenaMuted} numberOfLines={1}>
+                Арена: очередь {arena.arenaUtteranceQueueDepth} — по одной, без потери порядка
+              </Text>
+            ) : null}
           </View>
           {arena.uiPhase === "processing" ? (
             <ActivityIndicator size="small" color={theme.colors.primary} />
@@ -1666,6 +1996,53 @@ function LiveTrainingScreen() {
             <Pressable onPress={() => arena.clearError()} hitSlop={8}>
               <Text style={styles.voiceErrorDismiss}>Скрыть</Text>
             </Pressable>
+          </View>
+        ) : null}
+
+        {arenaIngestClarification ? (
+          <View style={styles.ingestClarificationBlock}>
+            <Text style={styles.ingestClarificationTitle}>Кого имели в виду?</Text>
+            <Text style={styles.ingestClarificationHint} numberOfLines={4}>
+              {arenaIngestClarification.serverMessage}
+            </Text>
+            <Text style={styles.ingestClarificationPhraseLabel}>Исходная фраза</Text>
+            <Text style={styles.ingestClarificationPhrase} numberOfLines={6}>
+              {arenaIngestClarification.phrase}
+            </Text>
+            <Text style={styles.ingestClarificationCandidatesKicker}>
+              {ingestClarificationCandidates.length > 0
+                ? "Выберите игрока или нажмите «Это он»"
+                : "В составе нет игроков для выбора"}
+            </Text>
+            <View style={styles.ingestClarificationChips}>
+              {ingestClarificationCandidates.map((p) => (
+                <PressableFeedback
+                  key={p.id}
+                  disabled={arenaClarificationBusy}
+                  onPress={() => {
+                    coachHapticSelection();
+                    void confirmArenaIngestClarification(p.id);
+                  }}
+                >
+                  <View style={styles.ingestClarificationChip}>
+                    <Text style={styles.ingestClarificationChipName} numberOfLines={1}>
+                      {p.name}
+                    </Text>
+                    <Text style={styles.ingestClarificationCta}>Это он</Text>
+                  </View>
+                </PressableFeedback>
+              ))}
+            </View>
+            <Pressable
+              onPress={dismissArenaIngestClarification}
+              disabled={arenaClarificationBusy}
+              hitSlop={8}
+            >
+              <Text style={styles.ingestClarificationDismiss}>Отмена</Text>
+            </Pressable>
+            {arenaClarificationBusy ? (
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+            ) : null}
           </View>
         ) : null}
 
@@ -2964,6 +3341,83 @@ const styles = StyleSheet.create({
   voiceErrorDismiss: {
     ...theme.typography.caption,
     color: theme.colors.primary,
+    fontWeight: "600",
+  },
+  ingestClarificationBlock: {
+    marginBottom: theme.spacing.sm,
+    padding: theme.spacing.sm,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: StyleSheet.hairlineWidth * 2,
+    borderColor: theme.colors.primary + "55",
+    backgroundColor: "rgba(0,0,0,0.22)",
+    gap: 8,
+  },
+  ingestClarificationTitle: {
+    ...theme.typography.subtitle,
+    fontSize: 15,
+    color: theme.colors.text,
+    fontWeight: "700",
+  },
+  ingestClarificationHint: {
+    ...theme.typography.caption,
+    color: theme.colors.textSecondary,
+    lineHeight: 18,
+  },
+  ingestClarificationPhraseLabel: {
+    ...theme.typography.caption,
+    fontSize: 11,
+    color: theme.colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  ingestClarificationPhrase: {
+    ...theme.typography.body,
+    fontSize: 14,
+    color: theme.colors.text,
+    lineHeight: 20,
+  },
+  ingestClarificationCandidatesKicker: {
+    ...theme.typography.caption,
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    marginTop: 4,
+  },
+  ingestClarificationChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  ingestClarificationChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: theme.borderRadius.sm,
+    borderWidth: StyleSheet.hairlineWidth * 2,
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "rgba(255,255,255,0.07)",
+    maxWidth: "100%",
+  },
+  ingestClarificationChipName: {
+    ...theme.typography.caption,
+    fontSize: 13,
+    color: theme.colors.text,
+    fontWeight: "600",
+    flexShrink: 1,
+    maxWidth: 200,
+  },
+  ingestClarificationCta: {
+    ...theme.typography.caption,
+    fontSize: 12,
+    color: theme.colors.primary,
+    fontWeight: "700",
+  },
+  ingestClarificationDismiss: {
+    ...theme.typography.caption,
+    alignSelf: "flex-start",
+    marginTop: 4,
+    color: theme.colors.textMuted,
     fontWeight: "600",
   },
   pressed: {

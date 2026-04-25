@@ -22,6 +22,7 @@ import { theme } from "@/constants/theme";
 import { formatVoiceDateTimeCompactRu } from "@/lib/voiceMvp";
 import { voiceListRowSignal } from "@/lib/voicePipeline/uiHelpers";
 import { getVoiceNotes, type VoiceNoteListItem } from "@/services/voiceNotesService";
+import { LIVE_TRAINING_START_ROUTE } from "@/services/liveTrainingService";
 
 type PlayerFilter = "all" | "with_player" | "without_player";
 type AudioFilter = "all" | "with_audio" | "without_audio";
@@ -634,16 +635,18 @@ export default function VoiceNotesListScreen() {
               <View style={styles.emptyAccent} />
               <Text style={styles.emptyTitle}>Архив пока пуст</Text>
               <Text style={styles.emptyText}>
-                Здесь появятся материалы после голосовых сценариев: сохранённые записи, расшифровки и резюме. Создайте
-                заметку или пройдите тренировочный поток — записи попадут в этот список.
+                Здесь появятся материалы после голосовых сценариев. Живая тренировка с наблюдениями — канон Arena /
+                live-training; этот список не заменяет post-session live-training.
               </Text>
               <View style={styles.emptyActions}>
                 <PrimaryButton animatedPress title="Новая голосовая заметка" onPress={() => router.push("/voice-note")} />
                 <PrimaryButton
                   animatedPress
-                  title="Тренировочный поток"
+                  title="Живая тренировка (Arena)"
                   variant="outline"
-                  onPress={() => router.push("/dev/coach-input")}
+                  onPress={() =>
+                    router.push(LIVE_TRAINING_START_ROUTE as Parameters<typeof router.push>[0])
+                  }
                 />
               </View>
             </SectionCard>
@@ -673,7 +676,10 @@ export default function VoiceNotesListScreen() {
             <StaggerFadeIn preset="snappy" delay={18}>
               <SectionCard elevated style={styles.quickCard}>
                 <Text style={styles.quickTitle}>Новая запись</Text>
-                <Text style={styles.quickHint}>Те же маршруты, из которых пополняется архив.</Text>
+                <Text style={styles.quickHint}>
+                  Голосовая заметка или живая тренировка (канон) — архив пополняется отдельно от legacy
+                  локальной записи.
+                </Text>
                 <View style={styles.quickRow}>
                   <PrimaryButton
                     animatedPress
@@ -684,9 +690,11 @@ export default function VoiceNotesListScreen() {
                   />
                   <PrimaryButton
                     animatedPress
-                    title="Тренировочный поток"
+                    title="Живая тренировка (Arena)"
                     variant="outline"
-                    onPress={() => router.push("/dev/coach-input")}
+                    onPress={() =>
+                      router.push(LIVE_TRAINING_START_ROUTE as Parameters<typeof router.push>[0])
+                    }
                     style={styles.quickBtn}
                   />
                 </View>

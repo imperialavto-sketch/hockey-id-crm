@@ -451,7 +451,7 @@ export default function CoachVoiceNoteScreen() {
       const id = await saveVoiceStarterPayload(payload);
 
       if (intent === "coach_note" || intent === "parent_draft") {
-        safePush({ pathname: "/dev/coach-input", params: { voiceStarterId: id } } as Href);
+        safePush({ pathname: "/coach-input", params: { voiceStarterId: id } } as Href);
         return;
       }
       if (intent === "report_draft") {
@@ -488,7 +488,7 @@ export default function CoachVoiceNoteScreen() {
     }
     const id = await saveVoiceObservationPrefill(prefill);
     safePush({
-      pathname: "/dev/coach-input",
+      pathname: "/coach-input",
       params: {
         voiceObservationPrefillId: id,
         ...(params.voiceSeries === "1" ? { voiceSeries: "1" } : {}),
@@ -509,7 +509,7 @@ export default function CoachVoiceNoteScreen() {
       return;
     }
     if (cmd === "exit") {
-      router.replace("/dev/coach-input" as Href);
+      router.replace("/coach-input" as Href);
       return;
     }
     if (cmd === "fix") {
@@ -523,7 +523,7 @@ export default function CoachVoiceNoteScreen() {
           /* ignore */
         }
         safePush({
-          pathname: "/dev/coach-input",
+          pathname: "/coach-input",
           params: { voiceSeries: "1" },
         } as Href);
       })();

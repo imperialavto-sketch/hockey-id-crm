@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter, useFocusEffect, type Href } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import { ScreenContainer } from "@/components/layout/ScreenContainer";
 import { SectionCard } from "@/components/ui/SectionCard";
@@ -25,6 +25,7 @@ import {
 } from "@/lib/teamSessionSummaryHelpers";
 import { buildSessionFollowUpItems } from "@/lib/sessionFollowUpHelpers";
 import { theme } from "@/constants/theme";
+import { LIVE_TRAINING_START_ROUTE } from "@/services/liveTrainingService";
 
 function pluralObs(n: number): string {
   const m10 = n % 10;
@@ -42,18 +43,31 @@ function pluralPlayer(n: number): string {
   return "игроков";
 }
 
-function EmptyState({ onOpenCapture }: { onOpenCapture: () => void }) {
+function EmptyState({
+  onOpenLiveTraining,
+  onOpenLegacyCapture,
+}: {
+  onOpenLiveTraining: () => void;
+  onOpenLegacyCapture: () => void;
+}) {
   return (
     <ScreenContainer contentContainerStyle={styles.emptyContainer}>
       <View style={styles.emptyCard}>
         <Text style={styles.emptyTitle}>Пока нет итогов</Text>
         <Text style={styles.emptyText}>
-          Запишите тренировку
+          Канонический путь — живая тренировка (Arena / live-training). Этот экран — legacy-обзор
+          локальной записи, не тот же контур, что post-session live-training.
         </Text>
         <PrimaryButton
-          title="Записать тренировку"
-          onPress={onOpenCapture}
+          title="Живая тренировка (Arena)"
+          onPress={onOpenLiveTraining}
           style={styles.emptyCta}
+        />
+        <PrimaryButton
+          title="Локальная запись (legacy)"
+          variant="outline"
+          onPress={onOpenLegacyCapture}
+          style={styles.emptyCtaSecondary}
         />
       </View>
     </ScreenContainer>
@@ -220,7 +234,10 @@ export default function SessionReviewScreen() {
 
   if (!summary?.session) {
     return (
-      <EmptyState onOpenCapture={() => router.push("/dev/coach-input")} />
+      <EmptyState
+        onOpenLiveTraining={() => router.push(LIVE_TRAINING_START_ROUTE as Href)}
+        onOpenLegacyCapture={() => router.push("/coach-input")}
+      />
     );
   }
 
@@ -238,7 +255,11 @@ export default function SessionReviewScreen() {
     <ScreenContainer contentContainerStyle={styles.content}>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
-          <Text style={styles.heroTitle}>Итоги тренировки</Text>
+          <Text style={styles.heroTitle}>Итоги тренировки (legacy)</Text>
+          <Text style={styles.heroLegacyLine}>
+            Локальный контур Coach Mark — не live-training API. Итог жизни сессии в продукте — Arena →
+            review → publish.
+          </Text>
           <Text style={styles.heroSubtitle}>
             {observationCount} {pluralObs(observationCount)} · {uniquePlayers}{" "}
             {pluralPlayer(uniquePlayers)}
@@ -412,6 +433,10 @@ const styles = StyleSheet.create({
   },
   emptyCta: {
     marginTop: theme.spacing.sm,
+    alignSelf: "stretch",
+  },
+  emptyCtaSecondary: {
+    alignSelf: "stretch",
   },
   hero: {
     marginBottom: theme.spacing.xl,
@@ -420,6 +445,11 @@ const styles = StyleSheet.create({
     ...theme.typography.hero,
     color: theme.colors.text,
     marginBottom: theme.spacing.xs,
+  },
+  heroLegacyLine: {
+    ...theme.typography.caption,
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.sm,
   },
   heroSubtitle: {
     ...theme.typography.subtitle,
