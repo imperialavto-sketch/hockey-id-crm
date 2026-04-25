@@ -5,6 +5,9 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@shared/*": [
+        "../shared/*"
       ]
     }
   },
@@ -13,5 +16,12 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/*.unit.test.ts",
+    "**/*.snapshot.test.tsx",
+    "**/*.stories.tsx",
+    ".rnstorybook"
   ]
 }
