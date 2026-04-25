@@ -18,6 +18,23 @@ interface Team {
   _count?: { players: number; trainings: number };
 }
 
+function normalizeRegistryArenaItems(data: unknown): Record<string, string[]> {
+  const raw = data && typeof data === "object" && data !== null && "items" in data ? (data as { items: unknown }).items : null;
+  if (!Array.isArray(raw)) return {};
+  const out: Record<string, string[]> = {};
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const teamId = typeof (row as { teamId?: unknown }).teamId === "string" ? (row as { teamId: string }).teamId.trim() : "";
+    const linesRaw = (row as { lines?: unknown }).lines;
+    if (!teamId || !Array.isArray(linesRaw)) continue;
+    const lines = linesRaw
+      .map((l) => (typeof l === "string" ? l.trim() : ""))
+      .filter((l) => l.length > 0);
+    if (lines.length > 0) out[teamId] = lines;
+  }
+  return out;
+}
+
 export default function TeamsPage() {
   const { canCreate, canEdit } = usePermissions();
   const [teams, setTeams] = useState<Team[]>([]);
@@ -26,6 +43,7 @@ export default function TeamsPage() {
   const [loadTick, setLoadTick] = useState(0);
   const [search, setSearch] = useState("");
   const [ageGroup, setAgeGroup] = useState("");
+  const [arenaLinesByTeamId, setArenaLinesByTeamId] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     setLoading(true);
@@ -52,6 +70,39 @@ export default function TeamsPage() {
       })
       .finally(() => setLoading(false));
   }, [search, ageGroup, loadTick]);
+
+  useEffect(() => {
+    if (loading || fetchError) {
+      setArenaLinesByTeamId({});
+      return;
+    }
+    const list = Array.isArray(teams) ? teams : [];
+    if (list.length === 0) {
+      setArenaLinesByTeamId({});
+      return;
+    }
+    let cancelled = false;
+    const teamIds = list.map((t) => t.id);
+    fetch("/api/teams/registry-arena-operational-lines", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ teamIds }),
+    })
+      .then(async (r) => {
+        const data = await r.json().catch(() => null);
+        if (!r.ok) throw new Error("fetch failed");
+        return normalizeRegistryArenaItems(data);
+      })
+      .then((map) => {
+        if (!cancelled) setArenaLinesByTeamId(map);
+      })
+      .catch(() => {
+        if (!cancelled) setArenaLinesByTeamId({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, fetchError, teams]);
 
   const safeTeams = Array.isArray(teams) ? teams : [];
   const hasFilters = Boolean(search || ageGroup);
@@ -234,6 +285,11 @@ export default function TeamsPage() {
                             <span className="text-slate-500">{crmTeamTrainingsCountLabel(trainingsCount)}</span>
                           ) : null}
                         </div>
+                        {arenaLinesByTeamId[t.id]?.length ? (
+                          <p className="mt-1.5 line-clamp-2 text-xs leading-snug text-slate-500">
+                            {arenaLinesByTeamId[t.id].join(" · ")}
+                          </p>
+                        ) : null}
                       </div>
                       <ChevronRight
                         className="mt-0.5 h-5 w-5 shrink-0 self-start text-slate-500 opacity-40 transition-opacity group-hover:text-neon-blue group-hover:opacity-100 sm:mt-0 sm:self-center"

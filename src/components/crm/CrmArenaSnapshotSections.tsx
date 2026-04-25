@@ -1,10 +1,72 @@
 import type { ReactNode } from "react";
 import type {
+  ArenaCrmSupercoreOperationalFocusLine,
   ArenaGroupSnapshot,
   ArenaPlayerSnapshot,
   ArenaPlayerTrend,
   ArenaTeamSnapshot,
 } from "@/lib/arena/crm/arenaCrmTypes";
+import type { ArenaCrmWireStatus } from "@/hooks/useArenaCrmSupercoreOperationalFocus";
+import { mapArenaCrmWireStatusToRegionKind } from "@/lib/arena/crm/arena-crm-wire-classifier";
+
+/** Обёртка CRM Arena wire: не даёт секциям исчезнуть молча при loading / error / empty. */
+export function CrmArenaSnapshotWireRegion({
+  status,
+  className,
+  children,
+}: {
+  status: ArenaCrmWireStatus;
+  className?: string;
+  children: ReactNode;
+}) {
+  const regionKind = mapArenaCrmWireStatusToRegionKind(status);
+  if (regionKind === "hidden") return null;
+  if (regionKind === "success") {
+    return <div className={className}>{children}</div>;
+  }
+  return (
+    <div className={className}>
+      <CrmArenaSnapshotWireStateNotice status={status as "loading" | "error" | "empty"} />
+    </div>
+  );
+}
+
+function CrmArenaSnapshotWireStateNotice({
+  status,
+}: {
+  status: "loading" | "error" | "empty";
+}) {
+  const copy =
+    status === "loading"
+      ? {
+          kicker: "Арена · срез",
+          title: "Загрузка",
+          body: "Получаем данные с сервера…",
+        }
+      : status === "error"
+        ? {
+            kicker: "Арена · срез",
+            title: "Не удалось загрузить",
+            body: "Проверьте сеть и доступ, затем обновите страницу.",
+          }
+        : {
+            kicker: "Арена · срез",
+            title: "Данных нет",
+            body: "Ответ получен: по последним подтверждённым live-сессиям для этого экрана сейчас нечего показать.",
+          };
+
+  return (
+    <div
+      className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3"
+      role={status === "error" ? "alert" : undefined}
+      aria-busy={status === "loading" ? true : undefined}
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{copy.kicker}</p>
+      <p className="mt-1 text-sm font-medium text-slate-200">{copy.title}</p>
+      <p className="mt-1 text-xs leading-relaxed text-slate-500">{copy.body}</p>
+    </div>
+  );
+}
 
 /** Упрощённая метка для CRM: без новых полей API. */
 function playerArenaStateLabel(t: ArenaPlayerTrend): string {
@@ -40,9 +102,9 @@ export function CrmArenaPlayerSnapshotSection({ snapshot }: { snapshot: ArenaPla
   return (
     <section
       className="mt-6 rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 text-sm"
-      aria-label="Arena: сводка по живым тренировкам"
+      aria-label="Арена: сводка по живым тренировкам"
     >
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Arena · живые тренировки</h3>
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Арена · живые тренировки</h3>
       <p className="mt-1 text-[11px] leading-relaxed text-slate-600">
         Сводка по последним подтверждённым сессиям команды (только просмотр).
       </p>
@@ -71,7 +133,7 @@ export function CrmArenaPlayerSnapshotSection({ snapshot }: { snapshot: ArenaPla
 export function CrmArenaTeamSnapshotSection({ snapshot }: { snapshot: ArenaTeamSnapshot }) {
   return (
     <DetailSectionCardLike
-      title="Arena · команда"
+      title="Арена · команда"
       hint="Сводка по последним подтверждённым live-сессиям (без действий)."
     >
       <p className="mb-3 text-xs leading-relaxed text-slate-500">{teamAttentionInsight(snapshot)}</p>
@@ -93,6 +155,30 @@ export function CrmArenaTeamSnapshotSection({ snapshot }: { snapshot: ArenaTeamS
           </dd>
         </div>
       </dl>
+    </DetailSectionCardLike>
+  );
+}
+
+/** Frozen local CRM UI: operational focus lines from the team’s latest confirmed live training session (read-only). */
+export function CrmArenaSupercoreOperationalFocusSection({
+  lines,
+}: {
+  lines: ArenaCrmSupercoreOperationalFocusLine[] | undefined;
+}) {
+  if (!lines?.length) return null;
+  return (
+    <DetailSectionCardLike
+      title="Арена · фокус следующей сессии"
+      hint="По последней подтверждённой тренировке команды (живой формат). Ориентир для следующей сессии, только просмотр."
+    >
+      <ul className="space-y-3 text-sm">
+        {lines.map((l) => (
+          <li key={l.bindingDecisionId} className="border-b border-white/[0.06] pb-3 last:border-0">
+            <div className="font-medium text-white">{l.title}</div>
+            <p className="mt-1 text-slate-400">{l.body}</p>
+          </li>
+        ))}
+      </ul>
     </DetailSectionCardLike>
   );
 }

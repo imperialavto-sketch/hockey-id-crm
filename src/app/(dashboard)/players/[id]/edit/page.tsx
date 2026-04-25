@@ -448,13 +448,24 @@ export default function PlayerEditPage() {
     setFormMedical({ ...formMedical, injuries: next });
   };
 
+  /** TrainingSession attendance API accepts only `present` | `absent` (LATE→present, EXCUSED→absent). */
+  const toCanonicalAttendanceStatus = (legacyUiStatus: string): "present" | "absent" => {
+    const u = legacyUiStatus.toUpperCase();
+    if (u === "PRESENT" || u === "LATE") return "present";
+    return "absent";
+  };
+
   const handleSaveAttendance = async (trainingId: string, status: string, comment?: string) => {
     setError("");
     try {
       const res = await fetch(`/api/trainings/${trainingId}/attendance`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playerId: id, status, comment: comment ?? "" }),
+        body: JSON.stringify({
+          playerId: id,
+          status: toCanonicalAttendanceStatus(status),
+          comment: comment ?? "",
+        }),
       });
       if (res.ok) {
         fetchTrainings();

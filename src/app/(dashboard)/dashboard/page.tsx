@@ -26,6 +26,10 @@ import { Card } from "@/components/Card";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { CRM_DASHBOARD_COPY } from "@/lib/crmDashboardCopy";
+import {
+  DashboardArenaOperationalPreview,
+  type DashboardArenaOperationalPreviewRow,
+} from "@/components/crm/DashboardArenaOperationalPreview";
 
 const ACTIVITY_ICONS: Record<string, LucideIcon> = {
   create_player: UserPlus,
@@ -178,6 +182,7 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [activity, setActivity] = useState<ActivityLog[]>([]);
+  const [arenaPreviewItems, setArenaPreviewItems] = useState<DashboardArenaOperationalPreviewRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
 
@@ -188,11 +193,30 @@ export default function DashboardPage() {
       fetch("/api/dashboard/summary").then(parseOkJson),
       fetch("/api/dashboard/upcoming-trainings").then(parseOkJson),
       fetch("/api/dashboard/recent-activity").then(parseOkJson),
+      fetch("/api/dashboard/arena-operational-preview").then(async (r) => {
+        if (!r.ok) return { items: [] as DashboardArenaOperationalPreviewRow[] };
+        const j = (await r.json().catch(() => null)) as { items?: unknown } | null;
+        if (!j || typeof j !== "object" || !Array.isArray(j.items)) {
+          return { items: [] as DashboardArenaOperationalPreviewRow[] };
+        }
+        const items: DashboardArenaOperationalPreviewRow[] = [];
+        for (const x of j.items) {
+          if (!x || typeof x !== "object") continue;
+          const o = x as Record<string, unknown>;
+          if (typeof o.teamId !== "string" || typeof o.teamName !== "string") continue;
+          if (!Array.isArray(o.lines)) continue;
+          const lines = o.lines.filter((l): l is string => typeof l === "string" && l.trim().length > 0);
+          if (lines.length === 0) continue;
+          items.push({ teamId: o.teamId, teamName: o.teamName, lines });
+        }
+        return { items };
+      }),
     ])
-      .then(([s, t, a]) => {
+      .then(([s, t, a, arena]) => {
         setSummary(s as Summary);
         setTrainings(Array.isArray(t) ? (t as Training[]) : []);
         setActivity(Array.isArray(a) ? (a as ActivityLog[]) : []);
+        setArenaPreviewItems(arena.items);
         setFetchError(false);
       })
       .catch(() => {
@@ -200,6 +224,7 @@ export default function DashboardPage() {
         setSummary(null);
         setTrainings([]);
         setActivity([]);
+        setArenaPreviewItems([]);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -421,6 +446,17 @@ export default function DashboardPage() {
             </div>
           </div>
         </Card>
+
+        {arenaPreviewItems.length > 0 ? (
+          <Card className="overflow-hidden rounded-2xl border-white/[0.08] p-0">
+            <div className="p-4 sm:p-5">
+              <DashboardArenaOperationalPreview
+                items={arenaPreviewItems}
+                canLinkToTeam={canView("teams")}
+              />
+            </div>
+          </Card>
+        ) : null}
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Card className="overflow-hidden rounded-2xl border-white/[0.08] p-0">

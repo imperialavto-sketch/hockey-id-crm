@@ -20,6 +20,7 @@ import {
   Trophy,
   Newspaper,
   Store,
+  ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -40,6 +41,7 @@ const LABEL_MAP: Record<string, string> = {
   "/marketplace": "Маркетплейс тренеров",
   "/settings": "Настройки",
   "/parent": "Мои дети",
+  "/external-coach/requests": "Запросы",
 };
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -57,6 +59,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   "/marketplace": Store,
   "/settings": Settings,
   "/parent": UserCircle,
+  "/external-coach/requests": ClipboardList,
 };
 
 const roleLabels: Record<string, string> = {
@@ -65,6 +68,7 @@ const roleLabels: Record<string, string> = {
   COACH: "Тренер",
   SCHOOL_MANAGER: "Менеджер школы",
   PARENT: "Родитель",
+  EXTERNAL_COACH: "Внешний тренер",
 };
 
 export function Sidebar() {

@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   ArrowLeft,
   Pencil,
@@ -35,6 +35,12 @@ import {
   crmPlayerDetailStatusPillClass,
 } from "@/lib/crmPlayerDetailCopy";
 import { CRM_PLAYER_SCHEDULE_COPY } from "@/lib/crmPlayerScheduleCopy";
+import {
+  CrmArenaPlayerSnapshotSection,
+  CrmArenaSnapshotWireRegion,
+  CrmArenaSupercoreOperationalFocusSection,
+} from "@/components/crm/CrmArenaSnapshotSections";
+import { useArenaCrmSupercoreOperationalFocus } from "@/hooks/useArenaCrmSupercoreOperationalFocus";
 
 interface Player {
   id: string;
@@ -70,6 +76,10 @@ interface Player {
   parent?: { id: string; firstName: string; lastName: string; phone: string | null } | null;
   parentPlayers?: { id: string; parent: { id: string; firstName: string; lastName: string; phone: string | null } }[];
   parentInvites?: { id: string; phone: string; status: string; createdAt: string }[];
+  /** Из черновика последней confirmed live команды: `sessionMeaningNextActionsV1.players` для этого игрока. */
+  playerFollowUp?: { actions: string[] };
+  /** Триггер внимания / прогресс из того же черновика (без «всё ок»). */
+  playerAttentionSignal?: { level: "watch" | "attention"; note?: string | null };
 }
 
 interface TrainingAtt {
@@ -81,6 +91,18 @@ interface TrainingAtt {
 }
 
 const monthNames = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
+
+/** Тот же формат, что на CRM team detail (`teams/[id]/page.tsx`) — ближайший слот для Arena → schedule. */
+function formatNextScheduledSlotLabel(startAtIso: string): string {
+  const d = new Date(startAtIso);
+  if (Number.isNaN(d.getTime())) return startAtIso;
+  return `${d.toLocaleDateString("ru-RU", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  })} · ${d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`;
+}
 
 interface PlayerAIAnalysis {
   summary: string;
@@ -103,6 +125,108 @@ interface ProgressSnapshot {
   coachComment?: string;
   focusArea?: string;
   trend?: "up" | "stable" | "down";
+}
+
+/** Ответ `GET /api/coach/players/[id]/development-insights` — см. `PlayerDevelopmentInsightDto`. */
+type CoachPlayerDevelopmentInsights = {
+  recurringThemes: string[];
+  recentFocus: string[];
+  attentionSignals: string[];
+  momentum: "up" | "stable" | "mixed";
+  confidence: "low" | "moderate" | "high";
+  summaryLine?: string;
+};
+
+function parseCoachDevelopmentInsightsPayload(
+  raw: unknown
+): CoachPlayerDevelopmentInsights | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.error === "string" && o.error.trim()) return null;
+  const mom = o.momentum;
+  const conf = o.confidence;
+  if (mom !== "up" && mom !== "stable" && mom !== "mixed") return null;
+  if (conf !== "low" && conf !== "moderate" && conf !== "high") return null;
+  const strArr = (x: unknown): string[] =>
+    Array.isArray(x)
+      ? x.filter((v): v is string => typeof v === "string" && Boolean(v.trim().length))
+      : [];
+  return {
+    recurringThemes: strArr(o.recurringThemes),
+    recentFocus: strArr(o.recentFocus),
+    attentionSignals: strArr(o.attentionSignals),
+    momentum: mom,
+    confidence: conf,
+    summaryLine: typeof o.summaryLine === "string" ? o.summaryLine : undefined,
+  };
+}
+
+function clipInsightLine(s: string, max: number): string {
+  const t = s.replace(/\s+/gu, " ").trim();
+  if (!t) return "";
+  return t.length <= max ? t : `${t.slice(0, max - 1)}…`;
+}
+
+function normInsightKey(s: string): string {
+  return s.toLowerCase().replace(/\s+/gu, " ").slice(0, 72);
+}
+
+/**
+ * Узкий CRM-текст без attentionSignals — блок «Внимание» уже про сигнал последней сессии.
+ * Опираемся на повторяющиеся темы отчётов, недавний позитивный фокус live и нейтральный summaryLine.
+ */
+function pickCrmDevelopmentInsightPresentation(
+  d: CoachPlayerDevelopmentInsights
+): { headline: string; support: string[] } | null {
+  const rt0 = d.recurringThemes[0]?.trim();
+  const rt1 = d.recurringThemes[1]?.trim();
+  const rf0 = d.recentFocus[0]?.trim();
+  const rf1 = d.recentFocus[1]?.trim();
+  const sl = d.summaryLine?.trim() ?? "";
+
+  const weakSummary = (x: string) =>
+    /Пока мало данных в отчётах и сигналах|Мало недавних сигналов для устойчивого паттерна/u.test(x);
+
+  const hasThemeOrFocus = Boolean(rt0 || rf0);
+
+  if (!hasThemeOrFocus) {
+    if (!sl || weakSummary(sl)) return null;
+    if (d.confidence === "low" && /^Live-сигналы:/u.test(sl)) return null;
+    return { headline: clipInsightLine(sl, 160), support: [] };
+  }
+
+  const headline = clipInsightLine(rt0 ?? rf0!, 118);
+  const support: string[] = [];
+  const hk = normInsightKey(headline);
+
+  const pushUnique = (line: string | undefined) => {
+    if (!line) return;
+    const c = clipInsightLine(line, 110);
+    if (!c) return;
+    if (normInsightKey(c) === hk) return;
+    if (support.some((s) => normInsightKey(s) === normInsightKey(c))) return;
+    if (support.length >= 2) return;
+    support.push(c);
+  };
+
+  if (rt0) {
+    pushUnique(rf0);
+    pushUnique(rt1);
+  } else {
+    pushUnique(rf1);
+  }
+
+  if (
+    support.length === 0 &&
+    sl &&
+    !weakSummary(sl) &&
+    normInsightKey(sl) !== hk &&
+    !/^Live-сигналы:/u.test(sl)
+  ) {
+    pushUnique(sl);
+  }
+
+  return { headline, support };
 }
 
 const TABS = [
@@ -177,6 +301,25 @@ export default function PlayerCardPage() {
   const [manualDesc, setManualDesc] = useState("");
   const [manualSending, setManualSending] = useState(false);
   const [manualError, setManualError] = useState<string | null>(null);
+  const [developmentInsights, setDevelopmentInsights] =
+    useState<CoachPlayerDevelopmentInsights | null>(null);
+  const developmentInsightsFetchGen = useRef(0);
+  const arenaCrmWire = useArenaCrmSupercoreOperationalFocus(
+    id ? `/api/players/${id}/arena-crm-snapshot` : null,
+    reloadKey
+  );
+  const arenaSupercoreFocusLines = arenaCrmWire.supercoreOperationalFocus;
+  const firstArenaSupercoreLine = arenaSupercoreFocusLines?.[0];
+
+  /** `GET /api/teams/[id]` — только `nextScheduledTrainingSession` (как на team CRM для apply focus). */
+  const [teamNextScheduledSlot, setTeamNextScheduledSlot] = useState<{
+    id: string;
+    startAt: string;
+    hasPlannedFocus?: boolean;
+  } | null>(null);
+  const [applyArenaFocusBusy, setApplyArenaFocusBusy] = useState(false);
+  const [applyArenaFocusError, setApplyArenaFocusError] = useState<string | null>(null);
+  const [applyArenaFocusOk, setApplyArenaFocusOk] = useState(false);
 
   const canViewFinance =
     user?.role === "SCHOOL_ADMIN" || user?.role === "SCHOOL_MANAGER";
@@ -215,6 +358,33 @@ export default function PlayerCardPage() {
   }, [id, reloadKey]);
 
   useEffect(() => {
+    if (!id) {
+      setDevelopmentInsights(null);
+      return;
+    }
+    const gen = ++developmentInsightsFetchGen.current;
+    setDevelopmentInsights(null);
+    void fetch(`/api/coach/players/${encodeURIComponent(id)}/development-insights`, {
+      credentials: "include",
+    })
+      .then(async (r) => {
+        const raw = await r.json().catch(() => null);
+        if (developmentInsightsFetchGen.current !== gen) return;
+        if (!r.ok) {
+          setDevelopmentInsights(null);
+          return;
+        }
+        const parsed = parseCoachDevelopmentInsightsPayload(raw);
+        setDevelopmentInsights(parsed);
+      })
+      .catch(() => {
+        if (developmentInsightsFetchGen.current === gen) {
+          setDevelopmentInsights(null);
+        }
+      });
+  }, [id, reloadKey]);
+
+  useEffect(() => {
     if (!id) return;
     setTrainingsLoading(true);
     setTrainingsError(false);
@@ -232,6 +402,85 @@ export default function PlayerCardPage() {
       })
       .finally(() => setTrainingsLoading(false));
   }, [id, reloadKey]);
+
+  useEffect(() => {
+    const teamId = player?.team?.id?.trim();
+    if (!teamId) {
+      setTeamNextScheduledSlot(null);
+      return;
+    }
+    let cancelled = false;
+    void fetch(`/api/teams/${encodeURIComponent(teamId)}`, { credentials: "include" })
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error("fetch failed");
+        return data;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        const slot = data?.nextScheduledTrainingSession;
+        if (slot?.id && slot?.startAt) {
+          setTeamNextScheduledSlot({
+            id: String(slot.id),
+            startAt: String(slot.startAt),
+            hasPlannedFocus: Boolean(slot.hasPlannedFocus),
+          });
+        } else {
+          setTeamNextScheduledSlot(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setTeamNextScheduledSlot(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [player?.team?.id, reloadKey]);
+
+  useEffect(() => {
+    setApplyArenaFocusOk(false);
+    setApplyArenaFocusError(null);
+  }, [id, teamNextScheduledSlot?.id, firstArenaSupercoreLine?.bindingDecisionId, firstArenaSupercoreLine?.liveTrainingSessionId]);
+
+  const handleApplyArenaFocusToNextTraining = useCallback(async () => {
+    const line = firstArenaSupercoreLine;
+    const slotId = teamNextScheduledSlot?.id;
+    if (!line?.liveTrainingSessionId || !slotId || applyArenaFocusBusy) return;
+    const focusLine = [line.title, line.body]
+      .map((s) => String(s ?? "").trim())
+      .filter(Boolean)
+      .join(" — ");
+    if (!focusLine) return;
+    setApplyArenaFocusBusy(true);
+    setApplyArenaFocusError(null);
+    setApplyArenaFocusOk(false);
+    try {
+      const res = await fetch(
+        `/api/live-training/sessions/${encodeURIComponent(line.liveTrainingSessionId)}/apply-arena-next-training-focus`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetTrainingSessionId: slotId,
+            focusLine,
+            explicitOverwrite: true,
+          }),
+        }
+      );
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setApplyArenaFocusError(data?.error ?? "Не удалось применить фокус");
+        return;
+      }
+      setApplyArenaFocusOk(true);
+      setReloadKey((k) => k + 1);
+    } catch {
+      setApplyArenaFocusError("Ошибка сети");
+    } finally {
+      setApplyArenaFocusBusy(false);
+    }
+  }, [firstArenaSupercoreLine, teamNextScheduledSlot?.id, applyArenaFocusBusy]);
 
   useEffect(() => {
     if (!id) return;
@@ -465,6 +714,10 @@ export default function PlayerCardPage() {
   const activeTabLabel = visibleTabs.find((t) => t.id === tab)?.label ?? CRM_PLAYER_DETAIL_COPY.sectionKicker;
   const tabPanelHint = CRM_PLAYER_DETAIL_TAB_HINTS[tab];
   const locationLine = [player.city, player.country].filter(Boolean).join(", ");
+  const crmDevelopmentInsightPresentation =
+    developmentInsights == null
+      ? null
+      : pickCrmDevelopmentInsightPresentation(developmentInsights);
   const nextTraining = trainings
     .filter((t) => new Date(t.startTime).getTime() >= Date.now())
     .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())[0] ?? null;
@@ -628,26 +881,200 @@ export default function PlayerCardPage() {
           </div>
           <div className="p-5 sm:p-6">
         {tab === "general" && (
-          <dl className="space-y-2 text-sm">
-            <Row label="ФИО" value={fullName} />
-            <Row label="ID игрока" value={player.id} />
-            <Row label="Дата рождения" value={birthDate ? birthDate.toLocaleDateString("ru-RU") : player.birthYear ? `${player.birthYear}` : "—"} />
-            <Row label="Возраст" value={age != null ? `${age} лет` : "—"} />
-            <Row label="Позиция" value={player.position} />
-            <Row label="Хват" value={player.grip} />
-            <Row label="Рост" value={player.height != null ? `${player.height} см` : "—"} />
-            <Row label="Вес" value={player.weight != null ? `${player.weight} кг` : "—"} />
-            <Row label="Город" value={player.city ?? "—"} />
-            <Row label="Страна" value={player.country ?? "—"} />
-            <Row label="Команда" value={player.team?.name ?? "—"} />
-            <Row label="Статус" value={player.status} />
-            {player.comment && (
-              <div>
-                <dt className="text-slate-500">Комментарий</dt>
-                <dd className="mt-0.5 text-white">{player.comment}</dd>
+          <>
+            <dl className="space-y-2 text-sm">
+              <Row label="ФИО" value={fullName} />
+              <Row label="ID игрока" value={player.id} />
+              <Row label="Дата рождения" value={birthDate ? birthDate.toLocaleDateString("ru-RU") : player.birthYear ? `${player.birthYear}` : "—"} />
+              <Row label="Возраст" value={age != null ? `${age} лет` : "—"} />
+              <Row label="Позиция" value={player.position} />
+              <Row label="Хват" value={player.grip} />
+              <Row label="Рост" value={player.height != null ? `${player.height} см` : "—"} />
+              <Row label="Вес" value={player.weight != null ? `${player.weight} кг` : "—"} />
+              <Row label="Город" value={player.city ?? "—"} />
+              <Row label="Страна" value={player.country ?? "—"} />
+              <Row label="Команда" value={player.team?.name ?? "—"} />
+              <Row label="Статус" value={player.status} />
+              {player.comment && (
+                <div>
+                  <dt className="text-slate-500">Комментарий</dt>
+                  <dd className="mt-0.5 text-white">{player.comment}</dd>
+                </div>
+              )}
+            </dl>
+            {player.playerFollowUp?.actions && player.playerFollowUp.actions.length > 0 ? (
+              <div className="mt-6">
+                <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Следующий шаг
+                  </p>
+                  <ul className="mt-2 list-none space-y-1.5 p-0">
+                    {player.playerFollowUp.actions.map((line, i) => (
+                      <li key={i} className="flex gap-2 text-sm leading-snug text-slate-200">
+                        <span className="shrink-0 text-slate-500" aria-hidden>
+                          •
+                        </span>
+                        <span>{line}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
-            )}
-          </dl>
+            ) : null}
+            {player.playerAttentionSignal ? (
+              <div
+                className={
+                  player.playerFollowUp?.actions && player.playerFollowUp.actions.length > 0
+                    ? "mt-4"
+                    : "mt-6"
+                }
+              >
+                <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Внимание
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-slate-200">
+                    {player.playerAttentionSignal.level === "attention"
+                      ? "Требует внимания"
+                      : "Нужен контроль"}
+                  </p>
+                  {player.playerAttentionSignal.note ? (
+                    <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                      {player.playerAttentionSignal.note}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+            {crmDevelopmentInsightPresentation ? (
+              <div
+                className={
+                  player.playerAttentionSignal ||
+                  (player.playerFollowUp?.actions && player.playerFollowUp.actions.length > 0)
+                    ? "mt-4"
+                    : "mt-6"
+                }
+              >
+                <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Развитие
+                  </p>
+                  <p className="mt-1 text-sm font-medium leading-snug text-slate-200">
+                    {crmDevelopmentInsightPresentation.headline}
+                  </p>
+                  {crmDevelopmentInsightPresentation.support.length > 0 ? (
+                    <ul className="mt-2 list-none space-y-1 p-0">
+                      {crmDevelopmentInsightPresentation.support.map((line, i) => (
+                        <li key={i} className="text-[11px] leading-relaxed text-slate-500">
+                          {line}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+            <CrmArenaSnapshotWireRegion
+              status={arenaCrmWire.wireStatus}
+              className="mt-6 space-y-6"
+            >
+              <>
+                {arenaCrmWire.playerSnapshot != null ? (
+                  <CrmArenaPlayerSnapshotSection snapshot={arenaCrmWire.playerSnapshot} />
+                ) : null}
+                {(arenaSupercoreFocusLines?.length ?? 0) > 0 ? (
+                  <div className="border-t border-white/[0.08] pt-6">
+                    <CrmArenaSupercoreOperationalFocusSection lines={arenaSupercoreFocusLines} />
+                    {canEdit("schedule") ? (
+                      <div className="mt-4 space-y-2">
+                        {teamNextScheduledSlot?.id && teamNextScheduledSlot.startAt ? (
+                          <p className="text-xs leading-relaxed text-slate-400">
+                            <span className="text-slate-500">Ближайший слот расписания команды:</span>{" "}
+                            {formatNextScheduledSlotLabel(teamNextScheduledSlot.startAt)}
+                            {" · "}
+                            <Link
+                              href={`/schedule/${teamNextScheduledSlot.id}`}
+                              className="font-medium text-neon-blue/90 underline-offset-2 hover:text-neon-blue hover:underline"
+                            >
+                              открыть
+                            </Link>
+                            <span className="block pt-1 text-[11px] text-slate-600">
+                              Тот же CRM-поток, что на карточке команды: фокус из последней подтверждённой
+                              live-сессии записывается в ближайший слот TrainingSession.
+                            </span>
+                          </p>
+                        ) : null}
+                        {teamNextScheduledSlot?.id && !firstArenaSupercoreLine?.liveTrainingSessionId ? (
+                          <p className="text-xs text-slate-500">
+                            В первой строке фокуса нет привязки к live-сессии — запись в расписание недоступна.
+                          </p>
+                        ) : null}
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="gap-2"
+                          aria-busy={applyArenaFocusBusy}
+                          title={
+                            applyArenaFocusBusy
+                              ? "Сохранение…"
+                              : !teamNextScheduledSlot?.id
+                                ? "Сначала нужен будущий слот TrainingSession в расписании команды"
+                                : !firstArenaSupercoreLine?.liveTrainingSessionId
+                                  ? "Нужна привязка к подтверждённой live-сессии в строке фокуса"
+                                  : "Записать текст первой строки фокуса в поле «Фокус тренировки» выбранного слота (существующее значение будет заменено)"
+                          }
+                          disabled={
+                            applyArenaFocusBusy ||
+                            !teamNextScheduledSlot?.id ||
+                            !firstArenaSupercoreLine?.liveTrainingSessionId
+                          }
+                          onClick={() => void handleApplyArenaFocusToNextTraining()}
+                        >
+                          {applyArenaFocusBusy ? (
+                            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                          ) : null}
+                          Применить к следующей тренировке
+                        </Button>
+                        {teamNextScheduledSlot?.id && firstArenaSupercoreLine?.liveTrainingSessionId ? (
+                          <p className="text-[11px] leading-relaxed text-slate-600">
+                            Повторное нажатие явно разрешает перезапись непустого фокуса в этом слоте (только этот
+                            слот). Другие слоты не меняются.
+                          </p>
+                        ) : null}
+                        {!player?.team?.id ? (
+                          <p className="text-xs text-slate-500">
+                            У игрока не указана команда — нет контекста расписания для применения фокуса.
+                          </p>
+                        ) : null}
+                        {player?.team?.id && !teamNextScheduledSlot?.id ? (
+                          <p className="text-xs text-slate-500">
+                            Нет будущего слота в расписании (TrainingSession) для команды игрока — применять
+                            некуда.
+                          </p>
+                        ) : null}
+                        {applyArenaFocusError ? (
+                          <p className="text-xs text-amber-200/90" role="alert">
+                            {applyArenaFocusError}
+                          </p>
+                        ) : null}
+                        {applyArenaFocusOk && teamNextScheduledSlot?.id ? (
+                          <p className="text-xs text-emerald-400/90">
+                            Фокус из Арены записан в этот слот (ручная кнопка CRM).{" "}
+                            <Link
+                              href={`/schedule/${teamNextScheduledSlot.id}`}
+                              className="font-medium text-neon-blue underline-offset-2 hover:underline"
+                            >
+                              Проверить в расписании
+                            </Link>
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
+            </CrmArenaSnapshotWireRegion>
+          </>
         )}
 
         {tab === "parents" && (
