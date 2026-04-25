@@ -3,6 +3,7 @@
  * Ограничивает доступ к данным по принадлежности (школа, команда, родитель).
  */
 
+import type { PrismaClient } from "@prisma/client";
 import type { NextResponse } from "next/server";
 import type { ApiUser } from "./api-auth";
 import { forbiddenResponse } from "./api-auth";
@@ -103,10 +104,9 @@ export function canAccessTraining(
  * Возвращает список ID игроков, доступных пользователю.
  * null = доступ ко всем (SCHOOL_ADMIN).
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function getAccessiblePlayerIds(
   user: ApiUser,
-  prisma: any
+  prisma: PrismaClient
 ): Promise<string[] | null> {
   switch (user.role) {
     case "SCHOOL_ADMIN":
@@ -147,10 +147,9 @@ export async function getAccessiblePlayerIds(
  * Возвращает список ID команд, доступных пользователю.
  * null = доступ ко всем (SCHOOL_ADMIN).
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function getAccessibleTeamIds(
   user: ApiUser,
-  prisma: any
+  prisma: PrismaClient
 ): Promise<string[] | null> {
   switch (user.role) {
     case "SCHOOL_ADMIN":

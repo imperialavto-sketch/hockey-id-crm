@@ -15,6 +15,8 @@ export type CoachTrainingSessionJson = {
   locationName: string | null;
   locationAddress: string | null;
   notes: string | null;
+  /** Arena → schedule: фокус следующей сессии (read-only в CRM). */
+  arenaNextTrainingFocus: string | null;
   teamId: string;
   teamName: string;
   groupId: string;
@@ -38,6 +40,7 @@ export type TrainingSessionWeekRow = {
   locationName: string | null;
   locationAddress: string | null;
   notes: string | null;
+  arenaNextTrainingFocus: string | null;
   status: string;
   sessionStatus: string;
   team: { id: string; name: string };
@@ -75,6 +78,7 @@ export function detailRowToWeekRow(s: TrainingSessionDetailRow): TrainingSession
     locationName: s.locationName,
     locationAddress: s.locationAddress,
     notes: s.notes,
+    arenaNextTrainingFocus: s.arenaNextTrainingFocus ?? null,
     status: s.status,
     sessionStatus: s.sessionStatus,
     team: { id: s.team.id, name: s.team.name },
@@ -97,6 +101,7 @@ export function toCoachTrainingSessionDto(
     locationName: s.locationName,
     locationAddress: s.locationAddress,
     notes: s.notes,
+    arenaNextTrainingFocus: s.arenaNextTrainingFocus ?? null,
     teamId: s.teamId,
     teamName: s.team.name,
     groupId: s.groupId,

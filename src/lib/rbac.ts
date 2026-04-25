@@ -209,7 +209,7 @@ export const NAV_BY_ROLE: Record<UserRole, { href: string; module?: Module }[]> 
     { href: "/communications", module: "communications" },
   ],
   PARENT: [{ href: "/parent" }],
-  EXTERNAL_COACH: [{ href: "/external-coach" }],
+  EXTERNAL_COACH: [{ href: "/external-coach/requests" }],
 };
 
 // --- Helpers ---

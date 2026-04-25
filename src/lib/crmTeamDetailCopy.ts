@@ -3,6 +3,52 @@
  */
 
 import { CRM_DASHBOARD_COPY } from "@/lib/crmDashboardCopy";
+import type { TeamPlannedVsObservedContinuityDto } from "@/lib/live-training/arena-planned-vs-observed-continuity";
+
+/** Deterministic RU for continuity over last N planned-vs-observed facts (no LLM). */
+export function formatTeamPlannedVsObservedContinuityRu(
+  dto: TeamPlannedVsObservedContinuityDto
+): { headline: string; support?: string } {
+  switch (dto.kind) {
+    case "repeated_alignment":
+      return {
+        headline: "Последние подтверждённые live-сессии в целом совпадали с плановым фокусом.",
+        support: `Подряд таких записей в выборке: ${dto.streak} (всего ${dto.sampleSize}).`,
+      };
+    case "repeated_gap":
+      return {
+        headline: "В нескольких последних live-сессиях наблюдалось расхождение между планом и фактом.",
+        support: `Подряд таких записей в выборке: ${dto.streak} (всего ${dto.sampleSize}).`,
+      };
+    case "unstable":
+      return {
+        headline: "Итоги последних сессий чередуются: совпадение и расхождение с планом сменяют друг друга.",
+        support: `Записей в выборке: ${dto.sampleSize}.`,
+      };
+    case "insufficient_history":
+      if (dto.detail === "need_three") {
+        return {
+          headline: "Данных для устойчивого вывода по серии сессий пока недостаточно.",
+          support: `Сохранено записей: ${dto.sampleSize}. Нужно минимум три подтверждённые сессии с фактом.`,
+        };
+      }
+      return {
+        headline: "По последним сессиям нет повторяющегося однотипного исхода и явного чередования.",
+        support: "Смотрите строки ниже по каждой сессии.",
+      };
+    case "insufficient_data":
+      if (dto.detail === "all_sessions") {
+        return {
+          headline: "По последним подтверждённым live-сессиям недостаточно сигналов для сравнения плана и факта.",
+          support: "Нужны подтверждённые наблюдения со стороны тренера.",
+        };
+      }
+      return {
+        headline: "Серия содержит мало записей с полноценным сравнением плана и наблюдений.",
+        support: "Часть сессий без достаточных сигналов для статуса сравнения.",
+      };
+  }
+}
 
 export const CRM_TEAM_DETAIL_COPY = {
   heroEyebrow: "Карточка команды",
@@ -49,4 +95,19 @@ export const CRM_TEAM_DETAIL_COPY = {
   tableDate: "Дата",
   tablePresent: "Присутствовало",
   absentLabel: "отсутствовало",
+  plannedVsObservedKicker: "План и факт",
+  plannedVsObservedTitle: "Последняя подтверждённая live-сессия",
+  plannedVsObservedHint:
+    "Сравнение запланированного фокуса слота и наблюдений по сигналам сессии (данные после подтверждения тренером).",
+  plannedVsObservedPlannedLabel: "План",
+  plannedVsObservedObservedLabel: "Наблюдения",
+  plannedVsObservedUnifiedLabel: "План и наблюдения",
+  plannedVsObservedSignalsLabel: "Сигналы",
+  plannedVsObservedDomainsLabel: "Домены наблюдений",
+  plannedVsObservedRecordedAt: "Запись факта",
+  plannedVsObservedConfirmedAt: "Подтверждение сессии",
+  plannedVsObservedNoPlanned: "—",
+  plannedVsObservedNoObserved: "—",
+  plannedVsObservedContinuityKicker: "Серия последних сессий",
+  plannedVsObservedHistoryKicker: "Ранее (без последней)",
 } as const;
