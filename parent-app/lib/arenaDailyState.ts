@@ -3,8 +3,8 @@
  * Без LLM, без backend. Не меняет тексты Today/insight — только слой привычки.
  */
 
-import type { CoachMarkPlayerContext } from "@/services/chatService";
-import type { ArenaContinuitySnapshot } from "@/services/coachMarkMemory";
+import type { ArenaParentPlayerContext } from "@/types/arenaParentPlayerContext";
+import type { ArenaContinuitySnapshot } from "@/types/arenaContinuity";
 import { hasAnyPlayerSignal } from "@/lib/arenaWeeklySummary";
 
 export type ArenaDailyTone = "focus" | "support" | "light" | "reinforce";
@@ -64,7 +64,7 @@ function continuityAgeDays(snapshot: ArenaContinuitySnapshot | null | undefined)
   return (Date.now() - t) / MS_DAY;
 }
 
-function minEvaluation(ctx: CoachMarkPlayerContext): number | null {
+function minEvaluation(ctx: ArenaParentPlayerContext): number | null {
   const e = ctx.latestSessionEvaluation;
   if (!e) return null;
   const nums = [e.effort, e.focus, e.discipline].filter(
@@ -73,7 +73,7 @@ function minEvaluation(ctx: CoachMarkPlayerContext): number | null {
   return nums.length ? Math.min(...nums) : null;
 }
 
-function hasReinforceSignals(ctx: CoachMarkPlayerContext): boolean {
+function hasReinforceSignals(ctx: ArenaParentPlayerContext): boolean {
   const m = minEvaluation(ctx);
   if (m !== null && m >= 4) return true;
   const hl = ctx.latestLiveTrainingSummary?.highlights?.some((x) => x && x.trim());
@@ -115,7 +115,7 @@ function pickVariantIndex(
  * `undefined` = ещё не загрузили — микро-слой не показываем (избегаем мигания).
  */
 export function deriveArenaDailyState(
-  playerContext: CoachMarkPlayerContext | null | undefined,
+  playerContext: ArenaParentPlayerContext | null | undefined,
   continuity: ArenaContinuitySnapshot | null | undefined,
   currentDate: Date,
   lastSeenDailyKey: string | null | undefined

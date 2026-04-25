@@ -3,7 +3,7 @@
  * Только playerContext, без LLM и без новых запросов. Без показа, если оснований нет.
  */
 
-import type { CoachMarkPlayerContext } from "@/services/chatService";
+import type { ArenaParentPlayerContext } from "@/types/arenaParentPlayerContext";
 
 export type ArenaProgressCueTone = "normal" | "lowData" | "subtlePositive";
 
@@ -21,7 +21,7 @@ const clip = (value: string, maxLen: number): string => {
   return `${t.slice(0, Math.max(0, maxLen - 1))}…`;
 };
 
-function minEvaluation(ctx: CoachMarkPlayerContext): number | null {
+function minEvaluation(ctx: ArenaParentPlayerContext): number | null {
   const e = ctx.latestSessionEvaluation;
   if (!e) return null;
   const nums = [e.effort, e.focus, e.discipline].filter(
@@ -30,19 +30,19 @@ function minEvaluation(ctx: CoachMarkPlayerContext): number | null {
   return nums.length ? Math.min(...nums) : null;
 }
 
-function countEvaluationScores(ctx: CoachMarkPlayerContext): number {
+function countEvaluationScores(ctx: ArenaParentPlayerContext): number {
   const e = ctx.latestSessionEvaluation;
   if (!e) return 0;
   return [e.effort, e.focus, e.discipline].filter((x) => typeof x === "number").length;
 }
 
 /** Сильный «минус» по последней оценке — позитивный слой не показываем. */
-function isBlockedByEvaluation(ctx: CoachMarkPlayerContext): boolean {
+function isBlockedByEvaluation(ctx: ArenaParentPlayerContext): boolean {
   const m = minEvaluation(ctx);
   return m !== null && m <= 2;
 }
 
-function hasSolidAttendance(ctx: CoachMarkPlayerContext): boolean {
+function hasSolidAttendance(ctx: ArenaParentPlayerContext): boolean {
   const a = ctx.attendanceSummary;
   if (!a || a.totalSessions == null || a.totalSessions < 4) return false;
   return typeof a.attendanceRate === "number" && a.attendanceRate >= 82;
@@ -55,7 +55,7 @@ function reportSnippetLooksHarsh(t: string): boolean {
   );
 }
 
-function pickSessionReportSnippet(ctx: CoachMarkPlayerContext): string | null {
+function pickSessionReportSnippet(ctx: ArenaParentPlayerContext): string | null {
   const r = ctx.latestSessionReport;
   if (!r) return null;
   const raw =
@@ -66,7 +66,7 @@ function pickSessionReportSnippet(ctx: CoachMarkPlayerContext): string | null {
   return t;
 }
 
-function pickPositiveTrendItem(ctx: CoachMarkPlayerContext): string | null {
+function pickPositiveTrendItem(ctx: ArenaParentPlayerContext): string | null {
   const st = ctx.playerStory;
   if (!st || st.lowData || !st.trendItems?.length) return null;
   for (const item of st.trendItems) {
@@ -84,14 +84,14 @@ function pickPositiveTrendItem(ctx: CoachMarkPlayerContext): string | null {
   return null;
 }
 
-function hasPositiveEvaluationPattern(ctx: CoachMarkPlayerContext): boolean {
+function hasPositiveEvaluationPattern(ctx: ArenaParentPlayerContext): boolean {
   const m = minEvaluation(ctx);
   if (m === null) return false;
   const n = countEvaluationScores(ctx);
   return n >= 2 ? m >= 4 : m >= 4;
 }
 
-function hasSolidEvaluationSummary(ctx: CoachMarkPlayerContext): boolean {
+function hasSolidEvaluationSummary(ctx: ArenaParentPlayerContext): boolean {
   const s = ctx.evaluationSummary;
   if (!s || s.totalEvaluations < 3) return false;
   const checks = [s.avgEffort, s.avgFocus, s.avgDiscipline].filter(
@@ -105,7 +105,7 @@ function hasSolidEvaluationSummary(ctx: CoachMarkPlayerContext): boolean {
  * Возвращает слой только при честном основании в данных; иначе isVisible: false.
  */
 export function deriveArenaProgressCue(
-  ctx: CoachMarkPlayerContext | null | undefined
+  ctx: ArenaParentPlayerContext | null | undefined
 ): ArenaProgressCue {
   const hidden: ArenaProgressCue = {
     label: "",

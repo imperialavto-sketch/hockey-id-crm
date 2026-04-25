@@ -11,7 +11,7 @@ import {
   hrefMessengerThread,
   hrefTeamAnnouncements,
 } from "@/lib/parentMessagingDeepLinks";
-import { hrefCoachMarkChat } from "@/lib/coachMarkRoutes";
+import { hrefArenaCompanionChat } from "@/lib/arenaCompanionRoutes";
 
 /** Минимальный контракт `expo-router` / `useRouter()` для навигации из уведомлений. */
 export type ParentNotificationRouter = {
@@ -107,7 +107,7 @@ function navigateFromNormalized(
       break;
     case "coach_mark_post_training":
       router.push(
-        hrefCoachMarkChat({
+        hrefArenaCompanionChat({
           playerId: n.playerId ?? null,
           playerName: n.playerName ?? undefined,
           initialMessage:
@@ -162,10 +162,12 @@ export function navigateFromAppNotificationItem(
     type: item.type,
     conversationId: d?.conversationId,
     playerId: d?.playerId,
+    playerName: d?.playerName,
     teamId: d?.teamId,
     postId: d?.postId,
     initialMessage: d?.initialMessage,
     notifySection: d?.notifySection,
+    senderName: d?.senderName,
     previewText:
       typeof d?.previewText === "string" && d.previewText.trim()
         ? d.previewText

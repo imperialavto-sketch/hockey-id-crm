@@ -1,4 +1,4 @@
-import type { ArenaContinuitySnapshot } from "@/services/coachMarkMemory";
+import type { ArenaContinuitySnapshot } from "@/types/arenaContinuity";
 
 export type ArenaReentry = {
   title: string;

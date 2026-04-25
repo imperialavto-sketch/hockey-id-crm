@@ -3,13 +3,13 @@ import {
   hasArenaTrainingNavigationContext,
   reliableArenaSessionAnchor,
 } from "@/lib/arenaActionExecutionMap";
-import type { CoachMarkPlayerContext } from "@/services/chatService";
+import type { ArenaParentPlayerContext } from "@/types/arenaParentPlayerContext";
 
 const pid = "player-1";
 
 describe("resolveArenaQuickActionExecution", () => {
   it("last_training → deep-navigation when session anchor + training context", () => {
-    const pc: CoachMarkPlayerContext = {
+    const pc: ArenaParentPlayerContext = {
       id: pid,
       latestSessionEvaluation: { effort: 4 },
       latestSessionReport: { trainingId: "train-99", summary: "ok" },
@@ -25,7 +25,7 @@ describe("resolveArenaQuickActionExecution", () => {
   });
 
   it("last_training → screen-navigation hub when no anchor but training context", () => {
-    const pc: CoachMarkPlayerContext = {
+    const pc: ArenaParentPlayerContext = {
       id: pid,
       latestSessionEvaluation: { effort: 3 },
     };
@@ -40,7 +40,7 @@ describe("resolveArenaQuickActionExecution", () => {
   });
 
   it("last_training → deep via live trainingSessionId only", () => {
-    const pc: CoachMarkPlayerContext = {
+    const pc: ArenaParentPlayerContext = {
       id: pid,
       latestLiveTrainingSummary: {
         trainingSessionId: "live-sess-1",
@@ -71,7 +71,7 @@ describe("resolveArenaQuickActionExecution", () => {
   });
 
   it("meaning_growth → deep-navigation ai-analysis when AI context", () => {
-    const pc: CoachMarkPlayerContext = {
+    const pc: ArenaParentPlayerContext = {
       id: pid,
       aiAnalysis: { summary: "Test", growthAreas: ["a"] },
     };
@@ -86,9 +86,14 @@ describe("resolveArenaQuickActionExecution", () => {
   });
 
   it("meaning_growth → screen-navigation player when other signals only", () => {
-    const pc: CoachMarkPlayerContext = {
+    const pc: ArenaParentPlayerContext = {
       id: pid,
-      evaluationSummary: { totalEvaluations: 2 },
+      evaluationSummary: {
+        totalEvaluations: 2,
+        avgEffort: null,
+        avgFocus: null,
+        avgDiscipline: null,
+      },
     };
     const r = resolveArenaQuickActionExecution("insight_followup_meaning_growth", {
       playerId: pid,
@@ -101,7 +106,7 @@ describe("resolveArenaQuickActionExecution", () => {
   });
 
   it("coach_report_plain → deep when published trainingId + text", () => {
-    const pc: CoachMarkPlayerContext = {
+    const pc: ArenaParentPlayerContext = {
       id: pid,
       latestSessionReport: { trainingId: "t-1", summary: "Hello" },
     };
@@ -113,7 +118,7 @@ describe("resolveArenaQuickActionExecution", () => {
   });
 
   it("coach_report_plain → screen hub when text but no trainingId", () => {
-    const pc: CoachMarkPlayerContext = {
+    const pc: ArenaParentPlayerContext = {
       id: pid,
       latestSessionReport: { summary: "Hello" },
     };

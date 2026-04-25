@@ -1,9 +1,9 @@
 /**
  * Детерминированный «интеллект недели» для экрана Арены.
- * Только клиент + уже загруженный CoachMarkPlayerContext — без AI и без новых API.
+ * Только клиент + уже загруженный ArenaParentPlayerContext — без AI и без новых API.
  */
 
-import type { CoachMarkPlayerContext } from "@/services/chatService";
+import type { ArenaParentPlayerContext } from "@/types/arenaParentPlayerContext";
 import { ARENA_COPY_LOW_DATA_CTA } from "@/lib/arenaStateCopy";
 
 export type ArenaWeeklyInsight = {
@@ -26,13 +26,13 @@ const clip = (value: string, maxLen: number): string => {
   return `${t.slice(0, Math.max(0, maxLen - 1))}…`;
 };
 
-const firstLine = (value: string | undefined, maxLen: number): string => {
-  if (!value || typeof value !== "string") return "";
+const firstLine = (value: string | null | undefined, maxLen: number): string => {
+  if (value == null || typeof value !== "string") return "";
   const line = value.trim().split(/\n/)[0] ?? "";
   return clip(line, maxLen);
 };
 
-function hasEvaluation(ctx: CoachMarkPlayerContext): boolean {
+function hasEvaluation(ctx: ArenaParentPlayerContext): boolean {
   const e = ctx.latestSessionEvaluation;
   if (!e) return false;
   return (
@@ -43,7 +43,7 @@ function hasEvaluation(ctx: CoachMarkPlayerContext): boolean {
   );
 }
 
-function hasReport(ctx: CoachMarkPlayerContext): boolean {
+function hasReport(ctx: ArenaParentPlayerContext): boolean {
   const r = ctx.latestSessionReport;
   if (!r) return false;
   return Boolean(
@@ -53,7 +53,7 @@ function hasReport(ctx: CoachMarkPlayerContext): boolean {
   );
 }
 
-function hasLive(ctx: CoachMarkPlayerContext): boolean {
+function hasLive(ctx: ArenaParentPlayerContext): boolean {
   const l = ctx.latestLiveTrainingSummary;
   if (!l) return false;
   return Boolean(
@@ -63,25 +63,25 @@ function hasLive(ctx: CoachMarkPlayerContext): boolean {
   );
 }
 
-function hasStory(ctx: CoachMarkPlayerContext): boolean {
+function hasStory(ctx: ArenaParentPlayerContext): boolean {
   const s = ctx.playerStory;
   return Boolean(
     s && Array.isArray(s.trendItems) && s.trendItems.some((t) => t && t.trim())
   );
 }
 
-function hasEvalSummary(ctx: CoachMarkPlayerContext): boolean {
+function hasEvalSummary(ctx: ArenaParentPlayerContext): boolean {
   const s = ctx.evaluationSummary;
   return Boolean(s && s.totalEvaluations > 0);
 }
 
-function hasAttendance(ctx: CoachMarkPlayerContext): boolean {
+function hasAttendance(ctx: ArenaParentPlayerContext): boolean {
   const a = ctx.attendanceSummary;
   if (!a) return false;
   return typeof a.attendanceRate === "number" && a.totalSessions != null && a.totalSessions > 0;
 }
 
-function hasRecommendations(ctx: CoachMarkPlayerContext): boolean {
+function hasRecommendations(ctx: ArenaParentPlayerContext): boolean {
   return Boolean(
     ctx.coachRecommendations &&
       ctx.coachRecommendations.length > 0 &&
@@ -89,7 +89,7 @@ function hasRecommendations(ctx: CoachMarkPlayerContext): boolean {
   );
 }
 
-function hasAiAnalysis(ctx: CoachMarkPlayerContext): boolean {
+function hasAiAnalysis(ctx: ArenaParentPlayerContext): boolean {
   const a = ctx.aiAnalysis;
   return Boolean(
     (a?.summary && a.summary.trim()) ||
@@ -97,7 +97,7 @@ function hasAiAnalysis(ctx: CoachMarkPlayerContext): boolean {
   );
 }
 
-function evaluationBucket(ctx: CoachMarkPlayerContext): ArenaWeeklyInsight | null {
+function evaluationBucket(ctx: ArenaParentPlayerContext): ArenaWeeklyInsight | null {
   const e = ctx.latestSessionEvaluation;
   if (!e) return null;
   const scores = [
@@ -113,7 +113,7 @@ function evaluationBucket(ctx: CoachMarkPlayerContext): ArenaWeeklyInsight | nul
       ? "Стабильность и спокойствие на тренировке"
       : "Закрепить то, что уже растёт";
   if (note && note.length > 12) {
-    focus = clip(`Сигнал тренера: ${note}`, 88);
+    focus = clip(`От тренера: ${note}`, 88);
   }
 
   const parts: string[] = [];
@@ -133,7 +133,7 @@ function evaluationBucket(ctx: CoachMarkPlayerContext): ArenaWeeklyInsight | nul
   return { focus, signal, parentTip, isLowData: false };
 }
 
-function reportBucket(ctx: CoachMarkPlayerContext): ArenaWeeklyInsight | null {
+function reportBucket(ctx: ArenaParentPlayerContext): ArenaWeeklyInsight | null {
   const r = ctx.latestSessionReport;
   if (!r) return null;
   const focus =
@@ -150,12 +150,12 @@ function reportBucket(ctx: CoachMarkPlayerContext): ArenaWeeklyInsight | null {
   return { focus, signal, parentTip, isLowData: false };
 }
 
-function liveBucket(ctx: CoachMarkPlayerContext): ArenaWeeklyInsight | null {
+function liveBucket(ctx: ArenaParentPlayerContext): ArenaWeeklyInsight | null {
   const l = ctx.latestLiveTrainingSummary;
   if (!l) return null;
   const focus =
     (l.developmentFocus && l.developmentFocus[0] && firstLine(l.developmentFocus[0], 88)) ||
-    "Сигналы с последней live-сессии";
+    "По последним live-наблюдениям";
   const signal =
     firstLine(l.shortSummary, 110) ||
     (l.highlights?.[0] ? firstLine(l.highlights[0], 110) : "") ||
@@ -165,22 +165,22 @@ function liveBucket(ctx: CoachMarkPlayerContext): ArenaWeeklyInsight | null {
   return { focus, signal, parentTip, isLowData: false };
 }
 
-function storyBucket(ctx: CoachMarkPlayerContext): ArenaWeeklyInsight | null {
+function storyBucket(ctx: ArenaParentPlayerContext): ArenaWeeklyInsight | null {
   const items = ctx.playerStory?.trendItems?.filter((t) => t && t.trim()) ?? [];
   if (items.length === 0) return null;
   const low = ctx.playerStory?.lowData;
   const focus = low
     ? "Мало опорных точек — мягкий фокус недели"
-    : "Линия развития из недавних сигналов";
+    : "Ориентир по недавним наблюдениям в профиле";
   const signal = clip(items[0], 120);
   const parentTip = low
-    ? "Формулировки пока общие — после следующих отчётов фокус станет конкретнее. " +
+    ? "Формулировки пока общие — по мере новых отчётов фокус обычно конкретизируется. " +
       ARENA_COPY_LOW_DATA_CTA
     : "Держите один спокойный фокус на неделю — без скачков между темами.";
   return { focus, signal, parentTip, isLowData: Boolean(low) };
 }
 
-function evalSummaryBucket(ctx: CoachMarkPlayerContext): ArenaWeeklyInsight | null {
+function evalSummaryBucket(ctx: ArenaParentPlayerContext): ArenaWeeklyInsight | null {
   const s = ctx.evaluationSummary;
   if (!s || s.totalEvaluations <= 0) return null;
   const parts: string[] = [`оценок в выборке: ${s.totalEvaluations}`];
@@ -196,7 +196,7 @@ function evalSummaryBucket(ctx: CoachMarkPlayerContext): ArenaWeeklyInsight | nu
   };
 }
 
-function attendanceBucket(ctx: CoachMarkPlayerContext): ArenaWeeklyInsight | null {
+function attendanceBucket(ctx: ArenaParentPlayerContext): ArenaWeeklyInsight | null {
   const a = ctx.attendanceSummary;
   if (!a || a.totalSessions == null || a.totalSessions <= 0) return null;
   const rate =
@@ -212,7 +212,7 @@ function attendanceBucket(ctx: CoachMarkPlayerContext): ArenaWeeklyInsight | nul
   };
 }
 
-function recommendationsBucket(ctx: CoachMarkPlayerContext): ArenaWeeklyInsight | null {
+function recommendationsBucket(ctx: ArenaParentPlayerContext): ArenaWeeklyInsight | null {
   const recs = ctx.coachRecommendations?.filter((t) => t && t.trim()) ?? [];
   if (recs.length === 0) return null;
   return {
@@ -223,7 +223,7 @@ function recommendationsBucket(ctx: CoachMarkPlayerContext): ArenaWeeklyInsight 
   };
 }
 
-function aiBucket(ctx: CoachMarkPlayerContext): ArenaWeeklyInsight | null {
+function aiBucket(ctx: ArenaParentPlayerContext): ArenaWeeklyInsight | null {
   const a = ctx.aiAnalysis;
   if (!a) return null;
   const growth = a.growthAreas?.[0];
@@ -240,7 +240,7 @@ function lowDataFallback(childName?: string): ArenaWeeklyInsight {
   const nameBit = childName?.trim() ? ` для ${childName.trim()}` : "";
   return {
     focus: "Неделя без плотного фокуса",
-    signal: `Пока мало сигналов${nameBit}, чтобы зафиксировать чёткий приоритет недели. Это нормально на старте — после нескольких тренировок и отчётов тренера картина сложится.`,
+    signal: `Пока мало опорных данных${nameBit}, чтобы зафиксировать чёткий приоритет недели. Это нормально на старте — по мере тренировок и отчётов тренера ориентир для недели обычно проясняется.`,
     parentTip: ARENA_COPY_LOW_DATA_CTA,
     isLowData: true,
   };
@@ -250,7 +250,7 @@ function lowDataFallback(childName?: string): ArenaWeeklyInsight {
  * Приоритет: оценка последней тренировки → отчёт → live → тренды story → сводка оценок → посещаемость → рекомендации → AI-обзор → fallback.
  */
 export function deriveArenaWeeklyInsight(
-  ctx: CoachMarkPlayerContext | null | undefined
+  ctx: ArenaParentPlayerContext | null | undefined
 ): ArenaWeeklyInsight | null {
   if (!ctx || !ctx.id) return null;
 
@@ -291,7 +291,7 @@ export function deriveArenaWeeklyInsight(
 }
 
 export function deriveArenaInsightFollowUps(
-  ctx: CoachMarkPlayerContext | null | undefined
+  ctx: ArenaParentPlayerContext | null | undefined
 ): ArenaInsightFollowUpAction[] {
   if (!ctx || !ctx.id) return [];
 
@@ -325,7 +325,7 @@ export function deriveArenaInsightFollowUps(
       analyticsKey: "insight_followup_meaning_growth",
       label: "Что это значит для роста",
       prompt:
-        "Объясни, что текущие сигналы значат для развития игрока в ближайшие недели. Раздели: что видно по данным и что пока только гипотеза. Заверши одним следующим шагом для семьи.",
+        "Объясни, что по последним данным и наблюдениям это может значить для развития игрока в ближайшие недели. Раздели: что видно по данным и что пока только гипотеза. Заверши одним следующим шагом для семьи.",
     });
   }
 

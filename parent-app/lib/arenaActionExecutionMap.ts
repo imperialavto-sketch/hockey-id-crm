@@ -1,14 +1,14 @@
 /**
  * Phase 3C.3–3C.4 — map Arena quick-action analytics keys to deep navigation, hub screen, or prompt.
- * Uses only `CoachMarkPlayerContext` / playerId (no new API calls; ids pass-through from existing aggregates).
+ * Uses only `ArenaParentPlayerContext` / playerId (no new API calls; ids pass-through from existing aggregates).
  */
 
 import type { Href } from "expo-router";
-import type { CoachMarkPlayerContext } from "@/services/chatService";
+import type { ArenaParentPlayerContext } from "@/types/arenaParentPlayerContext";
 
 export type ArenaExecutionContext = {
   playerId: string | null;
-  playerContext: CoachMarkPlayerContext | null;
+  playerContext: ArenaParentPlayerContext | null;
 };
 
 /** deep-navigation → most specific safe target; screen-navigation → hub / secondary screen; prompt → send text */
@@ -17,7 +17,7 @@ export type ArenaExecutionResult =
   | { kind: "screen-navigation"; href: Href }
   | { kind: "prompt" };
 
-function hasEvaluationSignal(pc: CoachMarkPlayerContext | null): boolean {
+function hasEvaluationSignal(pc: ArenaParentPlayerContext | null): boolean {
   const e = pc?.latestSessionEvaluation;
   if (!e) return false;
   return (
@@ -28,7 +28,7 @@ function hasEvaluationSignal(pc: CoachMarkPlayerContext | null): boolean {
   );
 }
 
-function hasReportText(pc: CoachMarkPlayerContext | null): boolean {
+function hasReportText(pc: ArenaParentPlayerContext | null): boolean {
   const r = pc?.latestSessionReport;
   if (!r) return false;
   return Boolean(
@@ -38,7 +38,7 @@ function hasReportText(pc: CoachMarkPlayerContext | null): boolean {
   );
 }
 
-function hasLiveSummary(pc: CoachMarkPlayerContext | null): boolean {
+function hasLiveSummary(pc: ArenaParentPlayerContext | null): boolean {
   const l = pc?.latestLiveTrainingSummary;
   if (!l) return false;
   return Boolean(
@@ -49,11 +49,11 @@ function hasLiveSummary(pc: CoachMarkPlayerContext | null): boolean {
 }
 
 /** Enough “last training / session” signal to open a training-related surface. */
-export function hasArenaTrainingNavigationContext(pc: CoachMarkPlayerContext | null): boolean {
+export function hasArenaTrainingNavigationContext(pc: ArenaParentPlayerContext | null): boolean {
   return hasEvaluationSignal(pc) || hasReportText(pc) || hasLiveSummary(pc);
 }
 
-function hasAiGrowthContext(pc: CoachMarkPlayerContext | null): boolean {
+function hasAiGrowthContext(pc: ArenaParentPlayerContext | null): boolean {
   const a = pc?.aiAnalysis;
   if (!a) return false;
   return Boolean(
@@ -62,12 +62,12 @@ function hasAiGrowthContext(pc: CoachMarkPlayerContext | null): boolean {
   );
 }
 
-function hasStoryTrend(pc: CoachMarkPlayerContext | null): boolean {
+function hasStoryTrend(pc: ArenaParentPlayerContext | null): boolean {
   const s = pc?.playerStory;
   return Boolean(s?.trendItems?.some((t) => t && String(t).trim()));
 }
 
-function hasOtherGrowthSignals(pc: CoachMarkPlayerContext | null): boolean {
+function hasOtherGrowthSignals(pc: ArenaParentPlayerContext | null): boolean {
   const es = pc?.evaluationSummary;
   const att = pc?.attendanceSummary;
   return Boolean(
@@ -93,7 +93,7 @@ function hrefAiAnalysis(pid: string): Href {
  * Non-empty session anchor from data already on context (published report trainingId, else live summary id).
  * Not used for CRM report ids (different namespace than `/coach-materials/report/[id]`).
  */
-export function reliableArenaSessionAnchor(pc: CoachMarkPlayerContext | null): string | null {
+export function reliableArenaSessionAnchor(pc: ArenaParentPlayerContext | null): string | null {
   if (!pc) return null;
   const fromReport = pc.latestSessionReport?.trainingId?.trim();
   if (fromReport) return fromReport;

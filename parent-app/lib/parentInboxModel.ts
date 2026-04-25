@@ -1,12 +1,13 @@
 /**
- * Unified parent inbox: direct coach chat, team announcements surface, Coach Mark AI.
+ * Unified parent inbox: direct coach chat, team announcements surface, Arena AI companion.
+ * `coach_mark_ai` row is the same conversational product as «Арена» / «AI-компаньон Арена» (internal kind id only).
  */
 
 import type { Href } from "expo-router";
 
 import type { ConversationItem } from "@/types/chat";
 import { hrefTeamAnnouncements, hrefMessengerThread } from "@/lib/parentMessagingDeepLinks";
-import { hrefCoachMarkChat } from "@/lib/coachMarkRoutes";
+import { hrefArenaCompanionChat } from "@/lib/arenaCompanionRoutes";
 import type { TeamAnnouncementsInboxSummary } from "@/types/teamAnnouncement";
 import { COACH_MARK_ID } from "@/services/chatService";
 
@@ -76,24 +77,24 @@ export function buildParentInboxList(
   _userId: string,
   conversations: ConversationItem[],
   teamSummary: TeamAnnouncementsInboxSummary,
-  coachMarkCtx?: {
+  arenaCompanionCtx?: {
     playerId?: string | null;
     playerName?: string | null;
   } | null
 ): ParentInboxItem[] {
   const now = new Date().toISOString();
 
-  const coachMark: ParentInboxItem = {
+  const arenaAiRow: ParentInboxItem = {
     kind: "coach_mark_ai",
     id: COACH_MARK_ID,
-    contextPlayerId: coachMarkCtx?.playerId?.trim() || undefined,
-    contextPlayerName: coachMarkCtx?.playerName?.trim() || undefined,
-    title: CHAT_INBOX_COPY.coachMarkTitle,
+    contextPlayerId: arenaCompanionCtx?.playerId?.trim() || undefined,
+    contextPlayerName: arenaCompanionCtx?.playerName?.trim() || undefined,
+    title: CHAT_INBOX_COPY.arenaTitle,
     subtitle:
-      coachMarkCtx?.playerName
-        ? `${CHAT_INBOX_COPY.coachMarkContextPrefix}: ${coachMarkCtx.playerName}`
-        : CHAT_INBOX_COPY.coachMarkContextMissing,
-    preview: CHAT_INBOX_COPY.previewEmptyCoachMark,
+      arenaCompanionCtx?.playerName
+        ? `${CHAT_INBOX_COPY.arenaContextPrefix}: ${arenaCompanionCtx.playerName}`
+        : CHAT_INBOX_COPY.arenaContextMissing,
+    preview: CHAT_INBOX_COPY.previewEmptyArenaAi,
     updatedAt: now,
     showAiBadge: true,
     unreadCount: 0,
@@ -185,13 +186,13 @@ export function buildParentInboxList(
     });
   }
 
-  return [coachMark, ...teamRows, ...direct];
+  return [arenaAiRow, ...teamRows, ...direct];
 }
 
 export function parentInboxNavigateHref(item: ParentInboxItem): Href {
   switch (item.kind) {
     case "coach_mark_ai":
-      return hrefCoachMarkChat({
+      return hrefArenaCompanionChat({
         playerId: item.contextPlayerId ?? null,
         playerName: item.contextPlayerName ?? null,
       });

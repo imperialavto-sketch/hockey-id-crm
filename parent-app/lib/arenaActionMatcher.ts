@@ -2,7 +2,7 @@
  * Phase 3C.2: map Arena assistant text → same quick actions as deterministic chips.
  * Prompts and labels must stay aligned with:
  * - `deriveArenaInsightFollowUps` in `arenaWeeklyInsight.ts`
- * - `COACH_MARK_STARTERS`, `COACH_MARK_PRIMARY_SCENARIOS`, `COACH_MARK_SECONDARY_SCENARIOS` in `app/chat/[id].tsx`
+ * - Стартовые промпты и сценарии в `app/chat/[id].tsx` (ветка компаньона Арены)
  *
  * Matching: simple case-insensitive substring (longer labels first).
  */

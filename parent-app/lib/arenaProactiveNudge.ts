@@ -3,8 +3,8 @@
  * Максимум один сигнал; часто скрыт, чтобы не спамить.
  */
 
-import type { CoachMarkPlayerContext } from "@/services/chatService";
-import type { ArenaContinuitySnapshot } from "@/services/coachMarkMemory";
+import type { ArenaParentPlayerContext } from "@/types/arenaParentPlayerContext";
+import type { ArenaContinuitySnapshot } from "@/types/arenaContinuity";
 import type { ArenaTodayFocus } from "@/lib/arenaTodayFocus";
 import type { ArenaWeeklyInsight } from "@/lib/arenaWeeklyInsight";
 import { hasAnyPlayerSignal } from "@/lib/arenaWeeklySummary";
@@ -59,7 +59,7 @@ const hidden: ArenaProactiveNudge = {
 };
 
 export function deriveArenaProactiveNudge(
-  ctx: CoachMarkPlayerContext | null | undefined,
+  ctx: ArenaParentPlayerContext | null | undefined,
   continuity: ArenaContinuitySnapshot | null | undefined,
   today: ArenaTodayFocus | null,
   insight: ArenaWeeklyInsight | null,

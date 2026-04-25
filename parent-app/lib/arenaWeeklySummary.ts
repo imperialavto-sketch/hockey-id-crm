@@ -3,7 +3,7 @@
  * Только playerContext — без LLM и без новых запросов.
  */
 
-import type { CoachMarkPlayerContext } from "@/services/chatService";
+import type { ArenaParentPlayerContext } from "@/types/arenaParentPlayerContext";
 import { ARENA_COPY_ACCUMULATING_SIGNALS, ARENA_COPY_LOW_DATA_CTA } from "@/lib/arenaStateCopy";
 
 export type ArenaWeeklySummary = {
@@ -21,7 +21,7 @@ const clip = (value: string, maxLen: number): string => {
   return `${t.slice(0, Math.max(0, maxLen - 1))}…`;
 };
 
-export function hasAnyPlayerSignal(ctx: CoachMarkPlayerContext): boolean {
+export function hasAnyPlayerSignal(ctx: ArenaParentPlayerContext): boolean {
   const e = ctx.latestSessionEvaluation;
   const hasEval =
     !!e &&
@@ -78,7 +78,7 @@ export function hasAnyPlayerSignal(ctx: CoachMarkPlayerContext): boolean {
   );
 }
 
-function minEvaluationScore(ctx: CoachMarkPlayerContext): number | null {
+function minEvaluationScore(ctx: ArenaParentPlayerContext): number | null {
   const e = ctx.latestSessionEvaluation;
   if (!e) return null;
   const nums = [e.effort, e.focus, e.discipline].filter(
@@ -88,7 +88,7 @@ function minEvaluationScore(ctx: CoachMarkPlayerContext): number | null {
   return Math.min(...nums);
 }
 
-function pickPositive(ctx: CoachMarkPlayerContext): string {
+function pickPositive(ctx: ArenaParentPlayerContext): string {
   const live = ctx.latestLiveTrainingSummary;
   if (live?.highlights?.[0]?.trim()) {
     return clip(live.highlights[0], 100);
@@ -121,7 +121,7 @@ function pickPositive(ctx: CoachMarkPlayerContext): string {
   return "Есть зацепки для разговора с тренером — детали появятся с данными.";
 }
 
-function pickAttention(ctx: CoachMarkPlayerContext): string {
+function pickAttention(ctx: ArenaParentPlayerContext): string {
   const min = minEvaluationScore(ctx);
   if (min != null && min <= 2) {
     return clip(
@@ -149,7 +149,7 @@ function pickAttention(ctx: CoachMarkPlayerContext): string {
   return clip("Держите один спокойный фокус на неделю — без скачков между темами.", 100);
 }
 
-function pickNextStep(ctx: CoachMarkPlayerContext): string {
+function pickNextStep(ctx: ArenaParentPlayerContext): string {
   const rec = ctx.coachRecommendations?.find((t) => t && t.trim());
   if (rec) return clip(`Опора на рекомендацию тренера: ${rec}`, 110);
   const pm = ctx.latestSessionReport?.parentMessage?.trim();
@@ -174,7 +174,7 @@ const LOW_DATA_SUMMARY: ArenaWeeklySummary = {
  * Свёртка недели для родителя: один позитив, одна зона внимания, один шаг.
  */
 export function deriveArenaWeeklySummary(
-  ctx: CoachMarkPlayerContext | null | undefined
+  ctx: ArenaParentPlayerContext | null | undefined
 ): ArenaWeeklySummary | null {
   if (!ctx?.id) return null;
   if (!hasAnyPlayerSignal(ctx)) {

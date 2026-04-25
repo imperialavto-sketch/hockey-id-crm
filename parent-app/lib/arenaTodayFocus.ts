@@ -3,7 +3,7 @@
  * Без LLM и новых запросов — только playerContext.
  */
 
-import type { CoachMarkPlayerContext } from "@/services/chatService";
+import type { ArenaParentPlayerContext } from "@/types/arenaParentPlayerContext";
 import { hasAnyPlayerSignal } from "@/lib/arenaWeeklySummary";
 import { ARENA_COPY_ACCUMULATING_SIGNALS } from "@/lib/arenaStateCopy";
 
@@ -11,6 +11,8 @@ export type ArenaTodayFocus = {
   title: string;
   focus: string;
   parentStep: string;
+  /** Одна короткая строка происхождения фокуса (ветка derive), без привязки к inventory-модулю в runtime. */
+  sourceLine: string;
   ctaLabel: string;
   ctaPrompt: string;
   ctaAnalyticsKey: string;
@@ -24,7 +26,7 @@ const clip = (value: string, maxLen: number): string => {
   return `${t.slice(0, Math.max(0, maxLen - 1))}…`;
 };
 
-function minEval(ctx: CoachMarkPlayerContext): number | null {
+function minEval(ctx: ArenaParentPlayerContext): number | null {
   const e = ctx.latestSessionEvaluation;
   if (!e) return null;
   const n = [e.effort, e.focus, e.discipline].filter(
@@ -49,6 +51,7 @@ const LOW_TODAY: ArenaTodayFocus = {
   title: "Сегодня",
   focus: "Фокус дня уточним, когда накопятся сигналы",
   parentStep: ARENA_COPY_ACCUMULATING_SIGNALS,
+  sourceLine: "Пока мало данных в приложении",
   ctaLabel: "С чего начать",
   ctaPrompt: PROMPT_START_TODAY,
   ctaAnalyticsKey: "arena_today_start",
@@ -59,7 +62,7 @@ const LOW_TODAY: ArenaTodayFocus = {
  * Узкий «день»: одна строка фокуса, один шаг родителю, один CTA в чат.
  */
 export function deriveArenaTodayFocus(
-  ctx: CoachMarkPlayerContext | null | undefined
+  ctx: ArenaParentPlayerContext | null | undefined
 ): ArenaTodayFocus | null {
   if (!ctx?.id) return null;
 
@@ -75,6 +78,7 @@ export function deriveArenaTodayFocus(
 
   let focus = "";
   let parentStep = "";
+  let sourceLine = "";
   let ctaLabel = "План на сегодня";
   let ctaPrompt = PROMPT_PLAN_TODAY;
   let ctaAnalyticsKey = "arena_today_plan";
@@ -86,12 +90,14 @@ export function deriveArenaTodayFocus(
   if (m != null && m <= 2) {
     focus = clip("Сегодня — спокойный режим: повтор и внимание без давления.", 88);
     parentStep = clip("Короткое «как прошло» — одной фразой, без разбора ошибок.", 88);
+    sourceLine = "По последним оценкам";
     ctaLabel = "На что обратить внимание";
     ctaPrompt = PROMPT_WATCH_TODAY;
     ctaAnalyticsKey = "arena_today_watch";
   } else if (growth) {
     focus = clip(`Сегодняшний угол: ${growth}`, 88);
     parentStep = clip("Один маленький шаг в тему — не три задачи сразу.", 72);
+    sourceLine = "Ориентир из AI-обзора";
     ctaLabel = "На что обратить внимание";
     ctaPrompt = PROMPT_WATCH_TODAY;
     ctaAnalyticsKey = "arena_today_watch";
@@ -100,6 +106,7 @@ export function deriveArenaTodayFocus(
     parentStep = sn
       ? clip(sn, 88)
       : clip("Поддержите фокус коротким напоминанием утром или перед сбором.", 88);
+    sourceLine = "По live-наблюдениям";
     ctaLabel = "План на сегодня";
     ctaPrompt = PROMPT_PLAN_TODAY;
     ctaAnalyticsKey = "arena_today_plan";
@@ -108,12 +115,14 @@ export function deriveArenaTodayFocus(
     parentStep = rep?.parentMessage?.trim()
       ? clip(rep.parentMessage, 88)
       : clip("Сверьтесь с формулировкой тренера — без добавления своих жёстких выводов.", 88);
+    sourceLine = "Из отчёта тренера";
     ctaLabel = "План на сегодня";
     ctaPrompt = PROMPT_PLAN_TODAY;
     ctaAnalyticsKey = "arena_today_plan";
   } else if (rec) {
     focus = clip(`Сегодня опираемся на совет тренера: ${rec}`, 96);
     parentStep = clip("Выберите одну мысль из этого и проживите день спокойно.", 72);
+    sourceLine = "По рекомендации тренера";
     ctaLabel = "Что сделать дома";
     ctaPrompt = PROMPT_HOME_TODAY;
     ctaAnalyticsKey = "arena_today_home";
@@ -121,18 +130,21 @@ export function deriveArenaTodayFocus(
     const note = ctx.latestSessionEvaluation.note.trim().split(/\n/)[0] ?? "";
     focus = clip(note, 88);
     parentStep = clip("Одна тёплая реплика после занятия — без оценки «молодец/нет».", 88);
+    sourceLine = "По заметке тренера";
     ctaLabel = "На что обратить внимание";
     ctaPrompt = PROMPT_WATCH_TODAY;
     ctaAnalyticsKey = "arena_today_watch";
   } else if (rep?.summary?.trim()) {
     focus = clip(rep.summary, 88);
     parentStep = clip("Коротко напомните ребёнку одну мысль из тренера — своими словами.", 88);
+    sourceLine = "Из отчёта тренера";
     ctaLabel = "План на сегодня";
     ctaPrompt = PROMPT_PLAN_TODAY;
     ctaAnalyticsKey = "arena_today_plan";
   } else {
     focus = clip("Сегодня — один спокойный приоритет на развитие.", 72);
     parentStep = clip("10 минут внимания дома или на площадке — без перегруза.", 72);
+    sourceLine = "Ориентир Арены";
     ctaLabel = "План на сегодня";
     ctaPrompt = PROMPT_PLAN_TODAY;
     ctaAnalyticsKey = "arena_today_plan";
@@ -142,6 +154,7 @@ export function deriveArenaTodayFocus(
     title: "Фокус на сегодня",
     focus,
     parentStep,
+    sourceLine,
     ctaLabel,
     ctaPrompt,
     ctaAnalyticsKey,
