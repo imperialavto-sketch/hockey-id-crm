@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "scripts": {
+    "typecheck": "tsc --noEmit",
     "start": "CI=false expo start --port 8082",
     "start:ci": "expo start --port 8082",
     "android": "CI=false expo start --port 8082 --android",

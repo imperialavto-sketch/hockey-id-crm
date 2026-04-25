@@ -5,6 +5,9 @@
  * - API timeout and fallback flags
  *
  * All env reads must go through this file.
+ *
+ * Boundary freeze: Phase 1 base URL is the **root Next.js CRM** (same origin as coach-app’s
+ * `EXPO_PUBLIC_API_URL` for a given environment). Not `hockey-server/`. See `docs/ARCHITECTURE_FREEZE_PHASE_0.md` §2.0.
  */
 
 import { Platform } from "react-native";

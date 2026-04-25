@@ -323,3 +323,102 @@ export const ovrBadge = {
   backgroundColor: "rgba(255,255,255,0.15)",
   borderColor: "rgba(255,255,255,0.2)",
 };
+
+// ==================== GLASS / ICE TOKENS (flagship surfaces) ====================
+/** Chevron / secondary icons on glass and section headers */
+export const sectionIcon = {
+  color: "rgba(200,220,255,0.55)" as const,
+};
+
+/** Text hierarchy on ice-glass backgrounds (see PARENT_APP_UI_RULES). */
+export const textOnGlass = {
+  heading: colors.textPrimary,
+  secondary: colors.textSecondary,
+  meta: colors.textMuted,
+  body: "rgba(230,240,255,0.88)" as const,
+} as const;
+
+const ICE_FACE_GRADIENT = [
+  "rgba(255,255,255,0.14)",
+  "rgba(186,230,253,0.08)",
+  "rgba(15,39,71,0.92)",
+] as const;
+
+const ICE_CORNER_GLOW_COLORS = [
+  "rgba(255,255,255,0.22)",
+  "rgba(56,189,248,0.08)",
+] as const;
+
+const ICE_CORNER_GLOW_LOCATIONS = [0.2, 1] as const;
+
+export const glassVisual = {
+  shellLarge: {
+    borderRadius: radius.lg,
+    overflow: "hidden" as const,
+    backgroundColor: "rgba(12,22,40,0.72)",
+  },
+  shellSmall: {
+    borderRadius: radius.md,
+    overflow: "hidden" as const,
+    backgroundColor: "rgba(12,22,40,0.68)",
+  },
+  edgeRingDefault: "rgba(148,197,255,0.35)",
+  edgeRingSubtle: "rgba(148,197,255,0.22)",
+  outerHaloFill: "rgba(56,189,248,0.06)",
+  iceFaceGradient: ICE_FACE_GRADIENT,
+  iceBottomGlow: "rgba(56,189,248,0.14)",
+  iceCornerGlowColors: ICE_CORNER_GLOW_COLORS,
+  iceCornerGlowLocations: ICE_CORNER_GLOW_LOCATIONS,
+  textComfortTint: "rgba(2,6,23,0.08)",
+  topEdgeHighlight: "rgba(255,255,255,0.14)",
+} as const;
+
+export const iceEdgeGlow = {
+  default: {
+    shadowColor: "#38BDF8",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  subtle: {
+    shadowColor: "#38BDF8",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+} as const;
+
+export const glassSectionIconBadge = {
+  default: {
+    backgroundColor: "rgba(59,130,246,0.35)",
+    borderWidth: 1,
+    borderColor: "rgba(148,197,255,0.45)",
+  },
+  accent: {
+    backgroundColor: "rgba(59,130,246,0.5)",
+    borderWidth: 1,
+    borderColor: "rgba(186,230,253,0.55)",
+  },
+  success: {
+    backgroundColor: "rgba(57,217,138,0.42)",
+    borderWidth: 1,
+    borderColor: "rgba(167,243,208,0.5)",
+  },
+  glyph: "#FFFFFF" as const,
+  shadow: {
+    shadowColor: "#3B82F6",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  shadowSuccess: {
+    shadowColor: "#39D98A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+} as const;
