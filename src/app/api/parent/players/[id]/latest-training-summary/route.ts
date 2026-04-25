@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthFromRequest } from "@/lib/api-auth";
 import { canParentAccessPlayer } from "@/lib/parent-access";
-import { getParentLatestLiveTrainingSummaryForPlayer } from "@/lib/live-training/parent-latest-live-training-summary";
+import { getParentLatestLiveTrainingSummaryForPlayer } from "@/lib/live-training/parent-latest-training-summary.assemble";
 
 export async function GET(
   _req: NextRequest,

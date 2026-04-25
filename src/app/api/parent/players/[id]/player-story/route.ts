@@ -1,6 +1,9 @@
 /**
  * GET /api/parent/players/[id]/player-story
  * PHASE 14: мягкая «история развития» для родителя (live training scoped).
+ *
+ * BOUNDARY: маршрут активен; в текущем состоянии репозитория не найден подтверждённый HTTP-клиент в parent-app.
+ * Отсутствие клиента ≠ выключенный backend — это отдельный UI/integration слой.
  */
 
 import { NextRequest, NextResponse } from "next/server";
