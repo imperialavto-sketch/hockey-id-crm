@@ -27,7 +27,6 @@
     "parent-app",
     "coach-app",
     "scripts",
-    "prisma",
-    "hockey-server"
+    "prisma"
   ]
 }
