@@ -42,7 +42,7 @@ export const GlassSurface = memo(function GlassSurface({
       <View style={[styles.haloLayer, haloStyle]} pointerEvents="none" />
       <View style={inner}>
         <LinearGradient
-          colors={[...glassVisual.iceFaceGradient]}
+          colors={glassVisual.iceFaceGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFillObject}
@@ -50,7 +50,7 @@ export const GlassSurface = memo(function GlassSurface({
         />
         <LinearGradient
           colors={["transparent", glassVisual.iceBottomGlow]}
-          locations={[0.62, 1]}
+          locations={[0.62, 1] as const}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
           style={StyleSheet.absoluteFillObject}
@@ -58,8 +58,8 @@ export const GlassSurface = memo(function GlassSurface({
         />
         {variant === "large" ? (
           <LinearGradient
-            colors={[...glassVisual.iceCornerGlowColors]}
-            locations={[...glassVisual.iceCornerGlowLocations]}
+            colors={glassVisual.iceCornerGlowColors}
+            locations={glassVisual.iceCornerGlowLocations}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFillObject}

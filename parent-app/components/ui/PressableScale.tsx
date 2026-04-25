@@ -1,5 +1,10 @@
 import React from "react";
-import { Pressable, type StyleProp, type ViewStyle } from "react-native";
+import {
+  Pressable,
+  type AccessibilityRole,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -17,6 +22,9 @@ interface PressableScaleProps {
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
   scale?: number;
+  accessibilityRole?: AccessibilityRole;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 }
 
 /**
@@ -29,6 +37,9 @@ export function PressableScale({
   disabled,
   style,
   scale: scaleDown = SCALE_DOWN,
+  accessibilityRole,
+  accessibilityLabel,
+  accessibilityHint,
 }: PressableScaleProps) {
   const scale = useSharedValue(1);
   const opacity = useSharedValue(1);
@@ -42,6 +53,9 @@ export function PressableScale({
     <Pressable
       onPress={onPress}
       disabled={disabled}
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
       onPressIn={() => {
         if (!disabled) {
           scale.value = withTiming(scaleDown, { duration: DURATION, easing: EASE });

@@ -4,6 +4,8 @@ export { AppHeader } from "./AppHeader";
 export { SectionHeader } from "./SectionHeader";
 export { PremiumCard } from "./PremiumCard";
 export { GlassCard } from "@/components/shared/GlassCard";
+export { GlassCardV2 } from "./GlassCardV2";
+export type { GlassCardV2Variant, GlassCardV2Padding } from "./GlassCardV2";
 export { StatCard } from "./StatCard";
 export { PrimaryButton } from "./PrimaryButton";
 export { SecondaryButton } from "./SecondaryButton";
