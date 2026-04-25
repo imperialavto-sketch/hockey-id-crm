@@ -18,6 +18,9 @@ export interface CoachPlayerItem {
   teamId: string | null;
   /** Team age group (e.g. U12, U14) for filtering. From Team.ageGroup. */
   teamAgeGroup?: string | null;
+  /** Player.groupId + TeamGroup.name when assigned. */
+  groupId?: string | null;
+  groupName?: string | null;
   attendance?: string;
   coachNote?: string;
 }
@@ -34,19 +37,28 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const teamId = searchParams.get("teamId")?.trim() || null;
+    const groupIdFilter = searchParams.get("groupId")?.trim() || null;
 
-    const where: { id?: { in: string[] }; teamId?: string | null } = {};
+    const where: {
+      id?: { in: string[] };
+      teamId?: string | null;
+      groupId?: string;
+    } = {};
     if (accessibleIds !== null) {
       where.id = { in: accessibleIds };
     }
     if (teamId) {
       where.teamId = teamId;
     }
+    if (groupIdFilter) {
+      where.groupId = groupIdFilter;
+    }
 
     const players = await prisma.player.findMany({
       where,
       include: {
         team: { select: { id: true, name: true, ageGroup: true } },
+        TeamGroup: { select: { id: true, name: true } },
         profile: { select: { jerseyNumber: true } },
         notes: {
           orderBy: { createdAt: "desc" },
@@ -75,6 +87,8 @@ export async function GET(req: NextRequest) {
         team: teamName,
         teamId: teamIdVal,
         teamAgeGroup,
+        groupId: p.groupId ?? null,
+        groupName: p.TeamGroup?.name ?? null,
         coachNote,
       };
     });
