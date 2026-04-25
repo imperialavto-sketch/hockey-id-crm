@@ -47,6 +47,8 @@ interface Training {
   endTime: string;
   location: string | null;
   notes: string | null;
+  /** TrainingSession: фокус из Arena / CRM execution. */
+  arenaNextTrainingFocus?: string | null;
   team?: {
     id: string;
     name: string;
@@ -243,7 +245,13 @@ export default function ScheduleDetailPage() {
           setFetchError(false);
           return;
         }
-        setTraining(data);
+        setTraining({
+          ...data,
+          arenaNextTrainingFocus:
+            typeof (data as { arenaNextTrainingFocus?: unknown }).arenaNextTrainingFocus === "string"
+              ? (data as { arenaNextTrainingFocus: string }).arenaNextTrainingFocus
+              : null,
+        });
         setComments({});
         setRatings({});
         const attsRaw = Array.isArray(data.attendances) ? data.attendances : [];
@@ -601,6 +609,8 @@ export default function ScheduleDetailPage() {
   const teamLabel = training.team?.name ?? CRM_PLAYER_DETAIL_COPY.noTeam;
   const agePart = training.team?.ageGroup ? ` · ${training.team.ageGroup}` : "";
 
+  const arenaFocusScheduleText = normalizeTrainingText(training.arenaNextTrainingFocus);
+
   const reportSummaryText = normalizeTrainingText(reportData?.summary);
   const reportCoachNoteText = normalizeTrainingText(reportData?.coachNote);
   const reportFocusAreasText = normalizeTrainingText(reportData?.focusAreas);
@@ -758,6 +768,18 @@ export default function ScheduleDetailPage() {
             </div>
           </div>
         </Card>
+
+        {arenaFocusScheduleText ? (
+          <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              Фокус тренировки
+            </p>
+            <p className="mt-1.5 text-sm leading-relaxed text-slate-200">{arenaFocusScheduleText}</p>
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-600">
+              Источник в базе не размечен: текст мог быть введён вручную или записан из Arena (CRM).
+            </p>
+          </div>
+        ) : null}
 
         {showCanonicalVoiceBlocks ? (
           <>
