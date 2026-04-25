@@ -32,16 +32,16 @@ import { useAuth } from "@/context/AuthContext";
 import {
   getConversationMessages,
   sendMessage,
-  COACH_MARK_ID,
-  isCoachMarkConversation,
+  ARENA_COMPANION_CHAT_ID,
+  isArenaCompanionConversation,
   getCoachMarkMessages,
   getCoachMarkConversation,
   saveCoachMarkMessages,
   sendMessageToCoachMark,
   generateWeeklyPlanWithCoachMark,
-  type CoachMarkPlayerContext,
+  type ArenaParentPlayerContext,
 } from "@/services/chatService";
-import { getPlayerContextForCoachMark } from "@/services/playerService";
+import { getPlayerContextForArena } from "@/services/playerService";
 import {
   saveCoachMarkNote,
   convertWeeklyPlanToCalendarItems,
@@ -71,13 +71,13 @@ type ChatMessageBubbleProps = {
 
 /** Props for ChatListEmpty. */
 type ChatListEmptyProps = {
-  isCoachMark: boolean;
+  isArenaCompanionThread: boolean;
   userId: string | undefined;
   onStarterPrompt: (text: string) => void;
   onRetry: () => void;
   onPlanChip: () => void;
   planLoading: boolean;
-  coachMarkLoadFailed: boolean;
+  arenaCompanionLoadFailed: boolean;
 };
 
 const PRESSED_OPACITY = 0.88;
@@ -90,7 +90,7 @@ const TYPING_DOT_INTERVAL = 380;
 const TYPING_BREATHE_DURATION = 800;
 const EMPTY_STATE_ICON_SIZE = 36;
 
-const COACH_MARK_STARTER_PROMPTS = [
+const ARENA_COMPANION_STARTER_PROMPTS = [
   "Что делать на этой неделе для развития?",
   "Как улучшить бросок ребёнка?",
   "Составь план тренировок на неделю",
@@ -139,18 +139,18 @@ const ChatMessageBubble = memo(function ChatMessageBubble({
   onSaveMemory,
 }: ChatMessageBubbleProps) {
   const isParent = item.senderType === "parent";
-  const isCoachMarkMsg = item.isAI || item.senderId === COACH_MARK_ID;
+  const isArenaCompanionMsg = item.isAI || item.senderId === ARENA_COMPANION_CHAT_ID;
 
   const bubbleContent = (
     <View
       style={[
         styles.bubble,
         isParent ? styles.bubbleRight : styles.bubbleLeft,
-        isCoachMarkMsg && styles.bubbleCoachMark,
+        isArenaCompanionMsg && styles.bubbleCoachMark,
       ]}
     >
       <Text
-        style={[styles.bubbleText, isCoachMarkMsg && styles.bubbleTextCoachMark]}
+        style={[styles.bubbleText, isArenaCompanionMsg && styles.bubbleTextCoachMark]}
       >
         {stripMarkdown(item.text)}
       </Text>
@@ -162,7 +162,7 @@ const ChatMessageBubble = memo(function ChatMessageBubble({
     triggerHaptic();
     Alert.alert(
       "Сохранить ответ?",
-      "В заметки или в память Coach Mark. В память — он будет учитываться в следующих разговорах.",
+      "В заметки или в память Арены. В память — учтём в следующих разговорах.",
       [
         { text: "Отмена", style: "cancel" },
         {
@@ -174,7 +174,7 @@ const ChatMessageBubble = memo(function ChatMessageBubble({
           onPress: () => {
             Alert.alert(
               "Выберите категорию",
-              "Как Coach Mark должен запомнить этот факт?",
+              "Как запомнить этот факт?",
               [
                 { text: "Отмена", style: "cancel" },
                 {
@@ -205,12 +205,12 @@ const ChatMessageBubble = memo(function ChatMessageBubble({
     );
   }, [item.text, onSaveNote, onSaveMemory]);
 
-  const entering = isCoachMarkMsg
+  const entering = isArenaCompanionMsg
     ? FadeInUp.duration(200).springify().damping(20)
     : screenReveal(index * 12);
   return (
     <Animated.View entering={entering}>
-      {isCoachMarkMsg ? (
+      {isArenaCompanionMsg ? (
         <Pressable
           onLongPress={handleLongPress}
           delayLongPress={400}
@@ -227,13 +227,13 @@ const ChatMessageBubble = memo(function ChatMessageBubble({
 
 /** Memoized empty state for FlatList. Reduces inline JSX in main render path. */
 const ChatListEmpty = memo(function ChatListEmpty({
-  isCoachMark,
+  isArenaCompanionThread,
   userId,
   onStarterPrompt,
   onRetry,
   onPlanChip,
   planLoading,
-  coachMarkLoadFailed,
+  arenaCompanionLoadFailed,
 }: ChatListEmptyProps) {
   return (
     <Animated.View
@@ -242,25 +242,25 @@ const ChatListEmpty = memo(function ChatListEmpty({
     >
       <View style={styles.emptyIconWrap}>
         <Ionicons
-          name={isCoachMark ? "sparkles-outline" : "chatbubble-outline"}
+          name={isArenaCompanionThread ? "sparkles-outline" : "chatbubble-outline"}
           size={EMPTY_STATE_ICON_SIZE}
-          color={isCoachMark ? colors.accent : colors.textMuted}
+          color={isArenaCompanionThread ? colors.accent : colors.textMuted}
         />
       </View>
       <Text style={styles.emptyTitle}>
-        {isCoachMark
-          ? "Coach Mark — ваш AI-помощник по хоккею"
+        {isArenaCompanionThread
+          ? "AI-компаньон Арена"
           : "Пока нет сообщений"}
       </Text>
       <Text style={styles.emptySub}>
-        {isCoachMark
+        {isArenaCompanionThread
           ? "Техника, мотивация и планы на неделю. Заглядывайте сюда регулярно — продолжим с учётом прогресса."
           : "Напишите первое сообщение — ответ появится здесь."}
       </Text>
-      {isCoachMark && (
+      {isArenaCompanionThread && (
         <>
           <View style={styles.starterPromptsWrap}>
-            {COACH_MARK_STARTER_PROMPTS.map((prompt, idx) => (
+            {ARENA_COMPANION_STARTER_PROMPTS.map((prompt, idx) => (
               <Pressable
                 key={prompt}
                 style={({ pressed }) => [
@@ -282,9 +282,9 @@ const ChatListEmpty = memo(function ChatListEmpty({
             ))}
           </View>
           <Text style={styles.memoryHint}>
-            Долгое нажатие на ответ — в заметки или в память Coach Mark для следующих диалогов
+            Долгое нажатие на ответ — в заметки или в память Арены для следующих диалогов
           </Text>
-          {coachMarkLoadFailed && (
+          {arenaCompanionLoadFailed && (
             <View style={styles.retryWrap}>
               <PrimaryButton
                 label="Повторить загрузку"
@@ -294,7 +294,7 @@ const ChatListEmpty = memo(function ChatListEmpty({
           )}
         </>
       )}
-      {isCoachMark && userId && (
+      {isArenaCompanionThread && userId && (
         <Pressable
           style={({ pressed }) => [
             styles.planChip,
@@ -351,7 +351,7 @@ const TypingIndicator = memo(function TypingIndicator() {
     >
       <Animated.View style={[styles.typingInner, containerStyle]}>
         <View style={styles.typingRow}>
-          <Text style={styles.typingText}>Coach Mark думает</Text>
+          <Text style={styles.typingText}>Арена думает</Text>
           <View style={styles.typingDots}>
             <Animated.Text style={[styles.typingDot, dot0Style]}>.</Animated.Text>
             <Animated.Text style={[styles.typingDot, dot1Style]}>.</Animated.Text>
@@ -372,13 +372,13 @@ export default function ChatConversationScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { user } = useAuth();
-  const [playerContext, setPlayerContext] = useState<CoachMarkPlayerContext | null>(null);
+  const [playerContext, setPlayerContext] = useState<ArenaParentPlayerContext | null>(null);
   const [memories, setMemories] = useState<{ key: string; value: string }[]>([]);
   const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [coachMarkLoadFailed, setCoachMarkLoadFailed] = useState(false);
+  const [arenaCompanionLoadFailed, setArenaCompanionLoadFailed] = useState(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [planLoading, setPlanLoading] = useState(false);
@@ -410,16 +410,16 @@ export default function ChatConversationScreen() {
     router.push(`/coach-mark${q}` as Parameters<typeof router.push>[0]);
   }, [playerId, router]);
 
-  const isCoachMarkConversationId = useMemo(
-    () => (id && typeof id === "string" ? isCoachMarkConversation(id) : false),
+  const isArenaCompanionConversationId = useMemo(
+    () => (id && typeof id === "string" ? isArenaCompanionConversation(id) : false),
     [id]
   );
 
   useEffect(() => {
     if (id && typeof id === "string") {
       navigation.setOptions({
-        title: isCoachMarkConversationId ? "Coach Mark" : "Чат",
-        headerRight: isCoachMarkConversationId
+        title: isArenaCompanionConversationId ? "Арена" : "Чат",
+        headerRight: isArenaCompanionConversationId
           ? () => (
               <Pressable
                 onPress={handleHeaderFolderPress}
@@ -435,29 +435,29 @@ export default function ChatConversationScreen() {
           : undefined,
       });
     }
-  }, [id, navigation, playerId, handleHeaderFolderPress, isCoachMarkConversationId]);
+  }, [id, navigation, playerId, handleHeaderFolderPress, isArenaCompanionConversationId]);
 
   useEffect(() => {
     if (
-      id === COACH_MARK_ID &&
+      id === ARENA_COMPANION_CHAT_ID &&
       typeof playerId === "string" &&
       playerId &&
       user?.id
     ) {
-      getPlayerContextForCoachMark(playerId, user.id).then(setPlayerContext);
+      getPlayerContextForArena(playerId, user.id).then(setPlayerContext);
     } else {
       setPlayerContext(null);
     }
   }, [id, playerId, user?.id]);
 
   useEffect(() => {
-    if (id === COACH_MARK_ID) {
+    if (id === ARENA_COMPANION_CHAT_ID) {
       trackCoachMarkEvent("coachmark_chat_open");
     }
   }, [id]);
 
   useEffect(() => {
-    if (id === COACH_MARK_ID && user?.id) {
+    if (id === ARENA_COMPANION_CHAT_ID && user?.id) {
       import("@/services/coachMarkMemory").then(({ getCoachMarkMemories }) =>
         getCoachMarkMemories(user.id, playerId ?? null).then((list) =>
           setMemories(list.map((m) => ({ key: m.key, value: m.value })))
@@ -491,7 +491,7 @@ export default function ChatConversationScreen() {
         const rest = prev.filter((m) => m.key !== key);
         return [{ key: saved.key, value: saved.value }, ...rest];
       });
-      Alert.alert("Готово", "Coach Mark запомнил. Это будет учитываться в следующих разговорах.");
+      Alert.alert("Готово", "Арена запомнила. Это будет учитываться в следующих разговорах.");
     },
     [user?.id, playerId]
   );
@@ -500,9 +500,9 @@ export default function ChatConversationScreen() {
     if (!id || typeof id !== "string" || !user?.id) return;
     setLoading(true);
     setLoadError(false);
-    setCoachMarkLoadFailed(false);
+    setArenaCompanionLoadFailed(false);
     try {
-      if (isCoachMarkConversation(id)) {
+      if (isArenaCompanionConversation(id)) {
         const cached = await getCoachMarkMessages(user.id);
         if (cached.length > 0) {
           setMessages(cached);
@@ -516,24 +516,24 @@ export default function ChatConversationScreen() {
           trackCoachMarkEvent("coachmark_chat_load_error");
           setMessages([]);
           setLoadError(false);
-          setCoachMarkLoadFailed(true);
+          setArenaCompanionLoadFailed(true);
         }
       } else {
         const data = await getConversationMessages(id, user.id);
         setMessages(data);
       }
     } catch {
-      const cached = isCoachMarkConversation(id)
+      const cached = isArenaCompanionConversation(id)
         ? await getCoachMarkMessages(user.id)
         : [];
       if (cached.length > 0) {
         setMessages(cached);
       } else {
-        if (isCoachMarkConversation(id)) {
+        if (isArenaCompanionConversation(id)) {
           trackCoachMarkEvent("coachmark_chat_load_error");
           setMessages([]);
           setLoadError(false);
-          setCoachMarkLoadFailed(true);
+          setArenaCompanionLoadFailed(true);
         } else {
           setMessages([]);
           setLoadError(true);
@@ -587,11 +587,11 @@ export default function ChatConversationScreen() {
     setLastFailedText(null);
     setInput("");
 
-    if (isCoachMarkConversation(id)) {
+    if (isArenaCompanionConversation(id)) {
       trackCoachMarkEvent("coachmark_message_send");
       const userMsg: ChatMessage = {
         id: `parent-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        conversationId: COACH_MARK_ID,
+        conversationId: ARENA_COMPANION_CHAT_ID,
         senderType: "parent",
         senderId: user.id,
         text,
@@ -624,8 +624,8 @@ export default function ChatConversationScreen() {
         setLastFailedText(text);
         const errMsg =
           err instanceof ApiRequestError && err.status === 503
-            ? "AI-ассистент временно недоступен. Добавьте OPENAI_API_KEY в .env файл hockey-server."
-            : "Не получилось связаться с Coach Mark. Попробуйте ещё раз.";
+            ? "AI-компаньон Арена временно недоступен. На стороне backend нужен OPENAI_API_KEY в окружении процесса, который обслуживает /api/chat/ai (обычно Next CRM)."
+            : "Не получилось связаться с Ареной. Попробуйте ещё раз.";
         setSendError(errMsg);
         return;
       }
@@ -755,7 +755,7 @@ export default function ChatConversationScreen() {
     );
   }
 
-  const isCoachMark = isCoachMarkConversationId;
+  const isArenaCompanionThread = isArenaCompanionConversationId;
   const composerBottomPadding = keyboardVisible ? spacing.lg : insets.bottom + spacing.lg;
   const composerHeight = 72 + composerBottomPadding;
   const listContentBottom = useMemo(
@@ -791,30 +791,30 @@ export default function ChatConversationScreen() {
   );
 
   const listFooterComponent = useMemo(
-    () => (sending && isCoachMark ? <TypingIndicator /> : null),
-    [sending, isCoachMark]
+    () => (sending && isArenaCompanionThread ? <TypingIndicator /> : null),
+    [sending, isArenaCompanionThread]
   );
 
   const listEmptyComponent = useMemo(
     () => (
       <ChatListEmpty
-        isCoachMark={isCoachMark}
+        isArenaCompanionThread={isArenaCompanionThread}
         userId={user?.id}
         onStarterPrompt={handleSend}
         onRetry={handleRetryWithHaptic}
         onPlanChip={handlePlanChip}
         planLoading={planLoading}
-        coachMarkLoadFailed={coachMarkLoadFailed}
+        arenaCompanionLoadFailed={arenaCompanionLoadFailed}
       />
     ),
     [
-      isCoachMark,
+      isArenaCompanionThread,
       user?.id,
       handleSend,
       handleRetryWithHaptic,
       handlePlanChip,
       planLoading,
-      coachMarkLoadFailed,
+      arenaCompanionLoadFailed,
     ]
   );
 
@@ -860,7 +860,7 @@ export default function ChatConversationScreen() {
               renderItem={renderItem}
             />
           </View>
-          {sendError && isCoachMark && (
+          {sendError && isArenaCompanionThread && (
             <Animated.View entering={FadeIn.duration(250)} style={styles.inlineErrorRow}>
               <Ionicons name="information-circle-outline" size={20} color={colors.textSecondary} />
               <Text style={styles.inlineErrorText}>{sendError}</Text>
@@ -875,7 +875,7 @@ export default function ChatConversationScreen() {
               onFocus={scrollToEnd}
               style={[styles.input, sending && styles.inputDisabled]}
               placeholder={
-                isCoachMark
+                isArenaCompanionThread
                   ? "Спросите о технике, мотивации или плане на неделю"
                   : "Сообщение"
               }

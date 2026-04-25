@@ -418,7 +418,7 @@ export default function PlayerAIAnalysisScreen() {
               Зоны роста, рекомендации и фокус тренера — в Membership
             </Text>
             <Text style={styles.paywallText}>
-              Coach Mark как персональный тренер + полный AI-анализ: что делать, над чем работать,
+              Арена как персональный тренер + полный AI-анализ: что делать, над чем работать,
               мотивационный блок и следующий шаг под вашего игрока.
             </Text>
             <Pressable
@@ -439,7 +439,7 @@ export default function PlayerAIAnalysisScreen() {
 
       <Animated.View entering={screenReveal(STAGGER * 6.5)}>
         <Pressable
-          style={({ pressed }) => [styles.coachMarkCta, pressed && { opacity: PRESSED_OPACITY }]}
+          style={({ pressed }) => [styles.arenaCompanionCta, pressed && { opacity: PRESSED_OPACITY }]}
           onPress={() => {
             triggerHaptic();
             const params = new URLSearchParams();
@@ -451,10 +451,10 @@ export default function PlayerAIAnalysisScreen() {
             router.push(`/chat/${COACH_MARK_ID}?${params.toString()}`);
           }}
           accessibilityRole="button"
-          accessibilityLabel={AI_ANALYSIS_COPY.coachMarkCta}
+          accessibilityLabel={AI_ANALYSIS_COPY.arenaCompanionCta}
         >
           <Ionicons name="sparkles-outline" size={18} color={colors.accent} />
-          <Text style={styles.coachMarkCtaText}>{AI_ANALYSIS_COPY.coachMarkCta}</Text>
+          <Text style={styles.arenaCompanionCtaText}>{AI_ANALYSIS_COPY.arenaCompanionCta}</Text>
           <Ionicons
             name="chevron-forward"
             size={20}
@@ -830,7 +830,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     maxWidth: 300,
   },
-  coachMarkCta: {
+  arenaCompanionCta: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
@@ -841,7 +841,7 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "rgba(255,255,255,0.1)",
   },
-  coachMarkCtaText: {
+  arenaCompanionCtaText: {
     flex: 1,
     fontSize: 15,
     fontWeight: "600",

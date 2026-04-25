@@ -211,7 +211,7 @@ export default function AICoachReportScreen() {
             <View style={styles.premiumCta}>
               <Text style={styles.premiumCtaLabel}>Preview</Text>
               <Text style={styles.premiumCtaTitle}>
-                Полный отчёт + Coach Mark как персональный тренер — в Pro
+                Полный отчёт + Арена как персональный тренер — в Pro
               </Text>
               <Text style={styles.premiumCtaSubtitle}>
                 Зоны роста, рекомендации, прогноз, skill-карта и еженедельные отчёты под вашего игрока
@@ -387,7 +387,7 @@ export default function AICoachReportScreen() {
           }}
         />
         <GhostButton
-          label="Обсудить анализ с Coach Mark"
+          label="Обсудить анализ с AI-компаньоном Арена"
           leftIcon={<Ionicons name="sparkles-outline" size={18} color={colors.accent} />}
           onPress={() => {
             triggerHaptic();

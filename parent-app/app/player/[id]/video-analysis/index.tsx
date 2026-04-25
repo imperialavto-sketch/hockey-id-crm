@@ -55,7 +55,7 @@ export default function VideoAnalysisListScreen() {
         setItems(list);
         const map: Record<string, string> = {};
         for (const req of list) {
-          const details = await getVideoAnalysisById(req.id, user.id);
+          const details = await getVideoAnalysisById(req.id, user.id, id);
           if (details.result?.summary) map[req.id] = details.result.summary;
         }
         if (mounted) setSummaries(map);

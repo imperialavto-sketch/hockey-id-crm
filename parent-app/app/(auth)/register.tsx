@@ -15,6 +15,7 @@ import { useAuth } from "@/context/AuthContext";
 import { PrimaryButton, Input } from "@/components/ui";
 import { colors, spacing, inputStyles, typography, feedback } from "@/constants/theme";
 import { triggerHaptic } from "@/lib/haptics";
+import { ApiRequestError } from "@/lib/api";
 import { registerRequest } from "@/services/authService";
 
 export default function RegisterScreen() {
@@ -37,7 +38,13 @@ export default function RegisterScreen() {
       await login(res.token, res.parent);
       router.replace("/(tabs)");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка регистрации");
+      if (e instanceof ApiRequestError && e.code === "REGISTER_DISABLED") {
+        setError(
+          `${e.message}\n\nИспользуйте вход по номеру телефона на экране «Войти».`
+        );
+      } else {
+        setError(e instanceof Error ? e.message : "Ошибка регистрации");
+      }
     } finally {
       setLoading(false);
     }

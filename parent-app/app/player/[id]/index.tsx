@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -19,14 +19,32 @@ import {
   getAIAnalysis,
   getPlayerAttendanceSummary,
   getPlayerCoachMaterials,
+  getLatestTrainingSummaryForPlayer,
   type PlayerAttendanceSummary,
   type LatestSessionEvaluation,
   type EvaluationSummary,
   type LatestSessionReport,
   type ParentPlayerCoachMaterials,
+  type ParentLiveTrainingHeroPayload,
 } from "@/services/playerService";
+import { ApiRequestError } from "@/lib/api";
+import { getArenaAutoMode } from "@/lib/arenaAutoMode";
 import { getVideoAnalyses } from "@/services/videoAnalysisService";
-import { getOrCreateConversation, COACH_MARK_ID } from "@/services/chatService";
+import {
+  classifyFollowUpSectionBody,
+  followUpNonAutonomousOutcomeCopy,
+  followUpRefreshSetsSectionLoadingState,
+  FOLLOW_UP_NO_CONTEXT_EXPLAINER,
+  FOLLOW_UP_PENDING_REPORT_EXPLAINER,
+  shouldMountArenaFollowUpSection,
+} from "@/lib/parentArenaExternalFollowUpHonesty";
+import {
+  getArenaExternalFollowUpRecommendation,
+  getLatestArenaExternalTrainingRequest,
+  type ExternalFollowUpRecommendationView,
+  type ExternalTrainingRequestView,
+} from "@/services/arenaExternalTrainingService";
+import { getOrCreateConversation } from "@/services/chatService";
 import { Ionicons } from "@expo/vector-icons";
 import { HeroPlayerCard } from "@/components/player/HeroPlayerCard";
 import { PlayerScreenBackground } from "@/components/player/PlayerScreenBackground";
@@ -42,6 +60,9 @@ import {
 import { ScreenHeader } from "@/components/navigation/ScreenHeader";
 import { PressableCard } from "@/components/ui/PressableCard";
 import { SharePlayerSheet } from "@/components/player/SharePlayerSheet";
+import { ParentLiveTrainingHeroBlock } from "@/components/live-training/ParentLiveTrainingHeroBlock";
+import { PlayerExternalFollowUpRecommendationBlock } from "@/components/player/PlayerExternalFollowUpRecommendationBlock";
+import { buildParentPostTrainingClarityModel } from "@/lib/parentPostTrainingClarity";
 import {
   isDemoPlayer,
   getHeroProps as getHeroPropsHelper,
@@ -72,6 +93,14 @@ import type {
 } from "@/types";
 
 const PRESSED_OPACITY = 0.88;
+
+const EMPTY_LIVE_TRAINING_HERO: ParentLiveTrainingHeroPayload = {
+  summary: null,
+  guidance: null,
+  fallbackLine: null,
+  provenanceLine: null,
+};
+
 type ProfileErrorStateKind = "not_found" | "network";
 
 const PROFILE_ERROR_DETAILS: Record<
@@ -332,12 +361,37 @@ export default function PlayerProfileScreen() {
   const [coachMaterialsError, setCoachMaterialsError] = useState<string | null>(
     null
   );
+  const [liveTrainingHero, setLiveTrainingHero] =
+    useState<ParentLiveTrainingHeroPayload>(EMPTY_LIVE_TRAINING_HERO);
+  /** Arena external follow-up: GET follow-up + локальный auto-mode + последний внешний запрос (read). */
+  const [arenaExtFollowUp, setArenaExtFollowUp] = useState<{
+    status: "idle" | "loading" | "ready" | "error";
+    recommendation: ExternalFollowUpRecommendationView | null;
+    errorMessage: string | null;
+    arenaAutoMode: boolean;
+    latestExternalRequest: ExternalTrainingRequestView | null;
+  }>({
+    status: "idle",
+    recommendation: null,
+    errorMessage: null,
+    arenaAutoMode: false,
+    latestExternalRequest: null,
+  });
+  /** Строка над контентом секции после POST (сохраняется при silent-refresh). */
+  const [arenaFollowUpSectionBanner, setArenaFollowUpSectionBanner] = useState<string | null>(null);
+  /** «Не сейчас» — скрываем секцию целиком, без пустого SectionCard. */
+  const [arenaFollowUpUserDeferred, setArenaFollowUpUserDeferred] = useState(false);
   const mountedRef = useRef(true);
   const profileRequestRef = useRef(0);
   const aiRequestRef = useRef(0);
   const coachMaterialsFetchGen = useRef(0);
+  const arenaFollowUpFetchGen = useRef(0);
 
   useEffect(() => () => { mountedRef.current = false; }, []);
+
+  useEffect(() => {
+    setArenaFollowUpUserDeferred(false);
+  }, [id]);
 
   const goBack = useCallback(() => {
     triggerHaptic();
@@ -432,6 +486,88 @@ export default function PlayerProfileScreen() {
   useEffect(() => {
     loadProfile();
   }, [loadProfile]);
+
+  useEffect(() => {
+    if (!id || typeof id !== "string" || !user?.id || loading || !player) {
+      setLiveTrainingHero(EMPTY_LIVE_TRAINING_HERO);
+      return;
+    }
+    let cancelled = false;
+    void getLatestTrainingSummaryForPlayer(id).then((hero) => {
+      if (!cancelled) setLiveTrainingHero(hero);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, user?.id, loading, player?.id]);
+
+  const refreshArenaExternalFollowUp = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      const silent = opts?.silent === true;
+      if (!id || typeof id !== "string" || !user?.id) return;
+      const gen = ++arenaFollowUpFetchGen.current;
+      if (followUpRefreshSetsSectionLoadingState(silent)) {
+        setArenaFollowUpSectionBanner(null);
+        setArenaExtFollowUp((s) => ({
+          ...s,
+          status: "loading",
+          errorMessage: null,
+        }));
+      }
+      try {
+        const [rec, auto, latestReq] = await Promise.all([
+          getArenaExternalFollowUpRecommendation(id),
+          getArenaAutoMode(id),
+          getLatestArenaExternalTrainingRequest(id),
+        ]);
+        if (!mountedRef.current || gen !== arenaFollowUpFetchGen.current) return;
+        setArenaExtFollowUp({
+          status: "ready",
+          recommendation: rec,
+          errorMessage: null,
+          arenaAutoMode: auto,
+          latestExternalRequest: latestReq,
+        });
+        if (rec != null) {
+          setArenaFollowUpSectionBanner(null);
+        }
+      } catch (e) {
+        if (!mountedRef.current || gen !== arenaFollowUpFetchGen.current) return;
+        if (silent) {
+          return;
+        }
+        const msg =
+          e instanceof ApiRequestError
+            ? e.message
+            : "Не удалось загрузить рекомендацию Арены.";
+        setArenaExtFollowUp({
+          status: "error",
+          recommendation: null,
+          errorMessage: msg,
+          arenaAutoMode: false,
+          latestExternalRequest: null,
+        });
+      }
+    },
+    [id, user?.id]
+  );
+
+  useEffect(() => {
+    if (!id || typeof id !== "string" || !user?.id || loading || !player) {
+      arenaFollowUpFetchGen.current += 1;
+      setArenaFollowUpSectionBanner(null);
+      setArenaFollowUpUserDeferred(false);
+      setArenaExtFollowUp({
+        status: "idle",
+        recommendation: null,
+        errorMessage: null,
+        arenaAutoMode: false,
+        latestExternalRequest: null,
+      });
+      return;
+    }
+    void refreshArenaExternalFollowUp();
+  }, [id, user?.id, loading, player?.id, refreshArenaExternalFollowUp]);
 
   useEffect(() => {
     if (!id || typeof id !== "string" || !user?.id) {
@@ -540,6 +676,36 @@ export default function PlayerProfileScreen() {
       if (mountedRef.current) setChatLoading(false);
     }
   };
+
+  const postTrainingClarityModel = useMemo(
+    () => buildParentPostTrainingClarityModel(latestSessionReport, liveTrainingHero),
+    [latestSessionReport, liveTrainingHero]
+  );
+
+  const arenaFollowUpBody = useMemo(
+    () =>
+      classifyFollowUpSectionBody({
+        status: arenaExtFollowUp.status,
+        recommendation: arenaExtFollowUp.recommendation,
+        latestExternalRequest: arenaExtFollowUp.latestExternalRequest,
+      }),
+    [
+      arenaExtFollowUp.status,
+      arenaExtFollowUp.recommendation,
+      arenaExtFollowUp.latestExternalRequest,
+    ]
+  );
+
+  const arenaFollowUpMount = useMemo(
+    () =>
+      shouldMountArenaFollowUpSection({
+        idTrim: typeof id === "string" ? id.trim() : "",
+        player,
+        profileLoading: loading,
+        userDeferred: arenaFollowUpUserDeferred,
+      }),
+    [id, player, loading, arenaFollowUpUserDeferred]
+  );
 
   const isDemo = isDemoPlayer(player);
   const heroProps = player ? getHeroPropsHelper(player, stats, isDemo) : null;
@@ -978,6 +1144,102 @@ export default function PlayerProfileScreen() {
             </Animated.View>
           )}
 
+        {postTrainingClarityModel ? (
+          <Animated.View entering={screenReveal(STAGGER * 1.45)}>
+            <SectionCard
+              title={postTrainingClarityModel.title}
+              style={styles.sectionCard}
+            >
+              {postTrainingClarityModel.lines.map((line, i) => (
+                <Text
+                  key={i}
+                  style={[
+                    styles.evalNote,
+                    i === 0 ? styles.evalNoteTightTop : null,
+                  ]}
+                >
+                  {line}
+                </Text>
+              ))}
+            </SectionCard>
+          </Animated.View>
+        ) : null}
+
+        <Animated.View entering={screenReveal(STAGGER * 1.5)}>
+          <ParentLiveTrainingHeroBlock
+            summary={liveTrainingHero.summary}
+            guidance={liveTrainingHero.guidance}
+            fallbackLine={liveTrainingHero.fallbackLine}
+            provenanceLine={liveTrainingHero.provenanceLine}
+          />
+        </Animated.View>
+
+        {arenaFollowUpMount ? (
+          <Animated.View entering={screenReveal(STAGGER * 1.52)}>
+            <SectionCard
+              title="Арена · дополнительный контур"
+              style={styles.sectionCard}
+            >
+              {arenaFollowUpBody === "loading" ? (
+                <View style={styles.arenaFollowUpLoadingRow}>
+                  <ActivityIndicator color={colors.accentBlue} />
+                  <Text style={styles.evalNoteTightTop}>
+                    Загружаем подсказку Арены…
+                  </Text>
+                </View>
+              ) : arenaFollowUpBody === "error" ? (
+                <View>
+                  <Text style={styles.evalNoteTightTop}>
+                    {arenaExtFollowUp.errorMessage}
+                  </Text>
+                  <View style={styles.arenaFollowUpRetryWrap}>
+                    <PrimaryButton
+                      label="Повторить"
+                      onPress={() => {
+                        triggerHaptic();
+                        void refreshArenaExternalFollowUp();
+                      }}
+                    />
+                  </View>
+                </View>
+              ) : arenaFollowUpBody === "pending_active_request" ? (
+                <View>
+                  {arenaFollowUpSectionBanner != null ? (
+                    <Text style={styles.arenaFollowUpBanner}>{arenaFollowUpSectionBanner}</Text>
+                  ) : null}
+                  <Text style={styles.evalNoteTightTop}>{FOLLOW_UP_PENDING_REPORT_EXPLAINER}</Text>
+                </View>
+              ) : arenaFollowUpBody === "no_follow_up_context" ? (
+                <View>
+                  {arenaFollowUpSectionBanner != null ? (
+                    <Text style={styles.arenaFollowUpBanner}>{arenaFollowUpSectionBanner}</Text>
+                  ) : null}
+                  <Text style={styles.evalNoteTightTop}>{FOLLOW_UP_NO_CONTEXT_EXPLAINER}</Text>
+                </View>
+              ) : arenaFollowUpBody === "recommendation" && arenaExtFollowUp.recommendation ? (
+                <PlayerExternalFollowUpRecommendationBlock
+                  key={`arena-ext-follow-${typeof id === "string" ? id.trim() : ""}`}
+                  playerId={typeof id === "string" ? id.trim() : ""}
+                  recommendation={arenaExtFollowUp.recommendation}
+                  arenaAutoMode={arenaExtFollowUp.arenaAutoMode}
+                  onArenaAutoModeEnabled={() =>
+                    setArenaExtFollowUp((s) => ({ ...s, arenaAutoMode: true }))
+                  }
+                  onDeferred={() => setArenaFollowUpUserDeferred(true)}
+                  onReRequestSuccess={async (detail) => {
+                    if (detail?.nonAutonomousPost) {
+                      setArenaFollowUpSectionBanner(
+                        followUpNonAutonomousOutcomeCopy(detail.nonAutonomousPost)
+                      );
+                    }
+                    await refreshArenaExternalFollowUp({ silent: true });
+                  }}
+                />
+              ) : null}
+            </SectionCard>
+          </Animated.View>
+        ) : null}
+
         {/* Primary actions */}
         <Animated.View
           style={styles.actionsBlock}
@@ -1004,28 +1266,6 @@ export default function PlayerProfileScreen() {
               id && router.push(`/player/${id}/ai-analysis`);
             }}
             variant="accent"
-          />
-
-          <ActionLinkCard
-            icon="chatbubbles"
-            title="Спросить Coach Mark"
-            description="Задайте вопрос о развитии — получите совет под вашего игрока"
-            onPress={() => {
-              triggerHaptic();
-              id && router.push(`/chat/${COACH_MARK_ID}?playerId=${encodeURIComponent(id)}`);
-            }}
-            variant="default"
-          />
-
-          <ActionLinkCard
-            icon="folder-open-outline"
-            title="Coach Mark Hub"
-            description="Всё, что Coach Mark сохранил: заметки, планы, экспорт в календарь"
-            onPress={() => {
-              triggerHaptic();
-              id && router.push(`/coach-mark?playerId=${encodeURIComponent(id)}`);
-            }}
-            variant="default"
           />
 
         {/* Chat with coach */}
@@ -1816,6 +2056,23 @@ const styles = StyleSheet.create({
     borderColor: colors.surfaceLevel1Border,
     ...shadows.level1,
     marginBottom: spacing.lg,
+  },
+  arenaFollowUpLoadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  arenaFollowUpRetryWrap: {
+    marginTop: spacing.md,
+    alignSelf: "flex-start",
+  },
+  arenaFollowUpBanner: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.accentBlue,
+    fontWeight: "600",
+    marginBottom: spacing.sm,
   },
   devSkillsRow: {
     flexDirection: "row",

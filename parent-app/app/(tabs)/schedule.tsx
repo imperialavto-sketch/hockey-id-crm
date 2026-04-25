@@ -1,16 +1,19 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
 import Animated from "react-native-reanimated";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
-import { COACH_MARK_ID } from "@/services/chatService";
-import { getPlayers } from "@/services/playerService";
+import {
+  getPlayers,
+  getLatestTrainingSummaryForPlayer,
+  type ParentLiveTrainingHeroPayload,
+} from "@/services/playerService";
 import { getMeSchedule } from "@/services/scheduleService";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { SectionCard } from "@/components/player-passport";
 import { ScheduleItemRow } from "@/components/player-passport";
-import { ActionLinkCard } from "@/components/player/ActionLinkCard";
 import { SkeletonBlock, ErrorStateView } from "@/components/ui";
+import { ParentLiveTrainingHeroBlock } from "@/components/live-training/ParentLiveTrainingHeroBlock";
 import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
 import { colors, spacing, typography, radius } from "@/constants/theme";
@@ -23,6 +26,13 @@ import {
 
 const PRESSED_OPACITY = 0.88;
 const SECTION_GAP = spacing.lg;
+
+const EMPTY_LIVE_TRAINING_HERO: ParentLiveTrainingHeroPayload = {
+  summary: null,
+  guidance: null,
+  fallbackLine: null,
+  provenanceLine: null,
+};
 
 function weekStartMondayLocal(d = new Date()): string {
   const day = d.getDay();
@@ -135,29 +145,6 @@ function ScheduleHeader({
   );
 }
 
-function CoachMarkScheduleCard({
-  effectivePlayerId,
-}: {
-  effectivePlayerId: string | null;
-}) {
-  const router = useRouter();
-  return (
-    <ActionLinkCard
-      icon="sparkles"
-      title={SCHEDULE_COPY.coachMarkTitle}
-      description={SCHEDULE_COPY.coachMarkDescription}
-      onPress={() => {
-        triggerHaptic();
-        const q = effectivePlayerId
-          ? `?playerId=${encodeURIComponent(effectivePlayerId)}&initialMessage=${encodeURIComponent("Составь персональный план тренировок на неделю с учётом расписания")}`
-          : "";
-        router.push(`/chat/${COACH_MARK_ID}${q}` as never);
-      }}
-      variant="accent"
-    />
-  );
-}
-
 export default function ScheduleScreen() {
   const { user } = useAuth();
   const mountedRef = useRef(true);
@@ -167,6 +154,8 @@ export default function ScheduleScreen() {
   const [weekStart, setWeekStart] = useState(() => weekStartMondayLocal());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [liveTrainingHero, setLiveTrainingHero] =
+    useState<ParentLiveTrainingHeroPayload>(EMPTY_LIVE_TRAINING_HERO);
 
   useEffect(() => () => {
     mountedRef.current = false;
@@ -189,6 +178,7 @@ export default function ScheduleScreen() {
   const load = useCallback(async () => {
     if (!user?.id) {
       setSchedule([]);
+      setLiveTrainingHero(EMPTY_LIVE_TRAINING_HERO);
       setLoading(false);
       return;
     }
@@ -208,9 +198,17 @@ export default function ScheduleScreen() {
       if (mountedRef.current) {
         setSchedule(Array.isArray(scheduleData) ? scheduleData : []);
       }
+      if (pid) {
+        const hero = await getLatestTrainingSummaryForPlayer(pid);
+        if (!mountedRef.current) return;
+        setLiveTrainingHero(hero);
+      } else if (mountedRef.current) {
+        setLiveTrainingHero(EMPTY_LIVE_TRAINING_HERO);
+      }
     } catch {
       if (mountedRef.current) {
         setSchedule([]);
+        setLiveTrainingHero(EMPTY_LIVE_TRAINING_HERO);
         setError(true);
       }
     } finally {
@@ -288,8 +286,13 @@ export default function ScheduleScreen() {
             </View>
             <Text style={styles.emptyTitle}>{SCHEDULE_COPY.emptyTitle}</Text>
             <Text style={styles.emptySub}>{SCHEDULE_COPY.emptySub}</Text>
-            <View style={styles.emptyCoachMarkWrap}>
-              <CoachMarkScheduleCard effectivePlayerId={effectivePlayerId} />
+            <View style={styles.arenaTrainingBlockInEmpty}>
+              <ParentLiveTrainingHeroBlock
+                summary={liveTrainingHero.summary}
+                guidance={liveTrainingHero.guidance}
+                fallbackLine={liveTrainingHero.fallbackLine}
+                provenanceLine={liveTrainingHero.provenanceLine}
+              />
             </View>
           </View>
         </Animated.View>
@@ -304,7 +307,14 @@ export default function ScheduleScreen() {
       </Animated.View>
 
       <Animated.View entering={screenReveal(STAGGER)}>
-        <CoachMarkScheduleCard effectivePlayerId={effectivePlayerId} />
+        <View style={styles.arenaTrainingBlockBelowHeader}>
+          <ParentLiveTrainingHeroBlock
+            summary={liveTrainingHero.summary}
+            guidance={liveTrainingHero.guidance}
+            fallbackLine={liveTrainingHero.fallbackLine}
+            provenanceLine={liveTrainingHero.provenanceLine}
+          />
+        </View>
       </Animated.View>
 
       {today.length > 0 && (
@@ -437,9 +447,13 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     maxWidth: 300,
   },
-  emptyCoachMarkWrap: {
+  arenaTrainingBlockInEmpty: {
     width: "100%",
     marginTop: spacing.lg,
+  },
+  arenaTrainingBlockBelowHeader: {
+    width: "100%",
+    marginBottom: SECTION_GAP,
   },
 
   sectionCard: {

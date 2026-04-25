@@ -12,7 +12,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
-import { getConversations, COACH_MARK_ID } from "@/services/chatService";
+import { getConversations, ARENA_COMPANION_CHAT_ID } from "@/services/chatService";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { SkeletonBlock, ErrorStateView, EmptyStateView } from "@/components/ui";
 import { screenReveal, STAGGER } from "@/lib/animations";
@@ -24,7 +24,7 @@ import {
   CHAT_INBOX_COPY,
   formatConversationListTime,
   conversationPreviewLine,
-  isCoachMarkInboxItem,
+  isArenaCompanionInboxItem,
 } from "@/lib/parentChatInboxUi";
 import { PARENT_FLAGSHIP } from "@/lib/parentFlagshipShared";
 
@@ -63,17 +63,17 @@ export default function ChatTabScreen() {
     try {
       const data = await getConversations(user.id);
       if (!mountedRef.current) return;
-      const coachMarkItem: ConversationItem = {
-        id: COACH_MARK_ID,
+      const arenaCompanionItem: ConversationItem = {
+        id: ARENA_COMPANION_CHAT_ID,
         playerId: "",
-        playerName: "Персональный AI-тренер",
-        coachId: COACH_MARK_ID,
-        coachName: "Coach Mark",
+        playerName: "AI-компаньон Арена",
+        coachId: ARENA_COMPANION_CHAT_ID,
+        coachName: "Арена",
         parentId: user.id,
         lastMessage: undefined,
         updatedAt: new Date().toISOString(),
       };
-      setConversations([coachMarkItem, ...data]);
+      setConversations([arenaCompanionItem, ...data]);
     } catch {
       if (mountedRef.current) {
         setConversations([]);
@@ -107,7 +107,7 @@ export default function ChatTabScreen() {
     (item: ConversationItem) => {
       if (!item?.id) return;
       triggerHaptic();
-      if (item.id === COACH_MARK_ID) {
+      if (item.id === ARENA_COMPANION_CHAT_ID) {
         trackCoachMarkEvent("coachmark_chat_open_from_list");
       }
       router.push(`/chat/${item.id}`);
@@ -158,11 +158,11 @@ export default function ChatTabScreen() {
 
   const renderItem = useCallback(
     ({ item, index }: { item: ConversationItem; index: number }) => {
-      const isCoachMark = isCoachMarkInboxItem(item);
+      const isArenaCompanionAi = isArenaCompanionInboxItem(item);
       const timeStr = formatConversationListTime(item?.updatedAt ?? "");
-      const preview = conversationPreviewLine(item, isCoachMark);
-      const contextLine = isCoachMark
-        ? CHAT_INBOX_COPY.coachMarkContextLine
+      const preview = conversationPreviewLine(item, isArenaCompanionAi);
+      const contextLine = isArenaCompanionAi
+        ? CHAT_INBOX_COPY.arenaContextLine
         : item?.playerName ?? "—";
 
       return (
@@ -170,14 +170,14 @@ export default function ChatTabScreen() {
           <Pressable
             style={({ pressed }) => [
               styles.row,
-              isCoachMark ? styles.rowCoachMark : undefined,
+              isArenaCompanionAi ? styles.rowCoachMark : undefined,
               pressed ? PRESSED_STYLE : undefined,
             ]}
             onPress={() => goToThread(item)}
           >
-            <View style={[styles.avatarWrap, isCoachMark ? styles.avatarCoachMark : undefined]}>
+            <View style={[styles.avatarWrap, isArenaCompanionAi ? styles.avatarCoachMark : undefined]}>
               <Ionicons
-                name={isCoachMark ? "sparkles" : "person"}
+                name={isArenaCompanionAi ? "sparkles" : "person"}
                 size={22}
                 color={colors.accent}
               />
@@ -187,16 +187,11 @@ export default function ChatTabScreen() {
                 <View style={styles.rowTitleBlock}>
                   <View style={styles.rowTitleRow}>
                     <Text
-                      style={[styles.coachName, isCoachMark ? styles.coachNameCoachMark : undefined]}
+                      style={[styles.coachName, isArenaCompanionAi ? styles.coachNameCoachMark : undefined]}
                       numberOfLines={1}
                     >
                       {item?.coachName ?? "—"}
                     </Text>
-                    {isCoachMark ? (
-                      <View style={styles.aiBadge}>
-                        <Text style={styles.aiBadgeText}>AI</Text>
-                      </View>
-                    ) : null}
                   </View>
                 </View>
                 <Text style={styles.time}>{timeStr}</Text>
@@ -410,19 +405,6 @@ const styles = StyleSheet.create({
   },
   coachNameCoachMark: {
     color: colors.accentBright,
-  },
-  aiBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 6,
-    backgroundColor: "rgba(59,130,246,0.22)",
-    flexShrink: 0,
-  },
-  aiBadgeText: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: colors.accentBright,
-    letterSpacing: 0.4,
   },
   contextLine: {
     ...typography.caption,

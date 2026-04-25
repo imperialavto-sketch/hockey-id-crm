@@ -40,17 +40,23 @@ function AnnouncementSkeleton() {
 export default function AnnouncementScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id: idParam } = useLocalSearchParams<{ id: string | string[] }>();
+  const id =
+    typeof idParam === "string"
+      ? idParam
+      : Array.isArray(idParam)
+        ? idParam[0]
+        : undefined;
   const { user } = useAuth();
   const [post, setPost] = useState<Awaited<ReturnType<typeof getTeamPostById>>>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    if (!id || typeof id !== "string") {
+    if (!id?.trim()) {
       setLoading(false);
       return;
     }
-    const p = await getTeamPostById(id, user?.id);
+    const p = await getTeamPostById(id.trim(), user?.id);
     setPost(p ?? (isDev ? MOCK_TEAM_POSTS.find((x) => x.id === id) ?? null : null));
     setLoading(false);
   }, [id, user?.id]);

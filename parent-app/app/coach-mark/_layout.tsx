@@ -11,9 +11,10 @@ export default function CoachMarkLayout() {
         headerBackTitle: "Назад",
       }}
     >
+      {/* Заголовок в UI — «Арена»; сегмент маршрута coach-mark без изменений (technical). */}
       <Stack.Screen
         name="index"
-        options={{ title: "Coach Mark", headerShown: true }}
+        options={{ title: "Арена", headerShown: true }}
       />
     </Stack>
   );

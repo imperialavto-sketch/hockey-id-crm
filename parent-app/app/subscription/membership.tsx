@@ -18,7 +18,7 @@ export default function MembershipScreen() {
   const router = useRouter();
   const plan = MEMBERSHIP_PLANS[0];
   const keyBenefits = [
-    "Coach Mark как персональный тренер — еженедельные отчёты и следующий шаг",
+    "Арена как персональный тренер — еженедельные отчёты и следующий шаг",
     "Полный AI-анализ: зоны роста, рекомендации и прогноз",
     "План развития на 4 недели с упражнениями под слабые стороны",
     "Скидки на индивидуальные тренировки с тренерами",
@@ -80,7 +80,7 @@ export default function MembershipScreen() {
         <SectionCard title="Вы уже видели часть анализа" style={styles.aiUnlockSection}>
           <Text style={styles.aiUnlockTitle}>Разблокируйте полный доступ</Text>
           <Text style={styles.aiUnlockText}>
-            Coach Mark станет персональным тренером: еженедельные отчёты, AI-анализ,
+            Арена станет персональным тренером: еженедельные отчёты, AI-анализ,
             зоны роста, рекомендации и следующий шаг — всё под вашего игрока.
           </Text>
         </SectionCard>
@@ -99,7 +99,7 @@ export default function MembershipScreen() {
 
       <Animated.View entering={screenReveal(STAGGER * 4)}>
         <PrimaryButton
-          label="Получить Coach Mark + полный AI-анализ"
+          label="Получить Арену + полный AI-анализ"
           onPress={handleOpenPlans}
         />
       </Animated.View>

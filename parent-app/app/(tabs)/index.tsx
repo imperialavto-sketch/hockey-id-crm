@@ -4,17 +4,13 @@ import Animated from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
-import { COACH_MARK_ID } from "@/services/chatService";
-import { getPlayers } from "@/services/playerService";
-import { getCoachMarkCheckins } from "@/services/coachMarkCheckins";
 import {
-  getCoachMarkNotes,
-  getCoachMarkWeeklyPlans,
-  getCoachMarkCalendarItems,
-} from "@/services/coachMarkStorage";
-import { getCoachMarkMessages } from "@/services/chatService";
-import { computeCoachMarkNudges } from "@/services/coachMarkNudges";
+  getPlayers,
+  getLatestTrainingSummaryForPlayer,
+  type ParentLiveTrainingHeroPayload,
+} from "@/services/playerService";
 import { ActionLinkCard } from "@/components/player/ActionLinkCard";
+import { ParentLiveTrainingHeroBlock } from "@/components/live-training/ParentLiveTrainingHeroBlock";
 import { PrimaryButton } from "@/components/ui";
 import { SectionCard } from "@/components/player-passport";
 import { PremiumStatGrid, SkeletonBlock, ErrorStateView, EmptyStateView } from "@/components/ui";
@@ -50,6 +46,13 @@ const IMPROVEMENTS = [
 
 const SKELETON_KEYS = [1, 2, 3, 4] as const;
 
+const EMPTY_LIVE_TRAINING_HERO: ParentLiveTrainingHeroPayload = {
+  summary: null,
+  guidance: null,
+  fallbackLine: null,
+  provenanceLine: null,
+};
+
 const HomeSkeleton = memo(function HomeSkeleton() {
   return (
     <View style={styles.skeletonContent}>
@@ -73,10 +76,8 @@ export default function HomeScreen() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
   const [homeError, setHomeError] = useState<"network" | null>(null);
-  const [coachMarkSummary, setCoachMarkSummary] = useState<{
-    text: string;
-    playerId?: string;
-  } | null>(null);
+  const [liveTrainingHero, setLiveTrainingHero] =
+    useState<ParentLiveTrainingHeroPayload>(EMPTY_LIVE_TRAINING_HERO);
 
   useEffect(() => () => { mountedRef.current = false; }, []);
 
@@ -84,52 +85,26 @@ export default function HomeScreen() {
     if (!user?.id) {
       setLoading(false);
       setPlayers([]);
+      setLiveTrainingHero(EMPTY_LIVE_TRAINING_HERO);
       return;
     }
     setLoading(true);
     setHomeError(null);
     try {
       const list = await getPlayers(user.id);
-      if (mountedRef.current) setPlayers(list);
-      const playerId = list[0]?.id ?? null;
-      const checkins = await getCoachMarkCheckins(user.id, playerId);
-      const lastCheckin = checkins[0];
-      let summaryText: string;
-      let summaryPlayerId: string | undefined = playerId ?? undefined;
-      if (lastCheckin && (lastCheckin.summary || lastCheckin.nextStep)) {
-        summaryText = (lastCheckin.summary || lastCheckin.nextStep).slice(0, 100);
-        summaryPlayerId = lastCheckin.playerId ?? summaryPlayerId;
-      } else {
-        const [notes, plans, calendar, chat] = await Promise.all([
-          getCoachMarkNotes(user.id, playerId),
-          getCoachMarkWeeklyPlans(user.id, playerId),
-          getCoachMarkCalendarItems(user.id, playerId),
-          getCoachMarkMessages(user.id),
-        ]);
-        const hasRecentAI = chat.some(
-          (m) => m.isAI || m.senderId === COACH_MARK_ID
-        );
-        const nudges = computeCoachMarkNudges({
-          notesCount: notes.length,
-          plansCount: plans.length,
-          calendarItemsCount: calendar.length,
-          playerId,
-          hasRecentAIMessages: hasRecentAI,
-        });
-        const firstNudge = nudges[0];
-        if (firstNudge) {
-          summaryText = firstNudge.description;
-          summaryPlayerId = firstNudge.playerId ?? summaryPlayerId;
-        } else {
-          summaryText = "Спросите Coach Mark — заходите раз в неделю за советом";
-        }
-      }
-      if (mountedRef.current) {
-        setCoachMarkSummary({ text: summaryText, playerId: summaryPlayerId });
+      if (!mountedRef.current) return;
+      setPlayers(list);
+      const firstId = list[0]?.id;
+      if (firstId) {
+        const hero = await getLatestTrainingSummaryForPlayer(firstId);
+        if (mountedRef.current) setLiveTrainingHero(hero);
+      } else if (mountedRef.current) {
+        setLiveTrainingHero(EMPTY_LIVE_TRAINING_HERO);
       }
     } catch {
       if (mountedRef.current) {
         setPlayers([]);
+        setLiveTrainingHero(EMPTY_LIVE_TRAINING_HERO);
         setHomeError("network");
       }
     } finally {
@@ -163,21 +138,6 @@ export default function HomeScreen() {
     triggerHaptic();
     router.push("/player/add");
   }, [router]);
-
-  const handleCoachMarkEmpty = useCallback(() => {
-    triggerHaptic();
-    const q = coachMarkSummary?.playerId
-      ? `?playerId=${encodeURIComponent(coachMarkSummary.playerId)}`
-      : "";
-    router.push(`/chat/${COACH_MARK_ID}${q}` as never);
-  }, [router, coachMarkSummary?.playerId]);
-
-  const handleCoachMarkFilled = useCallback(() => {
-    triggerHaptic();
-    const pid = coachMarkSummary?.playerId ?? players[0]?.id;
-    const q = pid ? `?playerId=${encodeURIComponent(pid)}` : "";
-    router.push(`/chat/${COACH_MARK_ID}${q}` as never);
-  }, [router, coachMarkSummary?.playerId, players]);
 
   const heroPlayer = useMemo(
     () => (players[0] ? buildPlayerDisplay(players[0]) : null),
@@ -218,16 +178,12 @@ export default function HomeScreen() {
               subtitle="Добавьте игрока, чтобы видеть профиль и статистику"
               style={styles.emptyStateWrap}
             />
-            <View style={styles.emptyCoachMarkWrap}>
-              <ActionLinkCard
-                icon="sparkles"
-                title="Coach Mark"
-                description={
-                  coachMarkSummary?.text ||
-                  "Персональный AI-тренер: советы, планы и рекомендации"
-                }
-                onPress={handleCoachMarkEmpty}
-                variant="accent"
+            <View style={styles.arenaTrainingBlockWrap}>
+              <ParentLiveTrainingHeroBlock
+                summary={EMPTY_LIVE_TRAINING_HERO.summary}
+                guidance={EMPTY_LIVE_TRAINING_HERO.guidance}
+                fallbackLine={EMPTY_LIVE_TRAINING_HERO.fallbackLine}
+                provenanceLine={EMPTY_LIVE_TRAINING_HERO.provenanceLine}
               />
             </View>
             <PrimaryButton
@@ -282,18 +238,16 @@ export default function HomeScreen() {
             />
           </Animated.View>
 
-          {/* Coach Mark */}
+          {/* Arena: сводка по тренировке (всегда видимый блок) */}
           <Animated.View entering={screenReveal(STAGGER * 2.5)}>
-            <ActionLinkCard
-              icon="sparkles"
-              title="Coach Mark"
-              description={
-                coachMarkSummary?.text ||
-                "Персональный AI-тренер: планы, подсказки и поддержка для семьи хоккеиста"
-              }
-              onPress={handleCoachMarkFilled}
-              variant="accent"
-            />
+            <View style={styles.arenaTrainingBlockWrap}>
+              <ParentLiveTrainingHeroBlock
+                summary={liveTrainingHero.summary}
+                guidance={liveTrainingHero.guidance}
+                fallbackLine={liveTrainingHero.fallbackLine}
+                provenanceLine={liveTrainingHero.provenanceLine}
+              />
+            </View>
           </Animated.View>
 
           {/* Development */}
@@ -360,7 +314,7 @@ const styles = StyleSheet.create({
   emptyStateWrap: {
     marginBottom: spacing.lg,
   },
-  emptyCoachMarkWrap: {
+  arenaTrainingBlockWrap: {
     width: "100%",
     marginBottom: spacing.lg,
   },

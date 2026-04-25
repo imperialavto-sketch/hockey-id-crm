@@ -178,7 +178,7 @@ export default function SubscriptionScreen() {
         <ActionLinkCard
           icon="star"
           title="Membership — полный комплект"
-          description="Coach Mark как тренер, AI Report, план развития и скидки на тренеров"
+          description="Арена как тренер, AI Report, план развития и скидки на тренеров"
           onPress={() => {
             triggerHaptic();
             router.push("/subscription/membership");

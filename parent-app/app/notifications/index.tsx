@@ -13,14 +13,25 @@ import { screenReveal, STAGGER } from "@/lib/animations";
 import { triggerHaptic } from "@/lib/haptics";
 import { colors, spacing, typography, radius } from "@/constants/theme";
 import type { AppNotificationItem, AppNotificationType } from "@/types/notification";
+import {
+  navigateFromAppNotificationItem,
+  type ParentNotificationRouter,
+} from "@/lib/parentNotificationNavigation";
 
 const PRESSED_OPACITY = 0.88;
 
 const TYPE_ICONS: Record<AppNotificationType, keyof typeof Ionicons.glyphMap> = {
   chat_message: "chatbubble-outline",
+  parent_chat_message: "chatbubbles-outline",
+  parent_peer_message: "people-outline",
+  team_parent_channel_message: "people-circle-outline",
+  team_announcement: "megaphone-outline",
+  coach_mark_post_training: "sparkles-outline",
   schedule_update: "calendar-outline",
   ai_analysis_ready: "sparkles-outline",
   achievement_unlocked: "trophy-outline",
+  training_report_published: "document-text-outline",
+  player_progress_update: "trending-up-outline",
   general: "notifications-outline",
 };
 
@@ -38,29 +49,6 @@ function formatTime(iso: string): string {
   if (diffDays === 1) return "Вчера";
   if (diffDays < 7) return `${diffDays} дн`;
   return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-}
-
-function navigateFromNotification(
-  router: ReturnType<typeof useRouter>,
-  item: AppNotificationItem
-) {
-  const { type, data } = item;
-  switch (type) {
-    case "chat_message":
-      if (data?.conversationId) router.push(`/chat/${data.conversationId}`);
-      break;
-    case "schedule_update":
-      router.push("/(tabs)/schedule");
-      break;
-    case "ai_analysis_ready":
-    case "achievement_unlocked":
-      if (data?.playerId) router.push(`/player/${data.playerId}`);
-      else router.push("/(tabs)");
-      break;
-    default:
-      router.push("/(tabs)");
-      break;
-  }
 }
 
 const NotificationsSkeleton = memo(function NotificationsSkeleton() {
@@ -162,7 +150,7 @@ export default function NotificationsScreen() {
           prev.map((n) => (n.id === item.id ? { ...n, isRead: true } : n))
         );
       }
-      navigateFromNotification(router, item);
+      navigateFromAppNotificationItem(router as ParentNotificationRouter, item);
     },
     [router, user?.id]
   );

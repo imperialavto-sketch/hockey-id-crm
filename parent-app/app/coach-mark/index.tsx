@@ -51,7 +51,7 @@ import {
   getCoachMarkMessages,
   generateWeeklyCheckinWithCoachMark,
 } from "@/services/chatService";
-import { getPlayerContextForCoachMark } from "@/services/playerService";
+import { getPlayerContextForArena } from "@/services/playerService";
 import { FlagshipScreen } from "@/components/layout/FlagshipScreen";
 import { ErrorStateView, SkeletonBlock } from "@/components/ui";
 import { useSubscription } from "@/context/SubscriptionContext";
@@ -202,7 +202,7 @@ export default function CoachMarkHubScreen() {
     if (calendarItems.length === 0) {
       Alert.alert(
         "Нет событий",
-        "Сначала составьте недельный план в чате с Coach Mark и сохраните его в календарь."
+        "Сначала составьте недельный план в чате с Ареной и сохраните его в календарь."
       );
       return;
     }
@@ -214,7 +214,7 @@ export default function CoachMarkHubScreen() {
     try {
       const available = await Sharing.isAvailableAsync();
       if (available) {
-        const filename = `coach-mark-plan-${Date.now()}.ics`;
+        const filename = `arena-week-plan-${Date.now()}.ics`;
         const uri = `${FileSystem.cacheDirectory}${filename}`;
         await FileSystem.writeAsStringAsync(uri, icsContent, {
           encoding: FileSystem.EncodingType.UTF8,
@@ -232,7 +232,7 @@ export default function CoachMarkHubScreen() {
     try {
       await Share.share({
         message: shareText,
-        title: "Coach Mark — План недели",
+        title: "Арена — план недели",
       });
     } catch {
       Alert.alert("Не получилось", "Не удалось открыть меню экспорта.");
@@ -269,7 +269,7 @@ export default function CoachMarkHubScreen() {
       ]);
       const memories = mem.map((m) => ({ key: m.key, value: m.value }));
       const playerContext = playerId
-        ? await getPlayerContextForCoachMark(playerId, user.id)
+        ? await getPlayerContextForArena(playerId, user.id)
         : null;
       const { savedCheckin } = await generateWeeklyCheckinWithCoachMark(
         user.id,
@@ -297,14 +297,14 @@ export default function CoachMarkHubScreen() {
           <View style={styles.heroIconWrap}>
             <Ionicons name="sparkles" size={32} color={colors.accent} />
           </View>
-          <Text style={styles.heroTitle}>Coach Mark</Text>
-          <Text style={styles.heroSub}>Персональный AI-тренер для развития игрока</Text>
+          <Text style={styles.heroTitle}>Арена</Text>
+          <Text style={styles.heroSub}>AI-компаньон Арена — советы по развитию игрока</Text>
         </Animated.View>
         <Animated.View entering={screenReveal(STAGGER)} style={styles.centered}>
           <ErrorStateView
             variant="notFound"
             title="Требуется вход"
-            subtitle="Авторизуйтесь, чтобы общаться с Coach Mark"
+            subtitle="Авторизуйтесь, чтобы общаться с Ареной"
             actionLabel="Войти"
             onAction={() => router.replace("/(auth)/login")}
             style={styles.errorWrap}
@@ -324,7 +324,7 @@ export default function CoachMarkHubScreen() {
           <SkeletonBlock height={120} style={styles.hubSkeletonCard} />
           <SkeletonBlock height={160} style={styles.hubSkeletonCard} />
           <SkeletonBlock height={80} style={styles.hubSkeletonCard} />
-          <Text style={styles.hubSkeletonText}>Подготовка Coach Mark…</Text>
+          <Text style={styles.hubSkeletonText}>Подготовка Арены…</Text>
         </View>
       </FlagshipScreen>
     );
@@ -337,7 +337,7 @@ export default function CoachMarkHubScreen() {
           <View style={styles.heroIconWrap}>
             <Ionicons name="sparkles" size={32} color={colors.accent} />
           </View>
-          <Text style={styles.heroTitle}>Coach Mark</Text>
+          <Text style={styles.heroTitle}>Арена</Text>
         </Animated.View>
         <ErrorStateView
           variant="network"
@@ -377,9 +377,9 @@ export default function CoachMarkHubScreen() {
               <View style={styles.heroIconWrap}>
                 <Ionicons name="sparkles" size={32} color={colors.accent} />
               </View>
-              <Text style={styles.heroTitle}>Coach Mark</Text>
+              <Text style={styles.heroTitle}>Арена</Text>
               <Text style={styles.heroSub}>
-                Ваш персональный AI-тренер. Советы под вашего игрока, планы на неделю, рекомендации. С Premium — еженедельные отчёты и фокус на прогрессе.
+                AI-компаньон Арена: советы под вашего игрока, планы на неделю, рекомендации. С Premium — еженедельные отчёты и фокус на прогрессе.
               </Text>
               <View style={styles.quickActionsRow}>
               <Pressable
@@ -414,9 +414,9 @@ export default function CoachMarkHubScreen() {
             <View style={styles.onboardingIconWrap}>
               <Ionicons name="sparkles" size={32} color={colors.accent} />
             </View>
-            <Text style={styles.onboardingTitle}>Coach Mark</Text>
+            <Text style={styles.onboardingTitle}>Арена</Text>
             <Text style={styles.onboardingText}>
-              Ваш персональный AI-тренер. Задайте вопрос, получите совет и план на неделю. С Premium — еженедельные отчёты и следующий шаг под вашего игрока.
+              AI-компаньон Арена: задайте вопрос, получите совет и план на неделю. С Premium — еженедельные отчёты и следующий шаг под вашего игрока.
             </Text>
             <View style={styles.onboardingCtaRow}>
               <Pressable
@@ -457,11 +457,11 @@ export default function CoachMarkHubScreen() {
 
         {/* Nudges — primary */}
         <Animated.View entering={screenReveal(STAGGER)} style={styles.sectionPrimary}>
-          <Text style={styles.sectionTitle}>Что можно спросить у Coach Mark</Text>
+          <Text style={styles.sectionTitle}>Что можно спросить у Арены</Text>
           {nudges.length === 0 ? (
             <View style={[styles.nudgeCard, styles.nudgeAllGoodCard]}>
               <Ionicons name="checkmark-circle" size={24} color={colors.success} />
-              <Text style={styles.nudgeAllGood}>Всё под контролем. Загляните на этой неделе — Coach Mark обновит рекомендации</Text>
+              <Text style={styles.nudgeAllGood}>Всё под контролем. Загляните на этой неделе — Арена обновит рекомендации</Text>
             </View>
           ) : (
             nudges.map((nudge) => (
@@ -492,7 +492,7 @@ export default function CoachMarkHubScreen() {
             <View style={styles.premiumValueIconWrap}>
               <Ionicons name="diamond-outline" size={24} color={colors.accent} />
             </View>
-            <Text style={styles.premiumValueTitle}>Coach Mark как персональный тренер</Text>
+            <Text style={styles.premiumValueTitle}>Арена как персональный тренер</Text>
             <Text style={styles.premiumValueText}>
               Сейчас: планы на неделю, советы, экспорт в календарь. С Premium —
               еженедельные отчёты, фокус на прогрессе и следующий шаг под вашего игрока.
@@ -507,7 +507,7 @@ export default function CoachMarkHubScreen() {
                 router.push("/subscription");
               }}
             >
-              <Text style={styles.premiumValueCtaText}>Получить больше от Coach Mark</Text>
+              <Text style={styles.premiumValueCtaText}>Получить больше от Арены</Text>
               <Ionicons name="chevron-forward" size={18} color={colors.onAccent} />
             </Pressable>
           </View>
@@ -551,7 +551,7 @@ export default function CoachMarkHubScreen() {
             ) : (
               <EmptySection
                 icon="checkmark-done-outline"
-                title="Делайте проверку раз в неделю — Coach Mark подскажет следующий шаг и что делать дальше"
+                title="Делайте проверку раз в неделю — Арена подскажет следующий шаг и что делать дальше"
                 onAction={handleGenerateCheckin}
                 actionLabel="Сделать проверку на эту неделю"
               />
@@ -576,7 +576,7 @@ export default function CoachMarkHubScreen() {
 
         {/* Recommended Trainers — secondary */}
         <Animated.View entering={screenReveal(STAGGER * 3)} style={styles.sectionSecondary}>
-          <Text style={styles.sectionTitleSecondary}>Подбор тренеров от Coach Mark</Text>
+          <Text style={styles.sectionTitleSecondary}>Подбор тренеров от Арены</Text>
           {recommendedCoaches.length === 0 ? (
             <EmptySection
               icon="person-outline"
@@ -626,7 +626,7 @@ export default function CoachMarkHubScreen() {
         {/* Memory — secondary */}
         <Animated.View entering={screenReveal(STAGGER * 4)} style={styles.sectionSecondary}>
           <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionTitleSecondary}>Память Coach Mark о вашем игроке</Text>
+            <Text style={styles.sectionTitleSecondary}>Память Арены о вашем игроке</Text>
             {memories.length > 0 && (
               <View style={styles.memoryCountBadge}>
                 <Text style={styles.memoryCountText}>{memories.length}</Text>
@@ -636,7 +636,7 @@ export default function CoachMarkHubScreen() {
           {memories.length === 0 ? (
             <EmptySection
               icon="bulb-outline"
-              title="Coach Mark пока ничего не запомнил. Долгое нажатие на ответ в чате — сохранить для следующих разговоров."
+              title="Арена пока ничего не запомнила. Долгое нажатие на ответ в чате — сохранить для следующих разговоров."
               onAction={goToChat}
               actionLabel="Открыть чат"
             />
@@ -661,7 +661,7 @@ export default function CoachMarkHubScreen() {
                     triggerHaptic();
                     Alert.alert(
                       "Удалить из памяти?",
-                      "Coach Mark перестанет учитывать этот факт в разговорах.",
+                      "Арена перестанет учитывать этот факт в разговорах.",
                       [
                         { text: "Отмена", style: "cancel" },
                         {

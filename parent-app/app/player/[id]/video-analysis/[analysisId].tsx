@@ -45,13 +45,13 @@ export default function VideoAnalysisDetailsScreen() {
     if (!analysisId) return;
     setLoading(true);
     try {
-      const details = await getVideoAnalysisById(analysisId, user?.id);
+      const details = await getVideoAnalysisById(analysisId, user?.id, id);
       setRequest(details.request);
       setResult(details.result);
     } finally {
       setLoading(false);
     }
-  }, [analysisId, user?.id]);
+  }, [analysisId, user?.id, id]);
 
   useEffect(() => {
     load();
@@ -60,7 +60,7 @@ export default function VideoAnalysisDetailsScreen() {
   const onRetry = async () => {
     if (!analysisId) return;
     triggerHaptic();
-    await retryVideoAnalysis(analysisId, user?.id);
+    await retryVideoAnalysis(analysisId, user?.id, id);
     load();
   };
 
