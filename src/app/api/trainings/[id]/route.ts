@@ -15,7 +15,9 @@ import {
   toCoachTrainingSessionDto,
 } from "@/lib/coach-training-session-dto";
 import type { TrainingSessionDetailRow } from "@/lib/coach-training-session-dto";
+import { TRAINING_SESSION_NOT_FOUND_CODE } from "@/lib/trainings/training-session-errors";
 
+/** Canonical schedule slot detail: only `TrainingSession`. Legacy `Training` uses `/api/legacy/trainings/*`. */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -30,39 +32,29 @@ export async function GET(
       include: sessionDetailInclude,
     });
 
-    if (session) {
-      if (
-        !canUserAccessSessionTeam(user!, {
-          teamId: session.teamId,
-          team: { schoolId: session.team.schoolId },
-        })
-      ) {
-        return NextResponse.json({ error: "Нет доступа" }, { status: 403 });
-      }
+    if (!session) {
       return NextResponse.json(
-        toCoachTrainingSessionDto(
-          detailRowToWeekRow(session as TrainingSessionDetailRow)
-        )
+        {
+          error: "training_session_not_found",
+          code: TRAINING_SESSION_NOT_FOUND_CODE,
+          message:
+            "Слот расписания (TrainingSession) не найден. Legacy-модель Training не отдаётся по этому URL — используйте семейство /api/legacy/trainings/*.",
+        },
+        { status: 404 }
       );
     }
 
-    const training = await prisma.training.findUnique({
-      where: { id },
-      include: {
-        team: { include: { coach: true } },
-        attendances: { include: { player: true } },
-      },
-    });
-
-    if (!training) {
-      return NextResponse.json({ error: "Тренировка не найдена" }, { status: 404 });
+    if (
+      !canUserAccessSessionTeam(user!, {
+        teamId: session.teamId,
+        team: { schoolId: session.team.schoolId },
+      })
+    ) {
+      return NextResponse.json({ error: "Нет доступа" }, { status: 403 });
     }
-
-    if (!canAccessTraining(user!, { ...training, team: training.team ?? undefined })) {
-      return NextResponse.json({ error: "Нет доступа к тренировке" }, { status: 403 });
-    }
-
-    return NextResponse.json(training);
+    return NextResponse.json(
+      toCoachTrainingSessionDto(detailRowToWeekRow(session as TrainingSessionDetailRow))
+    );
   } catch (error) {
     console.error("GET /api/trainings/[id] failed:", error);
     return NextResponse.json(

@@ -18,6 +18,32 @@ const SESSION_STATUSES = ["present", "absent"] as const;
 
 const LEGACY_STATUSES = ["PRESENT", "ABSENT", "LATE", "EXCUSED"] as const;
 
+const CANONICAL_ATTENDANCE_LEGACY_FALLBACK_REASON =
+  "training_session_not_found_canonical_attendance_fallback" as const;
+
+/** Telemetry only: canonical attendance POST fell through to legacy `Training` / `Attendance`. No PII. */
+function logCanonicalAttendanceLegacyFallback(entry: {
+  route: string;
+  trainingId: string;
+  method: string;
+  userId: string | null;
+  schoolId: string | null;
+  role: string;
+  teamId: string | null | undefined;
+}) {
+  console.warn(
+    JSON.stringify({
+      route: entry.route,
+      trainingId: entry.trainingId,
+      method: entry.method,
+      userId: entry.userId,
+      schoolId: entry.schoolId,
+      scope: { role: entry.role, teamId: entry.teamId ?? null },
+      reason: CANONICAL_ATTENDANCE_LEGACY_FALLBACK_REASON,
+    })
+  );
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -164,6 +190,16 @@ export async function POST(
 
       return NextResponse.json(row);
     }
+
+    logCanonicalAttendanceLegacyFallback({
+      route: "POST /api/trainings/[id]/attendance",
+      trainingId,
+      method: "POST",
+      userId: user?.id ?? null,
+      schoolId: user?.schoolId ?? null,
+      role: user?.role ?? "unknown",
+      teamId: user?.teamId,
+    });
 
     /* Legacy Training + Attendance */
     if (!playerId || !status) {
