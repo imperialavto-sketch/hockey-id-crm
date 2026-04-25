@@ -6,7 +6,7 @@
 
 ```bash
 git add .
-git commit -m "Состояние CRM и hockey-server"
+git commit -m "Состояние репозитория (CRM / Next)"
 git remote add origin <URL вашего репозитория>
 git push -u origin main
 ```
@@ -15,9 +15,7 @@ git push -u origin main
 
 ## База данных (PostgreSQL)
 
-У проекта две схемы БД:
-- **Корневой Prisma** (`prisma/schema.prisma`) — CRM Next.js
-- **hockey-server** (`hockey-server/prisma/schema.prisma`) — отдельный сервер (если используется)
+Каноническая схема БД — **корневой Prisma** (`prisma/schema.prisma`) для CRM Next.js. Ранее в репозитории существовал отдельный пакет `hockey-server/` с собственной Prisma; он **удалён** — не ожидайте второй схемы в этом дереве.
 
 ### Быстрый бэкап (одна БД из .env)
 

@@ -1,6 +1,6 @@
 # Production Deploy Checklist (Release Pass)
 
-This guide covers production deployment for the main CRM runtime (`Next.js app`), plus notes for optional legacy `hockey-server`.
+This guide covers production deployment for the main CRM runtime (`Next.js app`). The legacy Express `hockey-server/` tree **is not part of this repository** (removed); do not run or deploy it from this checkout.
 
 ## Deployment Audit
 
@@ -19,8 +19,7 @@ This guide covers production deployment for the main CRM runtime (`Next.js app`)
 - **Primary production backend:** root Next.js app (`src/app/api/*`)
   - Build: `npm run build`
   - Start: `npm run start`
-- **Legacy backend (optional / separate):** `hockey-server/server.js`
-  - Start: `cd hockey-server && npm start`
+- **Legacy Express (`hockey-server`):** not shipped in this repo. A separate out-of-tree Express host (if any) is **ops-owned**; there is no `hockey-server/` directory or `server.js` to start here.
 
 ### Database
 - PostgreSQL required via `DATABASE_URL`
@@ -67,13 +66,8 @@ This guide covers production deployment for the main CRM runtime (`Next.js app`)
 - `DEMO_AUTH_ENABLED`
   - Dev/demo only for `/api/auth/login`; must stay unset/false in production
 
-### Legacy `hockey-server` (if deployed)
-- `PORT`, `HOST`
-- `ALLOWED_ORIGINS` (strongly recommended in prod)
-- `DEV_AUTH` (**must be unset/false in prod**)
-- `SMSC_LOGIN`, `SMSC_PASSWORD`, `SMSC_SENDER`
-- `SMS_PROVIDER`, `SMS_API_KEY`, `SMS_SENDER`
-- `OPENAI_API_KEY`
+### Legacy Express stack (out of tree only)
+If you still operate an **external** legacy Express process (not this repo), document its env in your ops runbook. There is no in-repo `hockey-server` to configure here.
 
 ### Mobile/public env (runtime-impacting for apps)
 - `EXPO_PUBLIC_API_URL`
@@ -99,11 +93,8 @@ This guide covers production deployment for the main CRM runtime (`Next.js app`)
    - `coach-app/.env.example`, `parent-app/.env.example` use localhost defaults.
    - Ensure release env overrides with production API URL.
 
-4. **Dev auth bypass in legacy server**
-   - `hockey-server/server.js` now enables dev auth only when both conditions are true:
-     - `NODE_ENV !== production`
-     - `DEV_AUTH=true`
-   - In production, `DEV_AUTH` bypass paths stay disabled.
+4. **Dev auth bypass in legacy server (historical)**
+   - The former in-tree Express `hockey-server` has been **removed** from the repository. Do not rely on or deploy that path; keep `DEV_AUTH` unset in production for any custom legacy host you may run **outside** this tree.
 
 5. **Watcher/EMFILE dev assumption**
    - Local dev may hit file watcher limits; not a direct prod blocker but impacts release verification reliability.
@@ -165,4 +156,4 @@ BASE_URL=http://localhost:3000 npx tsx scripts/crm-e2e-sanity.ts
 - Set `NODE_ENV=production`.
 - Configure external PostgreSQL and `DATABASE_URL`.
 - Ensure Stripe/OpenAI keys are present only if those features are enabled.
-- If legacy `hockey-server` is deployed, isolate its env and explicitly disable `DEV_AUTH`.
+- Do not add a second service from a non-existent `hockey-server/` path in this repo; any extra Node host is outside this project’s default deploy story.

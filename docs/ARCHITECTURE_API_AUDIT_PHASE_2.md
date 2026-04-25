@@ -73,7 +73,7 @@
 
 | Family | Clients |
 |--------|---------|
-| **`POST /api/coach/sessions/start`**, **`GET .../active`**, **`POST .../sync`**, **`.../[sessionId]/observations`**, **`.../review`** | `coach-app/services/coachSessionLiveService.ts`; `coach-app/services/coachSessionSyncService.ts`; **`coach-app/app/dev/coach-input.tsx`** (sync); **`coach-app/lib/resumeSessionHelpers.ts`** falls back to `getActiveCoachSession` |
+| **`POST /api/coach/sessions/start`**, **`GET .../active`**, **`POST .../sync`**, **`.../[sessionId]/observations`**, **`.../review`** | `coach-app/services/coachSessionLiveService.ts`; `coach-app/services/coachSessionSyncService.ts`; **`coach-app/app/coach-input.tsx`** (sync); **`coach-app/lib/resumeSessionHelpers.ts`** falls back to `getActiveCoachSession` |
 
 ### Server-only / CRM-adjacent live links
 
@@ -154,7 +154,7 @@
 | **`POST /api/auth/login`** | Coach CRM user (phone + password + intent) | `coach-app/services/authService.ts`; `coach-app/context/AuthContext.tsx` |
 | **`POST /api/auth/request-code`**, **`POST /api/auth/verify-code`** | Parent OTP | `parent-app/services/authService.ts` |
 | **`POST /api/parent/mobile/auth/logout`** | Parent logout | `parent-app/services/authService.ts` |
-| **`POST /api/parent/mobile/auth/request-code`**, **`verify`** | Documented in `hockey-server/server.js` and various **docs**; **current `parent-app/services/authService.ts` uses `/api/auth/*`**, not `parent/mobile/auth/*` for login. **UNCERTAIN:** other deploys or older builds may still call `parent/mobile/auth/*`. |
+| **`POST /api/parent/mobile/auth/request-code`**, **`verify`** | Historically mentioned alongside old Express stacks in **docs**; **current `parent-app/services/authService.ts` uses `/api/auth/*`**, not `parent/mobile/auth/*` for login. **UNCERTAIN:** other deploys or older builds may still call `parent/mobile/auth/*`. |
 
 CRM session: cookie / Bearer via `getAuthFromRequest` on dashboard fetches (`credentials: "include"`).
 
@@ -227,7 +227,7 @@ CRM session: cookie / Bearer via `getAuthFromRequest` on dashboard fetches (`cre
 ## OPEN QUESTIONS FOR PHASE 3
 
 1. Is **`GET /api/attendance`** used by any **external** tool, admin bookmark, or **non-repo** client?
-2. Does **`GET /api/parent/mobile/schedule`** serve **Expo web**, **old app builds**, or **hockey-server** proxies?
+2. Does **`GET /api/parent/mobile/schedule`** serve **Expo web**, **old app builds**, or an **external** legacy host (no longer in-tree)?
 3. Production **telemetry** split: **`live-training`** vs **`coach/sessions`** session starts.
 4. Any **CRM navigation** still linking to a **messages** page that called **`/api/messages`** (removed UI?) — grep **navigation** config.
 5. Full **`src/app/api/**`** route list vs grep pass: **UNCERTAIN** completeness for rarely used admin routes.

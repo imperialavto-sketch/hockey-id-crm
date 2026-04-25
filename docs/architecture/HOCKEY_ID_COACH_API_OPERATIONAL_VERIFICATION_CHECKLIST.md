@@ -1,7 +1,9 @@
 # Hockey ID Coach API Operational Verification Checklist
 
+**Repository note (2026-04):** The `hockey-server/` tree was **removed** from this repository. This runbook is for **comparing what actually answers HTTP** in a given environment (root **Next** vs any **external** legacy Express). You **cannot** start `hockey-server/server.js` from this checkout.
+
 **Phase:** 4B — **runbook only** (no code, schema, or route changes).  
-**Purpose:** Manual steps to learn **which backend** serves **`/api/coach/*`** for coach-app and whether **Next** vs **`hockey-server`** overlap is safe to retire later.
+**Purpose:** Manual steps to learn **which backend** serves **`/api/coach/*`** for coach-app and whether **Next** vs a **separate** legacy Express host overlap is safe to retire later.
 
 **Prerequisite:** [`HOCKEY_ID_COACH_API_DEPLOYMENT_AUDIT.md`](./HOCKEY_ID_COACH_API_DEPLOYMENT_AUDIT.md) (Phase 4A).
 
@@ -14,7 +16,7 @@
 Prove, per **environment**:
 
 1. **Which host** the coach mobile app calls (`EXPO_PUBLIC_API_URL` or equivalent build config).
-2. For **overlapping** **`/api/coach/*`** paths, whether the responding process is **Next** (this repo’s `src/app/api/coach`) or **`hockey-server`** (Express in `hockey-server/server.js`), or **split**.
+2. For **overlapping** **`/api/coach/*`** paths, whether the responding process is **Next** (this repo’s `src/app/api/coach`) or a **legacy Express** process running **outside** this tree (historically mirrored some paths), or **split**.
 3. Whether **frozen parallel** **`CoachSession`** HTTP surfaces (`sessions/*`, `observations`) still see **non-zero traffic**.
 4. Whether **high-value reads** (**actions**, **reports**, **parent-drafts**, **messages**) return **Next-shaped** JSON (post–Phase 3F–3L / Prisma chat) vs **Express-shaped** JSON (observation aggregates, mock inbox, `TrainingSession` session start).
 
@@ -26,8 +28,8 @@ Prove, per **environment**:
 
 | Step | Inspect | Record | If unavailable |
 |------|---------|--------|----------------|
-| L1 | Developer machine **`coach-app/.env`** (or Expo env) **`EXPO_PUBLIC_API_URL`** | Full URL (scheme + host + port), e.g. `http://192.168.x.x:3000` or `http://localhost:4000` | Note “unknown”; capture how app is started (`npx expo start` + which `.env`). |
-| L2 | Ports listening | Is **:3000** Next? **:4000** `hockey-server`? Both? | Document “only one stack running” vs “both running — mobile must match intended target.” |
+| L1 | Developer machine **`coach-app/.env`** (or Expo env) **`EXPO_PUBLIC_API_URL`** | Full URL (scheme + host + port), e.g. `http://192.168.x.x:3000` or `http://localhost:4000` (second case = **separate** local API, not a path in this repo) | Note “unknown”; capture how app is started (`npx expo start` + which `.env`). |
+| L2 | Ports listening | Is **:3000** Next? **:4000** a **separate** legacy Express (only if you run one **outside** this repo)? Both? | Document “only one stack running” vs “both running — mobile must match intended target.” |
 | L3 | Auth | How Bearer is obtained (login against same **`API_BASE_URL`**) | Same token must be used for route checks below. |
 
 ### Staging

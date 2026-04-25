@@ -20,9 +20,9 @@
 | **Production** | If **`EXPO_PUBLIC_ENV=production`**, missing **`EXPO_PUBLIC_API_URL`** throws at module load (**required** for prod builds). |
 | **Request shape** | `coach-app/lib/api.ts` → `${API_BASE_URL}${path}` for paths like **`/api/coach/...`** (single origin for all coach APIs, auth, trainings, live-training, etc.). |
 | **Other coach-related env** | **`EXPO_PUBLIC_COACH_ANALYTICS_URL`** — optional absolute or path; default empty in `liveTrainingTelemetry.ts`. Commented example: **`/api/coach/analytics/events`** — **no** matching route under `src/app/api/coach/**` found in repo (telemetry URL is **config-only** until implemented). |
-| **`.env.example`** | Documents **`EXPO_PUBLIC_API_URL=http://localhost:3000`** and comments that **`http://localhost:4000`** may be used when Next lacks certain training routes — **explicit acknowledgment** that another host (typical **Express** port) can be targeted. |
+| **`.env.example`** | Documents **`EXPO_PUBLIC_API_URL=http://localhost:3000`**. Old comments about targeting another port (e.g. **`:4000`**) refer to a **separate** API host, not an in-repo path — the former **`hockey-server/`** package is **removed** from this tree. |
 
-**Per-environment reality:** **Not in repo.** EAS/Expo **production** env for **`EXPO_PUBLIC_API_URL`** (Render URL vs custom API vs `hockey-server` host) is **deployment-specific**.
+**Per-environment reality:** **Not in repo.** EAS/Expo **production** env for **`EXPO_PUBLIC_API_URL`** (Render URL vs custom API vs any **external** legacy host) is **deployment-specific**.
 
 ### CRM web (Next dashboard)
 
@@ -35,7 +35,7 @@
 
 | Source | Detail |
 |--------|--------|
-| **`docs/RENDER_DEPLOY.md`** | Primary backend: **root Next** **`src/app/api/*`**. **`hockey-server`**: **optional, separate service** only if explicitly needed. |
+| **`docs/RENDER_DEPLOY.md`** | Primary backend: **root Next** **`src/app/api/*`**. Legacy **`hockey-server`** is **not** in this repository (removed). |
 | **Root `.env.example`** | **`DATABASE_URL`**, auth, Stripe, etc. — **no** variable that points coach-app at a host (coach-app is separate Expo env). |
 
 **Uncertainty:** Reverse proxy path prefixes (e.g. `/api` → Next vs Express), CDN, and **multi-service** routing are **not** defined in application source code.
@@ -128,8 +128,8 @@ Paths are relative to **`API_BASE_URL`** (`EXPO_PUBLIC_API_URL`).
 The following **cannot** be proven from the repository alone:
 
 1. **Which process** serves **`https://<prod-host>/api/coach/actions`** (Next vs Express vs worker).
-2. **Request counts** per path on each stack (access logs, APM, `hockey-server` console).
-3. **Whether `hockey-server` is deployed** next to Next for the same hostname or only on legacy ports (e.g. `:4000`).
+2. **Request counts** per path on each stack (access logs, APM, or legacy **Express** host logs if one exists **outside** this repo).
+3. **Whether any externally hosted legacy Express** process still runs next to Next (same hostname or e.g. legacy `:4000`); the in-tree `hockey-server/` copy is **gone**.
 4. **Auth identity mapping** — Next **`requireCrmRole`** / Bearer vs Express **`getCoachIdOr401`** — whether **`coachId`** means the same principal as CRM **`User.id`**.
 5. **Database identity** — both may share **`DATABASE_URL`** in some setups or use different DBs; schema overlap is **not** deployment proof.
 6. **Staging vs prod** — different routing per environment.

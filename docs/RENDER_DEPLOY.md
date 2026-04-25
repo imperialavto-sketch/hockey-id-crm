@@ -8,7 +8,7 @@ This is the canonical first deployment flow for the main `Next.js` CRM backend o
 - **Repo root directory:** repository root (`.`)
 - **Runtime:** Node 20+
 - **Primary backend:** root Next.js app (`src/app/api/*`)
-- **Legacy `hockey-server`:** optional, separate service only if explicitly needed
+- **Legacy `hockey-server`:** **removed from this repository** — do not add a second Render service from a non-existent `hockey-server/` directory here; any historical Express host is outside this tree.
 
 ## 2) Required Render Settings
 
