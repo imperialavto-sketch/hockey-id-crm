@@ -1,3 +1,8 @@
+/**
+ * Structured session capture (observations, sync) — supporting coach tool.
+ * Not Arena live agent; canonical Arena live flow is `live-training/*` + `(tabs)/arena`.
+ * Route: `/coach-input` (replaces legacy `/dev/coach-input` path only).
+ */
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   StyleSheet,
@@ -1693,7 +1698,7 @@ export default function CoachInputScreen() {
     const enriched = await enrichVoiceStarterWithAi(payload);
     const id = await saveVoiceStarterPayload(enriched);
     setVoiceSeriesFinish(null);
-    router.replace(`/dev/coach-input?voiceStarterId=${encodeURIComponent(id)}`);
+    router.replace(`/coach-input?voiceStarterId=${encodeURIComponent(id)}`);
   }, [router, voiceSeriesFinish]);
 
   useEffect(() => {
