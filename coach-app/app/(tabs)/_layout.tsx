@@ -99,6 +99,12 @@ export default function TabLayout() {
           ),
         }}
       />
+      {/* Файловые маршруты без href попадали бы в tab bar автоматически (expo-router useScreens). href: null скрывает пункт, навигация router.push остаётся. */}
+      <Tabs.Screen name="home" options={{ href: null }} />
+      <Tabs.Screen name="arena" options={{ href: null }} />
+      <Tabs.Screen name="teams" options={{ href: null }} />
+      <Tabs.Screen name="profile" options={{ href: null }} />
+      <Tabs.Screen name="schedule" options={{ href: null }} />
     </Tabs>
   );
 }

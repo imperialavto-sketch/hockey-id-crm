@@ -11,6 +11,7 @@ import { SectionCard } from '@/components/ui/SectionCard';
 import { HeroTitle } from '@/components/ui/HeroTitle';
 import { useAuth } from '@/context/AuthContext';
 import { theme } from '@/constants/theme';
+import { LIVE_TRAINING_START_ROUTE } from '@/services/liveTrainingService';
 
 const MENU_ITEMS: Array<{
   label: string;
@@ -34,7 +35,18 @@ const MENU_ITEMS: Array<{
     material: 'event',
     route: '/marketplace-availability',
   },
-  { label: 'Запись сессии', ios: 'plus.circle.fill', material: 'add-circle', route: '/dev/coach-input' },
+  {
+    label: 'Живая тренировка (Arena)',
+    ios: 'figure.run',
+    material: 'fitness-center',
+    route: LIVE_TRAINING_START_ROUTE,
+  },
+  {
+    label: 'Локальная запись (legacy)',
+    ios: 'doc.text',
+    material: 'description',
+    route: '/coach-input',
+  },
   { label: 'Голосовая заметка', ios: 'mic.fill', material: 'mic', route: '/voice-note' },
   { label: 'Мои материалы', ios: 'tray.full.fill', material: 'inventory-2', route: '/created' },
   { label: 'Настройки', ios: 'gearshape.fill', material: 'settings', route: '/unavailable', module: 'settings' },

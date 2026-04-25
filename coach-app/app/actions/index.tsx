@@ -21,6 +21,7 @@ import { isEndpointUnavailable, clearEndpointUnavailable, COACH_ENDPOINTS } from
 import { isAuthRequiredError } from "@/lib/coachAuth";
 import { coachHapticSelection } from "@/lib/coachHaptics";
 import { theme } from "@/constants/theme";
+import { LIVE_TRAINING_START_ROUTE } from "@/services/liveTrainingService";
 
 function tasksCountRu(n: number): string {
   const m10 = n % 10;
@@ -486,9 +487,11 @@ export default function ActionsScreen() {
               />
               <PrimaryButton
                 animatedPress
-                title="Тренировка"
+                title="Живая тренировка"
                 variant="outline"
-                onPress={() => router.push("/dev/coach-input")}
+                onPress={() =>
+                  router.push(LIVE_TRAINING_START_ROUTE as Parameters<typeof router.push>[0])
+                }
                 style={styles.quickBtn}
               />
             </View>

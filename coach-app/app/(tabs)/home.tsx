@@ -26,6 +26,8 @@ import { isAuthRequiredError } from '@/lib/coachAuth';
 import { theme } from '@/constants/theme';
 import {
   getResumeSessionSummary,
+  COACH_INPUT_ROUTE,
+  isActiveLiveTrainingResumeSource,
   type ResumeSessionSummary,
 } from '@/lib/resumeSessionHelpers';
 import { resetSessionDraftOnly } from '@/lib/coachInputStorage';
@@ -143,9 +145,12 @@ function buildStatusPrimaryLine(
     return 'Наблюдения подтверждены — завершите отчёт по сессии.';
   }
   if (hub.resume?.source === 'coachInputDraft') {
-    return 'Есть незавершённая классическая запись наблюдений — её можно продолжить отдельно.';
+    return 'Есть незавершённая локальная запись (legacy) — отдельно от Arena live-training.';
   }
-  return 'Активной живой тренировки нет — начните, когда будете на площадке.';
+  if (isActiveLiveTrainingResumeSource(hub.resume?.source)) {
+    return 'В legacy API есть активная сессия — продолжите в локальной записи (coach-input), если нужно.';
+  }
+  return 'Активной живой тренировки нет — начните Arena / live-training, когда будете на площадке.';
 }
 
 function buildStatusSecondaryLine(
@@ -171,7 +176,9 @@ function buildStatusSecondaryLine(
   } else if (live?.status === 'confirmed') {
     parts.push('перейдите к экрану завершения, чтобы закрыть сессию');
   } else if (hub.resume?.source === 'coachInputDraft') {
-    parts.push('классический черновик можно продолжить или сбросить');
+    parts.push('локальный legacy-черновик можно продолжить или сбросить');
+  } else if (isActiveLiveTrainingResumeSource(hub.resume?.source)) {
+    parts.push('открыть coach-input для продолжения legacy-сессии');
   }
   if (messagesNeedsReactionCount > 0) {
     parts.push('в сообщениях ждут ваш ответ');
@@ -371,7 +378,7 @@ export default function DashboardScreen() {
   }, [router, liveTraining]);
 
   const handleClassicCoachInput = useCallback(() => {
-    router.push(LIVE_TRAINING_START_ROUTE as Parameters<typeof router.push>[0]);
+    router.push(COACH_INPUT_ROUTE as Parameters<typeof router.push>[0]);
   }, [router]);
 
   const handleResetSessionDraft = useCallback(() => {
@@ -397,14 +404,16 @@ export default function DashboardScreen() {
     : liveTrainingLoadPending
       ? 'Загружаем состояние живой тренировки…'
       : liveTrainingLoadError
-        ? 'Проверка активной сессии не удалась — нажмите «Повторить» в блоке «Сейчас» или начните тренировку.'
+        ? 'Проверка активной сессии не удалась — нажмите «Повторить» в блоке «Сейчас» или начните live-training.'
         : liveTraining?.status === 'live' ||
             liveTraining?.status === 'review' ||
             liveTraining?.status === 'confirmed'
           ? 'Живая тренировка активна — это основной сценарий. Вернитесь к экрану записи или проверки.'
           : hub.resume?.source === 'coachInputDraft'
             ? COACH_DASHBOARD_COPY.heroSubtitleResume
-            : COACH_DASHBOARD_COPY.heroSubtitleDefault;
+            : isActiveLiveTrainingResumeSource(hub.resume?.source)
+              ? 'Активная legacy-сессия на сервере — при необходимости coach-input; канон — live-training.'
+              : COACH_DASHBOARD_COPY.heroSubtitleDefault;
 
   useFocusEffect(
     useCallback(() => {
@@ -522,7 +531,7 @@ export default function DashboardScreen() {
                         ? 'Перейти к проверке'
                         : liveTraining?.status === 'confirmed'
                           ? 'Завершить отчёт'
-                          : 'Начать тренировку'
+                          : 'Живая тренировка (Arena)'
                   }
                   onPress={handlePrimaryLiveTraining}
                   style={styles.trainingPrimaryCta}
@@ -533,12 +542,20 @@ export default function DashboardScreen() {
               liveTraining?.status !== 'review' &&
               liveTraining?.status !== 'confirmed' ? (
                 <PressableFeedback style={styles.classicResumeLink} onPress={handleClassicCoachInput}>
-                  <Text style={styles.classicResumeLinkText}>Продолжить классическую запись</Text>
+                  <Text style={styles.classicResumeLinkText}>Продолжить локальную запись (legacy)</Text>
+                </PressableFeedback>
+              ) : null}
+              {isActiveLiveTrainingResumeSource(hub.resume?.source) &&
+              liveTraining?.status !== 'live' &&
+              liveTraining?.status !== 'review' &&
+              liveTraining?.status !== 'confirmed' ? (
+                <PressableFeedback style={styles.classicResumeLink} onPress={handleClassicCoachInput}>
+                  <Text style={styles.classicResumeLinkText}>Открыть coach-input (legacy API)</Text>
                 </PressableFeedback>
               ) : null}
               {hub.resume?.source === 'coachInputDraft' ? (
                 <PressableFeedback style={styles.resetLink} onPress={handleResetSessionDraft}>
-                  <Text style={styles.resetLinkText}>Сбросить черновик классической тренировки</Text>
+                  <Text style={styles.resetLinkText}>Сбросить локальный legacy-черновик</Text>
                 </PressableFeedback>
               ) : null}
             </StaggerFadeIn>
@@ -561,7 +578,7 @@ export default function DashboardScreen() {
       </StaggerFadeIn>
 
       <StaggerFadeIn delay={48}>
-        <DashboardSection title="Coach Mark" compact>
+        <DashboardSection title="Арена" compact>
           <CoachMarkProBlock />
           <View style={styles.coachMarkBetweenBlocks} />
           <CoachMarkDigestBlock />

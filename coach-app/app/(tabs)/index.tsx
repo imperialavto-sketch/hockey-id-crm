@@ -30,8 +30,11 @@ import { theme } from '@/constants/theme';
 import {
   getResumeSessionSummary,
   COACH_INPUT_ROUTE,
+  isActiveLiveTrainingResumeSource,
   type ResumeSessionSummary,
 } from '@/lib/resumeSessionHelpers';
+import { getActiveLiveTrainingSession, LIVE_TRAINING_START_ROUTE } from '@/services/liveTrainingService';
+import type { LiveTrainingSession } from '@/types/liveTraining';
 import { resetSessionDraftOnly } from '@/lib/coachInputStorage';
 import { getCreatedReports } from '@/services/createdReportsService';
 import { getCreatedActions } from '@/services/createdActionsService';
@@ -159,26 +162,62 @@ function formatContextDate() {
   return d.toLocaleDateString('ru-RU', { weekday: 'long', month: 'short', day: 'numeric' });
 }
 
-function buildStatusPrimaryLine(hub: HomeHubState): string {
+function buildStatusPrimaryLine(
+  hub: HomeHubState,
+  live: LiveTrainingSession | null,
+  opts?: { liveLoading?: boolean; liveError?: string | null }
+): string {
   if (hub.loading) return COACH_DASHBOARD_COPY.loadingHubStatus;
-  if (hub.resume) {
-    return 'Тренировка продолжается — можно вернуться к наблюдениям.';
+  if (opts?.liveLoading) {
+    return 'Проверяем активную тренировку…';
   }
-  return 'Активной тренировки нет — начните новую, когда будете на площадке.';
+  if (opts?.liveError) {
+    return 'Не удалось проверить активную тренировку';
+  }
+  if (live?.status === 'live') {
+    return 'Живая тренировка активна — вернитесь на экран записи, когда будете на площадке.';
+  }
+  if (live?.status === 'review') {
+    return 'Живая тренировка ждёт проверки наблюдений.';
+  }
+  if (live?.status === 'confirmed') {
+    return 'Наблюдения подтверждены — завершите отчёт по сессии.';
+  }
+  if (hub.resume?.source === 'coachInputDraft') {
+    return 'Есть незавершённая локальная запись (legacy) — отдельно от Arena live-training.';
+  }
+  if (isActiveLiveTrainingResumeSource(hub.resume?.source)) {
+    return 'В legacy API есть активная сессия — coach-input, если нужно продолжить этот контур.';
+  }
+  return 'Активной живой тренировки нет — начните Arena / live-training, когда будете на площадке.';
 }
 
 function buildStatusSecondaryLine(
   hub: HomeHubState,
   messagesNeedsReactionCount = 0,
-  messagesAwaitingReplyCount = 0
+  messagesAwaitingReplyCount = 0,
+  live: LiveTrainingSession | null = null,
+  opts?: { liveLoading?: boolean; liveError?: string | null }
 ): string {
   if (hub.loading) return '';
+  if (opts?.liveLoading) return '';
+  if (opts?.liveError) {
+    return opts.liveError;
+  }
   const parts: string[] = [];
   if (hub.materialsPartial) {
     parts.push('часть материалов не подтянулась');
   }
-  if (hub.resume) {
-    parts.push('черновик тренировки можно продолжить или сбросить');
+  if (live?.status === 'live') {
+    parts.push('таймер и события — на экране живой тренировки');
+  } else if (live?.status === 'review') {
+    parts.push('подтвердите наблюдения, чтобы зафиксировать сессию');
+  } else if (live?.status === 'confirmed') {
+    parts.push('перейдите к экрану завершения, чтобы закрыть сессию');
+  } else if (hub.resume?.source === 'coachInputDraft') {
+    parts.push('локальный legacy-черновик можно продолжить или сбросить');
+  } else if (isActiveLiveTrainingResumeSource(hub.resume?.source)) {
+    parts.push('открыть coach-input для продолжения legacy-сессии');
   }
   if (messagesNeedsReactionCount > 0) {
     parts.push('в сообщениях ждут ваш ответ');
@@ -263,13 +302,16 @@ function buildSpotlightCopy(
   if (hub.resume) {
     return {
       title: 'Сейчас важно',
-      body: 'Сессия не завершена — продолжите тренировку или зафиксируйте итоги, когда будет удобно.',
+      body:
+        hub.resume.source === 'coachInputDraft'
+          ? 'Есть локальный legacy-черновик coach-input — это не канон Arena. Для живой сессии используйте live-training.'
+          : 'Есть активная legacy-сессия на сервере — при необходимости продолжите в coach-input; канон пост-сессии — live-training.',
       emphasized: false,
     };
   }
   return {
     title: 'Сейчас спокойно',
-    body: 'Начните с голосовой заметки или новой тренировки — материалы появятся здесь автоматически.',
+    body: 'Начните с голосовой заметки или живой тренировки Arena (live-training) — материалы появятся в хабе.',
     emphasized: false,
   };
 }
@@ -385,25 +427,45 @@ function HomeSummaryCard({
 
 function HomeQuickActionsGrid({
   resume,
+  live,
+  liveLoadPending,
   onSessionPress,
   hub,
   messagesUnreadTotal,
   messagesNeedsReactionCount,
 }: {
   resume: ResumeSessionSummary | null;
+  live: LiveTrainingSession | null;
+  liveLoadPending: boolean;
   onSessionPress: () => void;
   hub: HomeHubState;
   messagesUnreadTotal: number;
   messagesNeedsReactionCount: number;
 }) {
   const router = useRouter();
+  const liveActive =
+    live?.status === 'live' || live?.status === 'review' || live?.status === 'confirmed';
+  let sessionLabel = 'Живая тренировка (Arena)';
+  if (liveLoadPending) {
+    sessionLabel = 'Проверяем тренировку…';
+  } else if (live?.status === 'live') {
+    sessionLabel = 'Вернуться к тренировке';
+  } else if (live?.status === 'review') {
+    sessionLabel = 'Перейти к проверке';
+  } else if (live?.status === 'confirmed') {
+    sessionLabel = 'Завершить отчёт';
+  } else if (resume?.source === 'coachInputDraft') {
+    sessionLabel = 'Продолжить локальную запись (legacy)';
+  } else if (isActiveLiveTrainingResumeSource(resume?.source)) {
+    sessionLabel = 'Coach-input (legacy API)';
+  }
   const tiles: QuickTile[] = [
     {
       id: 'session',
-      label: resume ? 'Продолжить тренировку' : 'Начать тренировку',
-      route: COACH_INPUT_ROUTE,
+      label: sessionLabel,
+      route: LIVE_TRAINING_START_ROUTE,
       variant: 'primary',
-      badge: !!resume,
+      badge: liveActive || !!resume,
     },
     {
       id: 'messages',
@@ -473,6 +535,9 @@ function HomeQuickActionsGrid({
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const [liveTraining, setLiveTraining] = useState<LiveTrainingSession | null>(null);
+  const [liveTrainingLoadPending, setLiveTrainingLoadPending] = useState(true);
+  const [liveTrainingLoadError, setLiveTrainingLoadError] = useState<string | null>(null);
   const [hub, setHub] = useState<HomeHubState>(INITIAL_HUB);
   const [teams, setTeams] = useState<CoachTeamItem[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(true);
@@ -487,6 +552,35 @@ export default function DashboardScreen() {
   const [messagesAwaitingReplyCount, setMessagesAwaitingReplyCount] = useState(0);
   const [messagesUnreadTotal, setMessagesUnreadTotal] = useState(0);
 
+  const runActiveLiveTrainingFetch = useCallback((isCancelled: () => boolean) => {
+    setLiveTrainingLoadPending(true);
+    setLiveTrainingLoadError(null);
+    getActiveLiveTrainingSession()
+      .then((live) => {
+        if (isCancelled()) return;
+        setLiveTraining(live);
+        setLiveTrainingLoadError(null);
+      })
+      .catch((err) => {
+        if (isCancelled()) return;
+        setLiveTraining(null);
+        setLiveTrainingLoadError(
+          isAuthRequiredError(err)
+            ? 'Требуется авторизация'
+            : err instanceof Error
+              ? err.message
+              : 'Не удалось проверить активную тренировку'
+        );
+      })
+      .finally(() => {
+        if (!isCancelled()) setLiveTrainingLoadPending(false);
+      });
+  }, []);
+
+  const refetchActiveLiveTraining = useCallback(() => {
+    runActiveLiveTrainingFetch(() => false);
+  }, [runActiveLiveTrainingFetch]);
+
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
@@ -496,20 +590,64 @@ export default function DashboardScreen() {
         setHub({ loading: false, ...snap });
         setHubLoadedOnce(true);
       });
+      runActiveLiveTrainingFetch(() => cancelled);
       return () => {
         cancelled = true;
       };
-    }, [hubLoadedOnce])
+    }, [hubLoadedOnce, runActiveLiveTrainingFetch])
   );
 
-  const handleOpenCoachInput = useCallback(() => {
-    router.push(COACH_INPUT_ROUTE as Parameters<typeof router.push>[0]);
-  }, [router]);
+  /** Кнопка в блоке «Сейчас» — только канон live-training, без увода в coach-input. */
+  const handleStatusCanonLiveTraining = useCallback(() => {
+    if (liveTraining?.status === 'live') {
+      router.push(`/live-training/${liveTraining.id}/live` as Parameters<typeof router.push>[0]);
+      return;
+    }
+    if (liveTraining?.status === 'review') {
+      router.push(`/live-training/${liveTraining.id}/review` as Parameters<typeof router.push>[0]);
+      return;
+    }
+    if (liveTraining?.status === 'confirmed') {
+      router.push(`/live-training/${liveTraining.id}/complete` as Parameters<typeof router.push>[0]);
+      return;
+    }
+    router.push(LIVE_TRAINING_START_ROUTE as Parameters<typeof router.push>[0]);
+  }, [router, liveTraining]);
+
+  /** Быстрая ячейка «сессия» — текст может быть legacy; маршрут должен совпадать с подписью. */
+  const handleQuickGridSession = useCallback(() => {
+    if (liveTraining?.status === 'live') {
+      router.push(`/live-training/${liveTraining.id}/live` as Parameters<typeof router.push>[0]);
+      return;
+    }
+    if (liveTraining?.status === 'review') {
+      router.push(`/live-training/${liveTraining.id}/review` as Parameters<typeof router.push>[0]);
+      return;
+    }
+    if (liveTraining?.status === 'confirmed') {
+      router.push(`/live-training/${liveTraining.id}/complete` as Parameters<typeof router.push>[0]);
+      return;
+    }
+    if (liveTrainingLoadPending) {
+      router.push(LIVE_TRAINING_START_ROUTE as Parameters<typeof router.push>[0]);
+      return;
+    }
+    if (liveTrainingLoadError) {
+      router.push(LIVE_TRAINING_START_ROUTE as Parameters<typeof router.push>[0]);
+      return;
+    }
+    const r = hub.resume;
+    if (r?.source === 'coachInputDraft' || isActiveLiveTrainingResumeSource(r?.source)) {
+      router.push(COACH_INPUT_ROUTE as Parameters<typeof router.push>[0]);
+      return;
+    }
+    router.push(LIVE_TRAINING_START_ROUTE as Parameters<typeof router.push>[0]);
+  }, [router, liveTraining, liveTrainingLoadPending, liveTrainingLoadError, hub.resume]);
 
   const handleResetSessionDraft = useCallback(() => {
     Alert.alert(
-      'Сбросить тренировку',
-      'Незавершённая тренировка будет очищена. Несохранённые наблюдения пропадут. Продолжить?',
+      'Сбросить локальный legacy-черновик',
+      'Локальная запись coach-input будет очищена. Несохранённые наблюдения пропадут. Продолжить?',
       [
         { text: 'Отмена', style: 'cancel' },
         {
@@ -532,9 +670,19 @@ export default function DashboardScreen() {
   const spotlightActions = buildSpotlightActions(hub, messagesNeedsReactionCount);
   const heroSubtitle = hub.loading
     ? undefined
-    : hub.resume
-      ? COACH_DASHBOARD_COPY.heroSubtitleResume
-      : COACH_DASHBOARD_COPY.heroSubtitleDefault;
+    : liveTrainingLoadPending
+      ? 'Загружаем состояние живой тренировки…'
+      : liveTrainingLoadError
+        ? 'Проверка активной сессии не удалась — нажмите «Повторить» в блоке «Сейчас» или начните live-training.'
+        : liveTraining?.status === 'live' ||
+            liveTraining?.status === 'review' ||
+            liveTraining?.status === 'confirmed'
+          ? 'Живая тренировка активна — это основной сценарий Arena. Вернитесь к записи или проверке.'
+          : hub.resume?.source === 'coachInputDraft'
+            ? COACH_DASHBOARD_COPY.heroSubtitleResume
+            : isActiveLiveTrainingResumeSource(hub.resume?.source)
+              ? 'Активная legacy-сессия на сервере — при необходимости coach-input; канон — live-training.'
+              : COACH_DASHBOARD_COPY.heroSubtitleDefault;
   const showCalmOnboarding =
     !hub.loading &&
     !hub.resume &&
@@ -618,14 +766,29 @@ export default function DashboardScreen() {
             <StaggerFadeIn delay={0} preset="snappy">
               <Text style={styles.statusEyebrow}>Сейчас</Text>
               <View style={styles.statusTop}>
-                <Text style={styles.statusPrimary}>{buildStatusPrimaryLine(hub)}</Text>
-                {hub.resume ? <View style={styles.statusLiveDot} /> : null}
+                <Text style={styles.statusPrimary}>
+                  {buildStatusPrimaryLine(hub, liveTraining, {
+                    liveLoading: liveTrainingLoadPending && !hub.loading,
+                    liveError: !liveTrainingLoadPending ? liveTrainingLoadError : null,
+                  })}
+                </Text>
+                {hub.resume ||
+                liveTraining?.status === 'live' ||
+                liveTraining?.status === 'review' ||
+                liveTraining?.status === 'confirmed' ? (
+                  <View style={styles.statusLiveDot} />
+                ) : null}
               </View>
               <Text style={styles.statusSecondary}>
                 {buildStatusSecondaryLine(
                   hub,
                   messagesNeedsReactionCount,
-                  messagesAwaitingReplyCount
+                  messagesAwaitingReplyCount,
+                  liveTraining,
+                  {
+                    liveLoading: liveTrainingLoadPending && !hub.loading,
+                    liveError: !liveTrainingLoadPending ? liveTrainingLoadError : null,
+                  }
                 )}
               </Text>
               {(hub.materialsPartial || hub.attentionUnavailable || hub.weeklyReportsUnavailable) ? (
@@ -633,9 +796,55 @@ export default function DashboardScreen() {
                   <Text style={styles.softNoticeText}>{COACH_DASHBOARD_COPY.softPartialNotice}</Text>
                 </View>
               ) : null}
-              {hub.resume ? (
+              {liveTrainingLoadError && !hub.loading ? (
+                <View style={styles.liveTrainingErrorBanner}>
+                  <Text style={styles.liveTrainingErrorText}>{liveTrainingLoadError}</Text>
+                  <PressableFeedback style={styles.liveTrainingRetry} onPress={refetchActiveLiveTraining}>
+                    <Text style={styles.liveTrainingRetryText}>Повторить проверку</Text>
+                  </PressableFeedback>
+                </View>
+              ) : null}
+              {!hub.loading ? (
+                <PrimaryButton
+                  animatedPress
+                  title={
+                    liveTraining?.status === 'live'
+                      ? 'Вернуться к тренировке'
+                      : liveTraining?.status === 'review'
+                        ? 'Перейти к проверке'
+                        : liveTraining?.status === 'confirmed'
+                          ? 'Завершить отчёт'
+                          : 'Живая тренировка (Arena)'
+                  }
+                  onPress={handleStatusCanonLiveTraining}
+                  style={styles.trainingPrimaryCta}
+                />
+              ) : null}
+              {hub.resume?.source === 'coachInputDraft' &&
+              liveTraining?.status !== 'live' &&
+              liveTraining?.status !== 'review' &&
+              liveTraining?.status !== 'confirmed' ? (
+                <PressableFeedback
+                  style={styles.classicResumeLink}
+                  onPress={() => router.push(COACH_INPUT_ROUTE as Parameters<typeof router.push>[0])}
+                >
+                  <Text style={styles.classicResumeLinkText}>Продолжить локальную запись (legacy)</Text>
+                </PressableFeedback>
+              ) : null}
+              {isActiveLiveTrainingResumeSource(hub.resume?.source) &&
+              liveTraining?.status !== 'live' &&
+              liveTraining?.status !== 'review' &&
+              liveTraining?.status !== 'confirmed' ? (
+                <PressableFeedback
+                  style={styles.classicResumeLink}
+                  onPress={() => router.push(COACH_INPUT_ROUTE as Parameters<typeof router.push>[0])}
+                >
+                  <Text style={styles.classicResumeLinkText}>Открыть coach-input (legacy API)</Text>
+                </PressableFeedback>
+              ) : null}
+              {hub.resume?.source === 'coachInputDraft' ? (
                 <PressableFeedback style={styles.resetLink} onPress={handleResetSessionDraft}>
-                  <Text style={styles.resetLinkText}>Сбросить черновик тренировки</Text>
+                  <Text style={styles.resetLinkText}>Сбросить локальный legacy-черновик</Text>
                 </PressableFeedback>
               ) : null}
             </StaggerFadeIn>
@@ -655,7 +864,9 @@ export default function DashboardScreen() {
       <StaggerFadeIn delay={18} preset="snappy">
         <HomeQuickActionsGrid
           resume={hub.resume}
-          onSessionPress={handleOpenCoachInput}
+          live={liveTraining}
+          liveLoadPending={liveTrainingLoadPending}
+          onSessionPress={handleQuickGridSession}
           hub={hub}
           messagesUnreadTotal={messagesUnreadTotal}
           messagesNeedsReactionCount={messagesNeedsReactionCount}
@@ -714,13 +925,13 @@ export default function DashboardScreen() {
       </StaggerFadeIn>
 
       <StaggerFadeIn delay={48}>
-        <DashboardSection title="Coach Mark">
+        <DashboardSection title="Арена">
           <CoachMarkProBlock />
         </DashboardSection>
       </StaggerFadeIn>
 
       <StaggerFadeIn delay={56}>
-        <DashboardSection title="Coach Mark · Сводка" compact>
+        <DashboardSection title="Арена · Сводка" compact>
           <CoachMarkDigestBlock />
         </DashboardSection>
       </StaggerFadeIn>
@@ -1108,6 +1319,42 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
     marginTop: theme.spacing.xs,
     lineHeight: 18,
+  },
+  liveTrainingErrorBanner: {
+    marginTop: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.sm,
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.accentMuted,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    gap: theme.spacing.xs,
+  },
+  liveTrainingErrorText: {
+    ...theme.typography.caption,
+    color: theme.colors.textSecondary,
+    lineHeight: 18,
+  },
+  liveTrainingRetry: {
+    alignSelf: 'flex-start',
+    paddingVertical: theme.spacing.xs,
+  },
+  liveTrainingRetryText: {
+    ...theme.typography.caption,
+    color: theme.colors.primary,
+    fontWeight: '600',
+  },
+  trainingPrimaryCta: {
+    marginTop: theme.spacing.md,
+  },
+  classicResumeLink: {
+    marginTop: theme.spacing.md,
+    alignSelf: 'flex-start',
+  },
+  classicResumeLinkText: {
+    ...theme.typography.caption,
+    color: theme.colors.primary,
+    fontWeight: '600',
   },
   resetLink: {
     marginTop: theme.spacing.sm,

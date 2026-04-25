@@ -49,9 +49,22 @@ export default function RootLayout() {
           <Stack.Screen name="attendance" options={{ headerShown: false }} />
           <Stack.Screen name="notes" options={{ headerShown: false }} />
           <Stack.Screen name="schedule" options={{ headerShown: false }} />
-          <Stack.Screen name="dev" options={{ headerShown: false }} />
           <Stack.Screen
-            name="actions"
+            name="coach-input"
+            options={{
+              headerShown: true,
+              title: "Запись сессии (legacy)",
+              headerBackTitle: "Назад",
+              headerStyle: { backgroundColor: theme.colors.background },
+              headerTintColor: theme.colors.text,
+              headerTitleStyle: {
+                color: theme.colors.text,
+                fontWeight: "600",
+              },
+            }}
+          />
+          <Stack.Screen
+            name="actions/index"
             options={{
               headerShown: true,
               title: "Требуют внимания",
@@ -82,7 +95,7 @@ export default function RootLayout() {
             name="session-review"
             options={{
               headerShown: true,
-              title: "Итоги тренировки",
+              title: "Итоги (legacy, локально)",
               headerBackTitle: "Назад",
               headerStyle: { backgroundColor: theme.colors.background },
               headerTintColor: theme.colors.text,

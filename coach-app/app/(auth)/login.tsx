@@ -15,6 +15,7 @@ import { useAuth } from '@/context/AuthContext';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenContainer } from '@/components/layout/ScreenContainer';
 import { theme } from '@/constants/theme';
+import { isDemoMode } from '@/lib/config';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -105,9 +106,15 @@ export default function LoginScreen() {
               style={styles.button}
             />
 
-            <Text style={styles.hint}>
-              Демо: coach@hockey.edu / admin123
-            </Text>
+            {isDemoMode ? (
+              <Text style={styles.hint}>
+                Демо: coach@hockey.edu / admin123 (или учётная запись из базы школы)
+              </Text>
+            ) : (
+              <Text style={styles.hint}>
+                Введите email и пароль пользователя школы из CRM (роль тренера).
+              </Text>
+            )}
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>

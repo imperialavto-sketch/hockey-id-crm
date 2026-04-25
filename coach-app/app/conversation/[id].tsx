@@ -451,7 +451,7 @@ export default function ConversationDetailScreen() {
       const payload = await enrichVoiceStarterWithAi(built);
       const starterId = await saveVoiceStarterPayload(payload);
       router.push({
-        pathname: '/dev/coach-input',
+        pathname: '/coach-input',
         params: { voiceStarterId: starterId },
       });
     } catch {

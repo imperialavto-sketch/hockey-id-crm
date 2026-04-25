@@ -20,6 +20,7 @@ import { isEndpointUnavailable, clearEndpointUnavailable, COACH_ENDPOINTS } from
 import { isAuthRequiredError } from "@/lib/coachAuth";
 import { theme } from "@/constants/theme";
 import { hasParentDraftVoiceNoteLink, VOICE_PROVENANCE } from "@/lib/voiceProvenanceCopy";
+import { LIVE_TRAINING_START_ROUTE } from "@/services/liveTrainingService";
 
 const RECENT_DAYS = 7;
 
@@ -554,9 +555,11 @@ export default function ParentDraftsScreen() {
                     />
                     <PrimaryButton
                       animatedPress
-                      title="Тренировочный поток"
+                      title="Живая тренировка (Arena)"
                       variant="outline"
-                      onPress={() => router.push("/dev/coach-input")}
+                      onPress={() =>
+                        router.push(LIVE_TRAINING_START_ROUTE as Parameters<typeof router.push>[0])
+                      }
                     />
                   </>
                 )}
@@ -586,9 +589,11 @@ export default function ParentDraftsScreen() {
                   />
                   <PrimaryButton
                     animatedPress
-                    title="Тренировочный поток"
+                    title="Живая тренировка (Arena)"
                     variant="outline"
-                    onPress={() => router.push("/dev/coach-input")}
+                    onPress={() =>
+                      router.push(LIVE_TRAINING_START_ROUTE as Parameters<typeof router.push>[0])
+                    }
                     style={styles.quickBtn}
                   />
                 </View>

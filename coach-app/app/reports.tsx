@@ -24,6 +24,7 @@ import {
   COACH_AUTH_REQUIRED_LINE,
   reportsStatMidLabel,
 } from "@/lib/coachReportsScreenUi";
+import { LIVE_TRAINING_START_ROUTE } from "@/services/liveTrainingService";
 
 const RECENT_DAYS = 7;
 
@@ -453,7 +454,9 @@ export default function ReportsScreen() {
                     <PrimaryButton
                       animatedPress
                       title={COPY.emptyCtaTraining}
-                      onPress={() => router.push("/dev/coach-input")}
+                      onPress={() =>
+                        router.push(LIVE_TRAINING_START_ROUTE as Parameters<typeof router.push>[0])
+                      }
                     />
                     <PrimaryButton
                       animatedPress
@@ -488,7 +491,9 @@ export default function ReportsScreen() {
                     animatedPress
                     title={COPY.quickTraining}
                     variant="outline"
-                    onPress={() => router.push("/dev/coach-input")}
+                    onPress={() =>
+                      router.push(LIVE_TRAINING_START_ROUTE as Parameters<typeof router.push>[0])
+                    }
                     style={styles.quickBtn}
                   />
                   <PrimaryButton
