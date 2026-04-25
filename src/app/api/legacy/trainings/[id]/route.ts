@@ -10,8 +10,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/api-rbac";
 import { canAccessTraining } from "@/lib/data-scope";
-import { warnLegacyTrainingContourWrite } from "@/lib/legacy/legacyIsolationMarkers";
+import {
+  logLegacyTrainingHttpWrite,
+  warnLegacyTrainingContourWrite,
+} from "@/lib/legacy/legacyIsolationMarkers";
 import { legacyTrainingApiGoneResponse } from "@/lib/legacy/legacyTrainingApiGone";
+import {
+  isLegacyTrainingHttpWritesEnabled,
+  legacyTrainingHttpWritesDisabledResponse,
+} from "@/lib/legacy/legacyTrainingHttpWriteGuard";
 
 /**
  * STAGE 1: GET removed (410). Canonical: `GET /api/trainings/[id]` (TrainingSession). PATCH/DELETE unchanged.
@@ -32,10 +39,30 @@ export async function PATCH(
 ) {
   const { user, res } = await requirePermission(req, "trainings", "edit");
   if (res) return res;
+  const { id: trainingId } = await params;
+  if (!isLegacyTrainingHttpWritesEnabled()) {
+    logLegacyTrainingHttpWrite(req, {
+      event: "legacy_training_write_attempt",
+      surface: "PATCH /api/legacy/trainings/[id]",
+      method: "PATCH",
+      trainingId,
+      userId: user!.id,
+      outcomeStage: "policy_disabled",
+    });
+    return legacyTrainingHttpWritesDisabledResponse();
+  }
   warnLegacyTrainingContourWrite("PATCH /api/legacy/trainings/[id]");
+  logLegacyTrainingHttpWrite(req, {
+    event: "legacy_training_write_attempt",
+    surface: "PATCH /api/legacy/trainings/[id]",
+    method: "PATCH",
+    trainingId,
+    userId: user!.id,
+    outcomeStage: "before_write",
+  });
 
   try {
-    const { id } = await params;
+    const id = trainingId;
     const training = await prisma.training.findUnique({
       where: { id },
       include: { team: true },
@@ -74,6 +101,14 @@ export async function PATCH(
       },
     });
 
+    logLegacyTrainingHttpWrite(req, {
+      event: "legacy_training_write_committed",
+      surface: "PATCH /api/legacy/trainings/[id]",
+      method: "PATCH",
+      trainingId,
+      userId: user!.id,
+      outcomeStage: "committed",
+    });
     return NextResponse.json(updated);
   } catch (error) {
     console.error("PATCH /api/legacy/trainings/[id] failed:", error);
@@ -96,10 +131,30 @@ export async function DELETE(
 ) {
   const { user, res } = await requirePermission(req, "trainings", "delete");
   if (res) return res;
+  const { id: trainingId } = await params;
+  if (!isLegacyTrainingHttpWritesEnabled()) {
+    logLegacyTrainingHttpWrite(req, {
+      event: "legacy_training_write_attempt",
+      surface: "DELETE /api/legacy/trainings/[id]",
+      method: "DELETE",
+      trainingId,
+      userId: user!.id,
+      outcomeStage: "policy_disabled",
+    });
+    return legacyTrainingHttpWritesDisabledResponse();
+  }
   warnLegacyTrainingContourWrite("DELETE /api/legacy/trainings/[id]");
+  logLegacyTrainingHttpWrite(req, {
+    event: "legacy_training_write_attempt",
+    surface: "DELETE /api/legacy/trainings/[id]",
+    method: "DELETE",
+    trainingId,
+    userId: user!.id,
+    outcomeStage: "before_write",
+  });
 
   try {
-    const { id } = await params;
+    const id = trainingId;
     const training = await prisma.training.findUnique({
       where: { id },
       include: { team: true },
@@ -115,6 +170,14 @@ export async function DELETE(
 
     // PHASE 1 WRITE-RISK: legacy `Training` delete only via this route.
     await prisma.training.delete({ where: { id } });
+    logLegacyTrainingHttpWrite(req, {
+      event: "legacy_training_write_committed",
+      surface: "DELETE /api/legacy/trainings/[id]",
+      method: "DELETE",
+      trainingId,
+      userId: user!.id,
+      outcomeStage: "committed",
+    });
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("DELETE /api/legacy/trainings/[id] failed:", error);

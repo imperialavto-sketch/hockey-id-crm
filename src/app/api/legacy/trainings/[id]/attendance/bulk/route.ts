@@ -12,7 +12,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/api-rbac";
 import { canAccessTraining } from "@/lib/data-scope";
-import { warnLegacyTrainingContourWrite } from "@/lib/legacy/legacyIsolationMarkers";
+import {
+  logLegacyTrainingHttpWrite,
+  warnLegacyTrainingContourWrite,
+} from "@/lib/legacy/legacyIsolationMarkers";
+import {
+  isLegacyTrainingHttpWritesEnabled,
+  legacyTrainingHttpWritesDisabledResponse,
+} from "@/lib/legacy/legacyTrainingHttpWriteGuard";
 
 const LEGACY_STATUSES = ["PRESENT", "ABSENT", "LATE", "EXCUSED"] as const;
 
@@ -26,14 +33,32 @@ export async function POST(
 ) {
   const { user, res } = await requirePermission(req, "trainings", "edit");
   if (res) return res;
+  const { id: trainingId } = await params;
+  if (!trainingId) {
+    return NextResponse.json({ error: "ID тренировки обязателен" }, { status: 400 });
+  }
+  if (!isLegacyTrainingHttpWritesEnabled()) {
+    logLegacyTrainingHttpWrite(req, {
+      event: "legacy_training_write_attempt",
+      surface: "POST /api/legacy/trainings/[id]/attendance/bulk",
+      method: "POST",
+      trainingId,
+      userId: user!.id,
+      outcomeStage: "policy_disabled",
+    });
+    return legacyTrainingHttpWritesDisabledResponse();
+  }
   warnLegacyTrainingContourWrite("POST /api/legacy/trainings/[id]/attendance/bulk");
+  logLegacyTrainingHttpWrite(req, {
+    event: "legacy_training_write_attempt",
+    surface: "POST /api/legacy/trainings/[id]/attendance/bulk",
+    method: "POST",
+    trainingId,
+    userId: user!.id,
+    outcomeStage: "before_write",
+  });
 
   try {
-    const { id: trainingId } = await params;
-    if (!trainingId) {
-      return NextResponse.json({ error: "ID тренировки обязателен" }, { status: 400 });
-    }
-
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const { status, playerIds } = body;
     if (
@@ -88,7 +113,17 @@ export async function POST(
       })
     );
 
-    return NextResponse.json({ updated: results.filter(Boolean).length });
+    const bulkUpdatedCount = results.filter(Boolean).length;
+    logLegacyTrainingHttpWrite(req, {
+      event: "legacy_training_write_committed",
+      surface: "POST /api/legacy/trainings/[id]/attendance/bulk",
+      method: "POST",
+      trainingId,
+      userId: user!.id,
+      outcomeStage: "committed",
+      bulkUpdatedCount,
+    });
+    return NextResponse.json({ updated: bulkUpdatedCount });
   } catch (error) {
     console.error("POST /api/legacy/trainings/[id]/attendance/bulk failed:", error);
     return NextResponse.json(
