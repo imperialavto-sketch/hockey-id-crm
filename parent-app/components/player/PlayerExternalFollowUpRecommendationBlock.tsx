@@ -7,18 +7,31 @@ import { triggerHaptic } from "@/lib/haptics";
 import { ApiRequestError } from "@/lib/api";
 import { setArenaAutoMode } from "@/lib/arenaAutoMode";
 import {
+  classifyFollowUpPostOutcome,
+  followUpNonAutonomousOutcomeCopy,
+  followUpPostInflight,
+  type FollowUpPostOutcome,
+} from "@/lib/parentArenaExternalFollowUpHonesty";
+import {
   confirmArenaAutonomousMatch,
   createArenaExternalFollowUpRequest,
+  getLatestArenaExternalTrainingRequest,
   type ExternalFollowUpRecommendationView,
 } from "@/services/arenaExternalTrainingService";
+
+export type ArenaFollowUpPostDetail = {
+  nonAutonomousPost?: FollowUpPostOutcome;
+};
 
 type Props = {
   playerId: string;
   recommendation: ExternalFollowUpRecommendationView;
-  onReRequestSuccess?: () => void | Promise<void>;
+  onReRequestSuccess?: (detail?: ArenaFollowUpPostDetail) => void | Promise<void>;
   /** Локальный флаг: родитель уже разрешил Арене действовать для этого игрока. */
   arenaAutoMode?: boolean;
   onArenaAutoModeEnabled?: () => void;
+  /** Родитель скрывает секцию целиком (без пустого SectionCard). */
+  onDeferred?: () => void;
 };
 
 const AUTONOMOUS_TITLE = "Арена нашла решение для развития";
@@ -46,11 +59,14 @@ export function PlayerExternalFollowUpRecommendationBlock({
   onReRequestSuccess,
   arenaAutoMode = false,
   onArenaAutoModeEnabled,
+  onDeferred,
 }: Props) {
   const [deferred, setDeferred] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successLine, setSuccessLine] = useState(false);
+  /** Сообщение после неавтономного POST (различаем новый запрос vs уже активный без отчёта). */
+  const [nonAutonomousSuccessCopy, setNonAutonomousSuccessCopy] = useState<string | null>(null);
 
   if (deferred) return null;
 
@@ -98,6 +114,7 @@ export function PlayerExternalFollowUpRecommendationBlock({
   const runAutonomousFlow = useCallback(async () => {
     const pid = playerId.trim();
     setError(null);
+    setNonAutonomousSuccessCopy(null);
     setLoading(true);
     try {
       await confirmArenaAutonomousMatch(pid);
@@ -171,12 +188,24 @@ export function PlayerExternalFollowUpRecommendationBlock({
       await runAutonomousFlow();
       return;
     }
+    const pid = playerId.trim();
+    if (!pid || !followUpPostInflight.tryBegin(pid)) return;
     setError(null);
+    setNonAutonomousSuccessCopy(null);
     setLoading(true);
     try {
-      await createArenaExternalFollowUpRequest(playerId);
+      let preLatestId: string | null | undefined;
+      try {
+        const pre = await getLatestArenaExternalTrainingRequest(pid);
+        preLatestId = pre?.id ?? null;
+      } catch {
+        preLatestId = undefined;
+      }
+      const result = await createArenaExternalFollowUpRequest(pid);
+      const nonAutonomousPost = classifyFollowUpPostOutcome(preLatestId, result.id);
+      setNonAutonomousSuccessCopy(followUpNonAutonomousOutcomeCopy(nonAutonomousPost));
       setSuccessLine(true);
-      await onReRequestSuccess?.();
+      await onReRequestSuccess?.({ nonAutonomousPost });
     } catch (e) {
       const msg =
         e instanceof ApiRequestError
@@ -184,13 +213,18 @@ export function PlayerExternalFollowUpRecommendationBlock({
           : "Не удалось выполнить шаг. Попробуйте ещё раз.";
       setError(msg);
     } finally {
+      followUpPostInflight.end(pid);
       setLoading(false);
     }
   };
 
   const onDefer = () => {
     triggerHaptic();
-    setDeferred(true);
+    if (onDeferred) {
+      onDeferred();
+    } else {
+      setDeferred(true);
+    }
   };
 
   return (
@@ -245,7 +279,7 @@ export function PlayerExternalFollowUpRecommendationBlock({
             ? arenaAutoMode
               ? "Шаг выполнен. Арена продолжает организацию."
               : "Автоматический режим включён. Арена продолжает организацию тренировки."
-            : "Создан следующий цикл. Фокус сохранён и уточнён."}
+            : nonAutonomousSuccessCopy}
         </Text>
       ) : null}
       {loading ? (

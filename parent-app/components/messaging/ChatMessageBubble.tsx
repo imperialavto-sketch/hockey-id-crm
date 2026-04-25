@@ -35,7 +35,7 @@ function stripMarkdown(text: string): string {
 }
 
 /**
- * Пузырь сообщения в треде родителя (тренер / родитель / Coach Mark).
+ * Пузырь сообщения в треде родителя (тренер / родитель / Арена).
  * Storybook: `ChatMessageBubble.stories.tsx`; снапшоты: `__tests__/messaging`.
  */
 export type ChatMessageBubbleProps = {

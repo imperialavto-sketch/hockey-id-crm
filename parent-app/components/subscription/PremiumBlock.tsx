@@ -57,7 +57,7 @@ export function PremiumBlock() {
       <View style={styles.content}>
         <Text style={styles.title}>Hockey ID Premium</Text>
         <Text style={styles.subtitleCta}>
-          Coach Mark как тренер, AI-анализ, план развития
+          Арена как тренер, AI-анализ, план развития
         </Text>
       </View>
       <View style={styles.ctaRow}>

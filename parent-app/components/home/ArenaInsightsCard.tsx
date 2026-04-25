@@ -1,3 +1,7 @@
+/**
+ * BOUNDARY (future / unwired): home «Arena insights» surface — не смонтирован в `app/**`
+ * (нет импорта этого компонента из экранов). Не путать со школьной сводкой `ParentLiveTrainingHeroBlock`.
+ */
 import React, { memo, useEffect, useMemo } from "react";
 import { View, Text, StyleSheet, Pressable, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";

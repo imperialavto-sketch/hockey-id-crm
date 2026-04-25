@@ -10,7 +10,7 @@ interface SubscriptionHeroProps {
 
 export function SubscriptionHero({
   title = "Hockey ID Premium",
-  subtitle = "Coach Mark как персональный тренер + полный AI-анализ",
+  subtitle = "Арена как персональный тренер + полный AI-анализ",
 }: SubscriptionHeroProps) {
   return (
     <View style={styles.wrap}>
@@ -21,7 +21,7 @@ export function SubscriptionHero({
       <Text style={styles.subtitle}>{subtitle}</Text>
       <View style={styles.descCard}>
         <Text style={styles.desc}>
-          Персональные рекомендации, еженедельные отчёты Coach Mark, полный AI-анализ
+          Персональные рекомендации, еженедельные отчёты Арены, полный AI-анализ
           и план развития — всё в одном месте.
         </Text>
       </View>

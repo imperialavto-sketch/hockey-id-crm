@@ -21,6 +21,9 @@ type Props = {
 /** Быстрый скан 2–3 с: статус, короткая суть, один сигнал, следующий шаг. Без «почему» — это в overview ниже. */
 const QUICK_SUMMARY_MAX_CHARS = 148;
 
+/** Одна граница: этот блок — `GET /api/arena/summary-surface`, не школьная сводка последней тренировки (hero). */
+const SUMMARY_SURFACE_BOUNDARY_LINE = "Внешний контур развития в Арене";
+
 function clampQuickScan(text: string, max: number): string {
   const t = text.trim();
   if (!t) return "";
@@ -47,6 +50,9 @@ export function PlayerArenaSummarySurfaceBlock({ surface }: Props) {
         style={styles.glow}
       />
       <View style={styles.card}>
+        <Text style={styles.boundaryLine} numberOfLines={1}>
+          {SUMMARY_SURFACE_BOUNDARY_LINE}
+        </Text>
         <Text style={styles.kicker}>Сейчас</Text>
         <View
           style={[
@@ -98,6 +104,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md + 2,
     paddingHorizontal: spacing.md + 2,
     gap: spacing.xs + 2,
+  },
+  boundaryLine: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.2,
+    color: "rgba(148,163,184,0.92)",
+    marginBottom: 2,
   },
   kicker: {
     fontSize: 10,

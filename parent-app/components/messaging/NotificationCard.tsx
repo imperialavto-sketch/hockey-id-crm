@@ -10,6 +10,8 @@ import type { AppNotificationItem, AppNotificationType } from "@/types/notificat
 const TYPE_ICONS: Record<AppNotificationType, keyof typeof Ionicons.glyphMap> = {
   chat_message: "chatbubble-outline",
   parent_chat_message: "chatbubbles-outline",
+  parent_peer_message: "people-outline",
+  team_parent_channel_message: "people-circle-outline",
   team_announcement: "megaphone-outline",
   coach_mark_post_training: "sparkles-outline",
   schedule_update: "calendar-outline",

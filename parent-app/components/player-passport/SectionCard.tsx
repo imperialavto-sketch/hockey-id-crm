@@ -1,16 +1,26 @@
-import { View, Text, StyleSheet, type ViewStyle } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import { colors, spacing, radius, typography } from "@/constants/theme";
 
 type SectionCardVariant = "default" | "primary";
+
+type SectionCardContentDensity = "default" | "compact";
 
 interface SectionCardProps {
   title: string;
   /** Optional muted line under the title (context / intro). */
   subtitle?: string;
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   /** Primary variant: stronger surface/border for hero sections */
   variant?: SectionCardVariant;
+  /** Tighter padding for dense lists (observations, help-now). */
+  contentDensity?: SectionCardContentDensity;
 }
 
 export function SectionCard({
@@ -19,10 +29,13 @@ export function SectionCard({
   children,
   style,
   variant = "default",
+  contentDensity = "default",
 }: SectionCardProps) {
   const isPrimary = variant === "primary";
+  const densityPad =
+    contentDensity === "compact" ? styles.cardPaddingCompact : styles.cardPaddingDefault;
   return (
-    <View style={[styles.card, isPrimary && styles.cardPrimary, style]}>
+    <View style={[styles.card, isPrimary && styles.cardPrimary, densityPad, style]}>
       <Text
         style={[
           styles.title,
@@ -42,10 +55,15 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surfaceLevel1,
     borderRadius: radius.lg,
-    padding: spacing.xl,
     marginBottom: spacing.xl,
     borderWidth: 1,
     borderColor: colors.surfaceLevel1Border,
+  },
+  cardPaddingDefault: {
+    padding: spacing.xl,
+  },
+  cardPaddingCompact: {
+    padding: spacing.lg,
   },
   cardPrimary: {
     backgroundColor: colors.surfaceLevel2,

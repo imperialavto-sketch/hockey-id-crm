@@ -4,6 +4,10 @@ import { colors, spacing, typography } from "@/constants/theme";
 import type { ArenaParentSummary } from "@/types/arenaParentSummary";
 import type { ArenaParentGuidance } from "@/types/arenaParentGuidance";
 
+/** Показ при отсутствии Arena-сводки на клиенте (без новых API). */
+export const ARENA_TRAINING_DATA_PENDING_MESSAGE =
+  "Данные тренировки пока не получены";
+
 export type ParentLiveTrainingHeroUiState = "positive" | "mixed" | "attention";
 
 type Props = {
@@ -11,6 +15,8 @@ type Props = {
   guidance: ArenaParentGuidance | null;
   /** Когда нет Arena-сводки: одна строка из опубликованного отчёта (без новых API). */
   fallbackLine?: string | null;
+  /** Одна строка: канонический отчёт vs live fallback (из DTO `source`). */
+  provenanceLine?: string | null;
 };
 
 function deriveHeroState(
@@ -72,12 +78,25 @@ function shouldShowOrientir(summary: ArenaParentSummary, guidance: ArenaParentGu
 }
 
 /** Верхняя сводка по живой тренировке: состояние, краткая сводка, короткий ориентир. */
-export function ParentLiveTrainingHeroBlock({ summary, guidance, fallbackLine }: Props) {
-  const fb = fallbackLine?.trim() ?? "";
-  if (!summary && !guidance && !fb) return null;
+export function ParentLiveTrainingHeroBlock({
+  summary,
+  guidance,
+  fallbackLine,
+  provenanceLine,
+}: Props) {
+  const explicitFallback = fallbackLine?.trim() ?? "";
+  const hasArenaPayload = Boolean(summary || guidance);
+  const fb =
+    explicitFallback ||
+    (!hasArenaPayload ? ARENA_TRAINING_DATA_PENDING_MESSAGE : "");
 
-  const state = deriveHeroState(summary, guidance, Boolean(fb));
+  const state = deriveHeroState(
+    summary,
+    guidance,
+    Boolean(fb && (explicitFallback || !hasArenaPayload))
+  );
   const glow = state === "attention";
+  const provenance = provenanceLine?.trim() ?? "";
 
   let headline = "";
   let body = "";
@@ -93,7 +112,7 @@ export function ParentLiveTrainingHeroBlock({ summary, guidance, fallbackLine }:
     headline = guidance.guidanceTitle;
     body = guidance.guidanceText;
   } else {
-    headline = "Сводка";
+    headline = "Тренировка";
     body = fb;
   }
 
@@ -117,6 +136,11 @@ export function ParentLiveTrainingHeroBlock({ summary, guidance, fallbackLine }:
             {statePillLabel(state)}
           </Text>
         </View>
+        {provenance ? (
+          <Text style={styles.provenance} numberOfLines={1}>
+            {provenance}
+          </Text>
+        ) : null}
         <Text style={styles.headline} numberOfLines={2}>
           {headline}
         </Text>
@@ -180,6 +204,14 @@ const styles = StyleSheet.create({
   },
   pillTextPositive: {
     color: colors.textSecondary,
+  },
+  provenance: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "500",
+    color: colors.textMuted,
+    marginBottom: spacing.xs,
+    opacity: 0.92,
   },
   headline: {
     fontSize: 17,

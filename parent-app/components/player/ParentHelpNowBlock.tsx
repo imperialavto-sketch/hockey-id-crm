@@ -1,5 +1,5 @@
 /**
- * PHASE 6 Step 14: компактные подсказки «дома / вне льда» из SessionMeaning (API latest-training-summary).
+ * PHASE 6 Step 14: компактные подсказки «дома / вне льда» из SessionMeaning (GET latest-training-summary).
  */
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
